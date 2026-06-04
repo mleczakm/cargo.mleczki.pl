@@ -1,0 +1,105 @@
+{{define "content"}}
+<div class="max-w-7xl mx-auto px-4 py-12">
+    <div class="flex items-center justify-between mb-8">
+        <h2 class="text-3xl font-black text-gray-900 flex items-center">
+            <svg class="w-8 h-8 mr-3 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+            </svg>
+            Panel Administratora
+        </h2>
+    </div>
+
+    <div class="bg-blue-50 border border-blue-200 text-blue-800 p-4 rounded-xl mb-8 flex text-sm shadow-sm">
+        <svg class="w-5 h-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <p><strong>Baza CRM:</strong> W poniższych zamówieniach nazwy klientów są klikalne. Przejdź w profil użytkownika, aby edytować jego dane kontaktowe lub sprawdzić pełną historię.</p>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+            <h3 class="font-bold text-xl mb-6 border-b pb-2">Ostatnie zamówienia</h3>
+            <div class="space-y-4">
+                {{if .Orders}}
+                    {{range .Orders}}
+                    <div class="border border-gray-100 bg-gray-50 p-4 rounded-xl">
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="font-bold text-gray-900">{{.ID}}</span>
+                            <span class="text-xs px-2 py-1 rounded font-bold {{if eq .Status "paid"}}bg-emerald-100 text-emerald-700{{else}}bg-yellow-100 text-yellow-700{{end}}">
+                                {{if eq .Status "paid"}}OPŁACONE{{else}}{{.Status | upper}}{{end}}
+                            </span>
+                        </div>
+                        <p class="text-sm text-gray-600 mb-1 flex items-center">
+                            <svg class="w-3 h-3 mr-1 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                            </svg>
+                            <a href="/admin/user/{{.UserID}}" class="text-emerald-700 hover:underline font-semibold ml-1">{{.UserName}}</a>
+                        </p>
+                        <p class="text-sm text-gray-600 mb-3 flex items-center">
+                            <svg class="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                            </svg>
+                            <span class="ml-1">{{.Items}}</span>
+                        </p>
+                        
+                        <div class="flex justify-between items-center mt-2 pt-2 border-t border-gray-200">
+                            <span class="font-bold text-gray-900">{{.TotalAmount}} zł ({{.PaymentMethod}})</span>
+                            {{if and (ne .Status "paid") (eq .PaymentMethod "cash")}}
+                                <button hx-post="/admin/order/{{.ID}}/mark-paid" hx-target="#orders-section" class="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 shadow-sm transition-colors">
+                                    Oznacz zapłacone (Gotówka)
+                                </button>
+                            {{end}}
+                        </div>
+                    </div>
+                    {{end}}
+                {{else}}
+                    <p class="text-gray-500 text-center py-4">Brak zamówień</p>
+                {{end}}
+            </div>
+        </div>
+
+        <div id="transfers-section" class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+            <h3 class="font-bold text-xl mb-6 border-b pb-2 flex items-center justify-between">
+                <span>Skrzynka wpłat (BLIK)</span>
+                <span class="text-xs font-normal bg-gray-100 px-2 py-1 rounded-md text-gray-600 border border-gray-200">Sync: Teraz</span>
+            </h3>
+            <div class="space-y-4">
+                {{if .Transfers}}
+                    {{range .Transfers}}
+                    <div class="border-l-4 p-4 rounded-r-xl {{if eq .Status "matched"}}border-emerald-500 bg-emerald-50/50{{else}}border-red-400 bg-gray-50{{end}}">
+                        <div class="flex justify-between">
+                            <span class="text-xs text-gray-500 font-medium">{{.Date}}</span>
+                            <span class="text-xs font-black tracking-wider {{if eq .Status "matched"}}text-emerald-600{{else}}text-red-500{{end}}">
+                                {{if eq .Status "matched"}}DOPASOWANY{{else}}BRAK DOPASOWANIA{{end}}
+                            </span>
+                        </div>
+                        <p class="font-black text-lg text-gray-900 mt-1">{{.Amount}} PLN</p>
+                        <p class="text-sm text-gray-600">Od: <span class="font-medium text-gray-800">{{.Sender}}</span></p>
+                        <p class="text-sm font-mono text-blue-700 bg-blue-100/50 inline-block px-2 py-0.5 rounded mt-1">Tytuł: {{.Title}}</p>
+                        
+                        {{if ne .Status "matched"}}
+                            <div class="mt-3 pt-3 border-t border-gray-200 flex items-center space-x-2">
+                                <select id="select-{{.ID}}" class="text-sm border border-gray-300 rounded-lg px-2 py-1.5 flex-grow outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500">
+                                    <option value="">Powiąż wpłatę z zamówieniem...</option>
+                                    {{range .UnmatchedOrders}}
+                                        <option value="{{.ID}}">{{.ID}} ({{.UserName}}) - {{.TotalAmount}}zł</option>
+                                    {{end}}
+                                </select>
+                                <button hx-post="/admin/transfer/{{.ID}}/link" hx-include="#select-{{.ID}}" hx-target="#transfers-section" class="bg-gray-900 hover:bg-gray-800 text-white text-xs px-4 py-2 rounded-lg font-bold transition-colors">
+                                    Połącz
+                                </button>
+                            </div>
+                        {{else}}
+                            <p class="text-xs text-emerald-700 mt-2 font-medium">Powiązano z rezerwacją: <span class="font-bold">{{.OrderID}}</span></p>
+                        {{end}}
+                    </div>
+                    {{end}}
+                {{else}}
+                    <p class="text-gray-500 text-center py-4">Brak przelewów</p>
+                {{end}}
+            </div>
+        </div>
+    </div>
+</div>
+{{end}}

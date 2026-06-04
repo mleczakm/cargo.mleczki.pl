@@ -1,0 +1,71 @@
+<div class="bg-white rounded-xl border border-gray-200 overflow-hidden select-none">
+    <div class="flex items-center justify-between p-4 border-b border-gray-100 bg-gray-50/50">
+        <button hx-get="/product/{{.ProductID}}/calendar?month={{.PrevMonth}}&year={{.PrevYear}}" hx-target="#calendar-container" class="p-1 hover:bg-gray-200 rounded text-gray-600">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+        </button>
+        <span class="font-bold text-gray-900">{{.MonthName}} {{.Year}}</span>
+        <button hx-get="/product/{{.ProductID}}/calendar?month={{.NextMonth}}&year={{.NextYear}}" hx-target="#calendar-container" class="p-1 hover:bg-gray-200 rounded text-gray-600">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+            </svg>
+        </button>
+    </div>
+    <div class="p-4">
+        <div class="grid grid-cols-7 gap-1 text-center text-xs font-medium text-gray-500 mb-2">
+            <div>Pn</div><div>Wt</div><div>Śr</div><div>Cz</div><div>Pt</div><div>Sb</div><div>Nd</div>
+        </div>
+        <div class="grid grid-cols-7 gap-1">
+            {{range .CalendarGrid}}
+                {{range .}}
+                    {{if .Empty}}
+                        <div class="h-10 w-full flex items-center justify-center text-sm rounded-lg text-transparent pointer-events-none">{{.Day}}</div>
+                    {{else if .IsPast}}
+                        <div class="h-10 w-full flex items-center justify-center text-sm rounded-lg text-gray-300 bg-gray-50 cursor-not-allowed">{{.Day}}</div>
+                    {{else if .IsBooked}}
+                        <div class="h-10 w-full flex items-center justify-center text-sm rounded-lg bg-gray-100 text-gray-400 cursor-not-allowed line-through decoration-gray-400">{{.Day}}</div>
+                    {{else if .IsSelected}}
+                        <div class="h-10 w-full flex items-center justify-center text-sm rounded-lg bg-emerald-600 text-white font-bold shadow-md cursor-pointer">{{.Day}}</div>
+                    {{else if .IsBetween}}
+                        <div class="h-10 w-full flex items-center justify-center text-sm rounded-lg bg-emerald-100 text-emerald-800 cursor-pointer">{{.Day}}</div>
+                    {{else}}
+                        <div onclick="selectDate('{{.DateStr}}')" class="h-10 w-full flex items-center justify-center text-sm rounded-lg hover:bg-gray-100 text-gray-700 cursor-pointer">{{.Day}}</div>
+                    {{end}}
+                {{end}}
+            {{end}}
+        </div>
+    </div>
+</div>
+
+<div class="mt-4 flex space-x-4 text-xs text-gray-500">
+    <div class="flex items-center"><span class="w-3 h-3 bg-emerald-600 rounded-sm mr-1"></span> Wybrane</div>
+    <div class="flex items-center"><span class="w-3 h-3 bg-gray-100 border border-gray-200 rounded-sm mr-1"></span> Zajęte</div>
+</div>
+
+{{if .SelectedStartDate}}
+    <div class="mt-4 p-3 bg-emerald-50 text-emerald-800 rounded-lg flex items-center text-sm font-medium">
+        <svg class="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+        </svg>
+        Wybrano termin: od {{.SelectedStartDate}} do {{.SelectedEndDate}} ({{.RentalDays}} dni)
+    </div>
+{{end}}
+
+<script>
+    function selectDate(dateStr) {
+        if (!selectedStartDate || (selectedEndDate && new Date(dateStr) < new Date(selectedStartDate))) {
+            selectedStartDate = dateStr;
+            selectedEndDate = null;
+            rentalDays = 1;
+        } else if (!selectedEndDate) {
+            selectedEndDate = dateStr;
+            const start = new Date(selectedStartDate);
+            const end = new Date(selectedEndDate);
+            rentalDays = Math.ceil((end - start) / (1000 * 60 * 60 * 24)) + 1;
+        }
+        
+        htmx.ajax('get', '/product/{{.ProductID}}/calendar?month={{.Month}}&year={{.Year}}&start=' + (selectedStartDate || '') + '&end=' + (selectedEndDate || ''), {target: '#calendar-container'});
+        updateTotal();
+    }
+</script>
