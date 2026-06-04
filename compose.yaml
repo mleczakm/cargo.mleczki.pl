@@ -1,0 +1,45 @@
+services:
+    php:
+        build:
+            dockerfile: .docker/php/Dockerfile
+            context: .
+        environment:
+            COMPOSER_HOME: /.composer
+        volumes:
+            - .:/app
+            - ~/.composer:/.composer
+            - /etc/passwd:/etc/passwd:ro
+        labels:
+            - "traefik.http.routers.cargo.rule=Host(`cargo.localhost`)"
+        working_dir: /app
+        command: bin/console swoole:server:run -e dev
+        user: 1000:1000
+        networks:
+            traefik:
+
+    traefik:
+        image: traefik:v3.1
+        restart: unless-stopped
+        command:
+            - "--api.insecure=true"
+            - "--api.dashboard=true"
+            - "--log.level=INFO"
+            - "--providers.docker=true"
+            - "--providers.docker.network=traefik"
+            - "--providers.docker.exposedbydefault=true"
+            - "--entrypoints.web.address=:80"
+        ports:
+            - "80:80"
+        networks:
+            traefik:
+        volumes:
+            - "/var/run/docker.sock:/var/run/docker.sock:ro"
+        labels:
+            - traefik.enable=true
+            - traefik.http.routers.mydashboard.rule=Host(`traefik.localhost`)
+            - traefik.http.routers.mydashboard.priority=1000
+            - traefik.http.routers.mydashboard.service=api@internal
+
+networks:
+    traefik:
+        external: true
