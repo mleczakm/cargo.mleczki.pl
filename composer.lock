@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "cf87b37ae744aa3aed10cc1388b7c8f1",
+    "content-hash": "09132c419c7f6190551612b66b2b621d",
     "packages": [
         {
             "name": "beberlei/assert",
@@ -3226,31 +3226,31 @@
             "time": "2024-08-12T09:59:40+00:00"
         },
         {
-            "name": "upscale/ext-swoole",
-            "version": "v5.1.4",
+            "name": "upscale/ext-openswoole",
+            "version": "v22.1.2",
             "source": {
                 "type": "git",
-                "url": "https://github.com/upscalesoftware/ext-swoole.git",
-                "reference": "8b8b0aa6252c46ce7a1eb91545e91ca7646356fa"
+                "url": "https://github.com/upscalesoftware/ext-openswoole.git",
+                "reference": "7f2a52e2265c1a8f1f6c85ceca6da74fb07938ba"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/upscalesoftware/ext-swoole/zipball/8b8b0aa6252c46ce7a1eb91545e91ca7646356fa",
-                "reference": "8b8b0aa6252c46ce7a1eb91545e91ca7646356fa",
+                "url": "https://api.github.com/repos/upscalesoftware/ext-openswoole/zipball/7f2a52e2265c1a8f1f6c85ceca6da74fb07938ba",
+                "reference": "7f2a52e2265c1a8f1f6c85ceca6da74fb07938ba",
                 "shasum": ""
             },
             "require": {
-                "ext-swoole": "self.version"
+                "ext-openswoole": "self.version"
             },
             "replace": {
-                "upscale/ext-openswoole": "*"
+                "upscale/ext-swoole": "*"
             },
             "type": "metapackage",
             "notification-url": "https://packagist.org/downloads/",
             "license": [
                 "Apache-2.0"
             ],
-            "description": "Wrapper for ext-swoole interchangeable with ext-openswoole",
+            "description": "Wrapper for ext-openswoole interchangeable with ext-swoole",
             "keywords": [
                 "Open Swoole",
                 "ext-openswoole",
@@ -3260,10 +3260,10 @@
                 "swoole"
             ],
             "support": {
-                "issues": "https://github.com/upscalesoftware/ext-swoole/issues",
-                "source": "https://github.com/upscalesoftware/ext-swoole/tree/v5.1.4"
+                "issues": "https://github.com/upscalesoftware/ext-openswoole/issues",
+                "source": "https://github.com/upscalesoftware/ext-openswoole/tree/v22.1.2"
             },
-            "time": "2024-08-01T00:15:25+00:00"
+            "time": "2023-12-01T00:07:08+00:00"
         }
     ],
     "packages-dev": [],
@@ -3273,7 +3273,7 @@
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {
-        "php": ">=8.2",
+        "php": ">=8.3",
         "ext-ctype": "*",
         "ext-iconv": "*"
     },
