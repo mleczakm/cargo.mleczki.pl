@@ -6,6 +6,11 @@
     <title>{{.Title}} - cargo.mleczki.pl</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon-32.svg" sizes="32x32">
+    <link rel="icon" type="image/svg+xml" href="/static/favicon-16.svg" sizes="16x16">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.svg">
+    <link rel="manifest" href="/static/manifest.json">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
         body { font-family: 'Inter', sans-serif; }
@@ -30,11 +35,21 @@
 <header class="sticky top-0 z-50 bg-white border-b border-gray-100 shadow-sm">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between items-center h-20">
-            <a href="/" class="flex-shrink-0 flex items-center">
-                <svg class="h-8 w-8 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            <a href="/" class="flex-shrink-0 flex items-center cursor-pointer">
+                <svg viewBox="0 0 100 100" class="h-9 w-9 text-emerald-600" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="18" cy="75" r="14" />
+                    <circle cx="86" cy="79" r="10" />
+                    <circle cx="18" cy="75" r="2" fill="currentColor" />
+                    <circle cx="86" cy="79" r="2" fill="currentColor" />
+                    <path d="M 18 75 L 86 79" />
+                    <path d="M 38 75 L 26 40" />
+                    <path d="M 18 75 L 26 40" />
+                    <path d="M 18 40 L 34 40" stroke-width="6" />
+                    <path d="M 49 76 L 46 32" />
+                    <path d="M 38 32 L 52 32" stroke-width="6" />
+                    <path d="M 47 40 L 76 52 Q 86 56, 79 78 L 49 76 Z" fill="currentColor" fill-opacity="0.1" />
                 </svg>
-                <span class="ml-2 text-2xl font-black tracking-tighter text-gray-900">
+                <span class="ml-3 text-2xl font-black tracking-tighter text-gray-900">
                     cargo.<span class="text-emerald-600">mleczki</span>.pl
                 </span>
             </a>
@@ -86,29 +101,47 @@
 {{end}}
 
 {{define "footer"}}
-<footer class="bg-gray-900 text-gray-400 py-12 border-t border-gray-800 text-sm">
+<footer class="bg-gray-900 text-gray-400 py-16 border-t border-gray-800 text-sm">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 md:grid-cols-3 gap-8">
         <div>
-            <span class="text-xl font-black tracking-tighter text-white mb-4 block">
-                cargo.<span class="text-emerald-500">mleczki</span>.pl
-            </span>
-            <p>Prywatna wypożyczalnia sprzętu rowerowego.</p>
+            <div class="flex items-center text-white mb-5">
+                <svg viewBox="0 0 100 100" class="h-9 w-9 text-emerald-500" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="18" cy="75" r="14" />
+                    <circle cx="86" cy="79" r="10" />
+                    <circle cx="18" cy="75" r="2" fill="currentColor" />
+                    <circle cx="86" cy="79" r="2" fill="currentColor" />
+                    <path d="M 18 75 L 86 79" />
+                    <path d="M 38 75 L 26 40" />
+                    <path d="M 18 75 L 26 40" />
+                    <path d="M 18 40 L 34 40" stroke-width="6" />
+                    <path d="M 49 76 L 46 32" />
+                    <path d="M 38 32 L 52 32" stroke-width="6" />
+                    <path d="M 47 40 L 76 52 Q 86 56, 79 78 L 49 76 Z" fill="currentColor" fill-opacity="0.1" />
+                </svg>
+                <span class="ml-3 text-xl font-black tracking-tighter">cargo.<span class="text-emerald-500">mleczki</span>.pl</span>
+            </div>
+            <p class="leading-relaxed">Prywatna wypożyczalnia sprzętu rowerowego w okolicach Radzymina.</p>
         </div>
         <div>
-            <h4 class="text-white font-bold mb-4">Informacje Prawne</h4>
-            <ul class="space-y-2">
+            <h4 class="text-white font-bold mb-5">Informacje Prawne</h4>
+            <ul class="space-y-3">
                 <li><a href="#" class="hover:text-emerald-400 transition-colors">Regulamin wypożyczalni</a></li>
                 <li><a href="#" class="hover:text-emerald-400 transition-colors">Wzór Umowy Najmu</a></li>
                 <li><a href="#" class="hover:text-emerald-400 transition-colors">Polityka Prywatności (RODO)</a></li>
             </ul>
         </div>
         <div>
-            <h4 class="text-white font-bold mb-4">Pliki Cookies & Śledzenie</h4>
+            <h4 class="text-white font-bold mb-5 flex items-center">
+                <svg class="w-5 h-5 mr-2 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+                </svg>
+                Branding & Cookies
+            </h4>
             <p class="flex items-start text-xs leading-relaxed">
-                <svg class="w-5 h-5 mr-2 text-emerald-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg class="w-5 h-5 mr-2.5 text-emerald-500 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
                 </svg>
-                Szanujemy Twoją prywatność. Strona wykorzystuje wyłącznie niezbędne pliki cookies sesyjne (np. do pamiętania koszyka i logowania). <strong>Nie stosujemy skryptów śledzących</strong> (Google Analytics, Pixel Facebooka itp.) i nie przekazujemy danych podmiotom trzecim.
+                Szanujemy prywatność. Logo `cargo.mleczki.pl` przedstawia rower cargo typu **Urban Arrow**. Wykorzystujemy wyłącznie niezbędne sesyjne ciasteczka (logowanie/koszyk). Brak skryptów śledzących.
             </p>
         </div>
     </div>

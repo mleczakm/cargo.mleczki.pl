@@ -36,7 +36,7 @@ func NewSQLiteEventStore(dbPath string) (*SQLiteEventStore, error) {
 
 // initSchema creates the events table if it doesn't exist
 func (s *SQLiteEventStore) initSchema() error {
-	query := `
+	eventsTable := `
 	CREATE TABLE IF NOT EXISTS events (
 		id TEXT PRIMARY KEY,
 		aggregate_id TEXT NOT NULL,
@@ -52,8 +52,27 @@ func (s *SQLiteEventStore) initSchema() error {
 	CREATE INDEX IF NOT EXISTS idx_events_version ON events(version);
 	`
 
-	_, err := s.db.Exec(query)
-	return err
+	snapshotsTable := `
+	CREATE TABLE IF NOT EXISTS event_snapshots (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		aggregate_type TEXT NOT NULL,
+		aggregate_id TEXT NOT NULL,
+		version INTEGER NOT NULL,
+		snapshot_data BLOB NOT NULL,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+		UNIQUE(aggregate_type, aggregate_id)
+	);
+	CREATE INDEX IF NOT EXISTS idx_snapshots_aggregate ON event_snapshots(aggregate_type, aggregate_id);
+	`
+
+	schemas := []string{eventsTable, snapshotsTable}
+	for _, schema := range schemas {
+		if _, err := s.db.Exec(schema); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // Save appends a new event to the store

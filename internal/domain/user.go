@@ -10,21 +10,26 @@ type User struct {
 	Phone               string
 	Address             string
 	PasswordHash        string
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
+	IsAdult             bool
+	AcceptedTOS         bool
+	DeletionRequested   bool
 	DeletionRequestedAt *time.Time
 	IsDeleted           bool
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 	Version             int
 }
 
 // User Commands
 type RegisterUserCommand struct {
-	UserID     string
-	Name       string
-	Email      string
-	Phone      string
-	Address    string
-	Password   string
+	UserID      string
+	Name        string
+	Email       string
+	Phone       string
+	Address     string
+	Password    string
+	IsAdult     bool
+	AcceptedTOS bool
 }
 
 type UpdateUserDetailsCommand struct {
@@ -41,12 +46,14 @@ type RequestAccountDeletionCommand struct {
 
 // User Events
 type UserRegisteredEvent struct {
-	UserID    string    `json:"user_id"`
-	Name      string    `json:"name"`
-	Email     string    `json:"email"`
-	Phone     string    `json:"phone"`
-	Address   string    `json:"address"`
-	Timestamp time.Time `json:"timestamp"`
+	UserID      string    `json:"user_id"`
+	Name        string    `json:"name"`
+	Email       string    `json:"email"`
+	Phone       string    `json:"phone"`
+	Address     string    `json:"address"`
+	IsAdult     bool      `json:"is_adult"`
+	AcceptedTOS bool      `json:"accepted_tos"`
+	Timestamp   time.Time `json:"timestamp"`
 }
 
 func (e *UserRegisteredEvent) EventType() string {

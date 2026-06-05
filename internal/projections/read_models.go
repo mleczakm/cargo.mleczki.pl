@@ -38,15 +38,17 @@ func (rm *ReadModelsDB) initSchema() error {
 	usersTable := `
 	CREATE TABLE IF NOT EXISTS users (
 		id TEXT PRIMARY KEY,
+		email TEXT UNIQUE NOT NULL,
+		password_hash TEXT,
 		name TEXT NOT NULL,
-		email TEXT NOT NULL UNIQUE,
 		phone TEXT,
 		address TEXT,
-		password_hash TEXT,
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL,
+		is_adult INTEGER DEFAULT 0,
+		accepted_tos INTEGER DEFAULT 0,
+		deletion_requested INTEGER DEFAULT 0,
 		deletion_requested_at TEXT,
-		is_deleted INTEGER DEFAULT 0
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+		updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 	);
 	CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 	`
@@ -55,49 +57,100 @@ func (rm *ReadModelsDB) initSchema() error {
 	ordersTable := `
 	CREATE TABLE IF NOT EXISTS orders (
 		id TEXT PRIMARY KEY,
-		user_id TEXT,
-		items_json TEXT NOT NULL,
-		total_amount INTEGER NOT NULL,
-		status TEXT NOT NULL,
-		payment_method TEXT NOT NULL,
-		start_date TEXT NOT NULL,
-		end_date TEXT NOT NULL,
-		rental_days INTEGER NOT NULL,
-		created_at TEXT NOT NULL,
-		updated_at TEXT NOT NULL,
+		user_id TEXT NOT NULL,
+		total_amount REAL NOT NULL,
+		equipment_total REAL,
+		addons_total REAL,
+		status TEXT DEFAULT 'pending',
+		payment_method TEXT,
+		rental_items TEXT NOT NULL,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+		updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+		paid_at TEXT,
 		FOREIGN KEY (user_id) REFERENCES users(id)
 	);
-	CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);
+	CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id);
 	CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
-	CREATE INDEX IF NOT EXISTS idx_orders_dates ON orders(start_date, end_date);
+	CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(created_at);
+	`
+
+	// Order items table
+	orderItemsTable := `
+	CREATE TABLE IF NOT EXISTS order_items (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		order_id TEXT NOT NULL,
+		product_id TEXT NOT NULL,
+		product_name TEXT NOT NULL,
+		base_price REAL NOT NULL,
+		quantity_days INTEGER NOT NULL,
+		selected_addons TEXT,
+		item_total REAL,
+		FOREIGN KEY (order_id) REFERENCES orders(id)
+	);
+	CREATE INDEX IF NOT EXISTS idx_order_items_order ON order_items(order_id);
 	`
 
 	// Transfers table
 	transfersTable := `
 	CREATE TABLE IF NOT EXISTS transfers (
 		id TEXT PRIMARY KEY,
-		date TEXT NOT NULL,
-		sender TEXT NOT NULL,
-		title TEXT NOT NULL,
-		amount INTEGER NOT NULL,
-		status TEXT NOT NULL,
+		sender_name TEXT,
+		sender_email TEXT,
+		amount REAL NOT NULL,
+		order_title TEXT,
 		order_id TEXT,
-		created_at TEXT NOT NULL,
+		status TEXT DEFAULT 'unmatched',
+		received_at TEXT NOT NULL,
+		linked_at TEXT,
+		raw_email_body TEXT,
 		FOREIGN KEY (order_id) REFERENCES orders(id)
 	);
 	CREATE INDEX IF NOT EXISTS idx_transfers_status ON transfers(status);
-	CREATE INDEX IF NOT EXISTS idx_transfers_order_id ON transfers(order_id);
+	CREATE INDEX IF NOT EXISTS idx_transfers_order ON transfers(order_id);
+	CREATE INDEX IF NOT EXISTS idx_transfers_received ON transfers(received_at);
 	`
 
-	// Product availability table
-	productAvailabilityTable := `
-	CREATE TABLE IF NOT EXISTS product_availability (
+	// Product bookings table (renamed from product_availability)
+	productBookingsTable := `
+	CREATE TABLE IF NOT EXISTS product_bookings (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		product_id TEXT NOT NULL,
-		date TEXT NOT NULL,
-		is_booked INTEGER DEFAULT 0,
-		PRIMARY KEY (product_id, date)
+		order_id TEXT NOT NULL,
+		booked_date TEXT NOT NULL,
+		UNIQUE(product_id, booked_date),
+		FOREIGN KEY (order_id) REFERENCES orders(id)
 	);
-	CREATE INDEX IF NOT EXISTS idx_product_availability_date ON product_availability(date);
+	CREATE INDEX IF NOT EXISTS idx_product_bookings_product ON product_bookings(product_id);
+	CREATE INDEX IF NOT EXISTS idx_product_bookings_date ON product_bookings(booked_date);
+	`
+
+	// User sessions table
+	userSessionsTable := `
+	CREATE TABLE IF NOT EXISTS user_sessions (
+		id TEXT PRIMARY KEY,
+		user_id TEXT,
+		ip_address TEXT,
+		user_agent TEXT,
+		is_admin INTEGER DEFAULT 0,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+		expires_at TEXT,
+		last_activity TEXT
+	);
+	CREATE INDEX IF NOT EXISTS idx_user_sessions_user ON user_sessions(user_id);
+	CREATE INDEX IF NOT EXISTS idx_user_sessions_expires ON user_sessions(expires_at);
+	`
+
+	// Shopping carts table
+	shoppingCartsTable := `
+	CREATE TABLE IF NOT EXISTS shopping_carts (
+		id TEXT PRIMARY KEY,
+		user_id TEXT,
+		items TEXT NOT NULL,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+		expires_at TEXT
+	);
+	CREATE INDEX IF NOT EXISTS idx_shopping_carts_user ON shopping_carts(user_id);
+	CREATE INDEX IF NOT EXISTS idx_shopping_carts_expires ON shopping_carts(expires_at);
 	`
 
 	// Projection checkpoint table
@@ -108,7 +161,16 @@ func (rm *ReadModelsDB) initSchema() error {
 	);
 	`
 
-	schemas := []string{usersTable, ordersTable, transfersTable, productAvailabilityTable, checkpointTable}
+	schemas := []string{
+		usersTable,
+		ordersTable,
+		orderItemsTable,
+		transfersTable,
+		productBookingsTable,
+		userSessionsTable,
+		shoppingCartsTable,
+		checkpointTable,
+	}
 	for _, schema := range schemas {
 		if _, err := rm.db.Exec(schema); err != nil {
 			return err

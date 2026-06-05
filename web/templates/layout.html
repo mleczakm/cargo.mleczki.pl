@@ -6,6 +6,10 @@
     <title>{{.Title}} - cargo.mleczki.pl</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon-32.svg" sizes="32x32">
+    <link rel="icon" type="image/svg+xml" href="/static/favicon-16.svg" sizes="16x16">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.svg">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
         body { font-family: 'Inter', sans-serif; }
@@ -26,11 +30,21 @@
 <header class="sticky top-0 z-50 bg-white border-b border-gray-100 shadow-sm">
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between items-center h-20">
-            <a href="/" class="flex-shrink-0 flex items-center">
-                <svg class="h-8 w-8 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+            <a href="/" class="flex-shrink-0 flex items-center cursor-pointer">
+                <svg viewBox="0 0 100 100" class="h-9 w-9 text-emerald-600" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="18" cy="75" r="14" />
+                    <circle cx="86" cy="79" r="10" />
+                    <circle cx="18" cy="75" r="2" fill="currentColor" />
+                    <circle cx="86" cy="79" r="2" fill="currentColor" />
+                    <path d="M 18 75 L 86 79" />
+                    <path d="M 38 75 L 26 40" />
+                    <path d="M 18 75 L 26 40" />
+                    <path d="M 18 40 L 34 40" stroke-width="6" />
+                    <path d="M 49 76 L 46 32" />
+                    <path d="M 38 32 L 52 32" stroke-width="6" />
+                    <path d="M 47 40 L 76 52 Q 86 56, 79 78 L 49 76 Z" fill="currentColor" fill-opacity="0.1" />
                 </svg>
-                <span class="ml-2 text-2xl font-black tracking-tighter text-gray-900">
+                <span class="ml-3 text-2xl font-black tracking-tighter text-gray-900">
                     cargo.<span class="text-emerald-600">mleczki</span>.pl
                 </span>
             </a>

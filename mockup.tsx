@@ -5,11 +5,10 @@ import {
   ChevronRight, Menu, X, Facebook, Instagram, Phone, Mail,
   Info, ArrowRight, Loader2, User, Settings, ShieldCheck,
   FileText, CalendarDays, Check, Banknote, ListOrdered, Shield,
-  ArrowLeft, MapPin, AlertCircle, CalendarClock, Target, Layers
+  ArrowLeft, MapPin, AlertCircle, CalendarClock, Target, Layers, Edit3, Save, Download
 } from 'lucide-react';
 
 // --- CUSTOM SVG COMPONENT: LONG-JOHN CARGO BIKE LOGO ---
-// Minimalist representation of a long-john bike (rider, frame, cargo area in front)
 const CargoBikeIcon = ({ className, color = 'currentColor', ...props }) => (
     <svg
         viewBox="0 0 100 100"
@@ -17,22 +16,42 @@ const CargoBikeIcon = ({ className, color = 'currentColor', ...props }) => (
         fill="none"
         xmlns="http://www.w3.org/2000/svg"
         stroke={color}
-        strokeWidth="6"
+        strokeWidth="5"
         strokeLinecap="round"
         strokeLinejoin="round"
         {...props}
     >
-      {/* Frame and Handlebars */}
-      <path d="M10 70 H40 V40 H70 L90 20" />
-      {/* Cargo Area */}
-      <rect x="42" y="42" width="26" height="26" rx="4" />
-      {/* Wheels: Larger rear, smaller front */}
-      <circle cx="20" cy="70" r="10" />
-      <circle cx="80" cy="70" r="6" />
-      {/* Rider handlebars grip */}
-      <path d="M88 18 H94" />
+      {/* Wheels (Larger rear, smaller front) - Bottom edges aligned on the same ground level (Y=89) */}
+      {/* Rear wheel: cy=75, r=14 -> bottom edge = 89 */}
+      <circle cx="18" cy="75" r="14" />
+      {/* Front wheel: cy=79, r=10 -> bottom edge = 89 */}
+      <circle cx="86" cy="79" r="10" />
+
+      {/* Wheel centers */}
+      <circle cx="18" cy="75" r="2" fill={color} />
+      <circle cx="86" cy="79" r="2" fill={color} />
+
+      {/* Massive Bottom Frame Tube connecting BB/Rear Axle area towards Front Axle */}
+      {/* Slanted slightly downwards towards the smaller front wheel */}
+      <path d="M 18 75 L 86 79" />
+
+      {/* Seat & Rear Triangle */}
+      <path d="M 38 75 L 26 40" />
+      <path d="M 18 75 L 26 40" />
+
       {/* Saddle */}
-      <path d="M35 40 V30 H40" />
+      <path d="M 18 40 L 34 40" strokeWidth="6" />
+
+      {/* Steering column - attached to the slanted main tube */}
+      <path d="M 49 76 L 46 32" />
+
+      {/* Handlebars */}
+      <path d="M 38 32 L 52 32" strokeWidth="6" />
+
+      {/* Urban Arrow Iconic EPP Cargo Box */}
+      {/* Perfectly sloped back following the steering column, sloping top, and curved nose */}
+      {/* Adjusted bottom points to follow the slanted main tube */}
+      <path d="M 47 40 L 76 52 Q 86 56, 79 78 L 49 76 Z" fill="currentColor" fillOpacity="0.1" />
     </svg>
 );
 
@@ -41,10 +60,10 @@ const PRODUCTS = [
   {
     id: 'cargo',
     name: 'Rower Cargo (Longjohn)',
-    description: 'Najpopularniejszy model. Zwinny, szybki, z paką z przodu na dzieci, zakupy lub sprzęt. Nisko zawieszony środek ciężkości ułatwia jazdę.',
+    description: 'Najpopularniejszy model Urban Arrow. Zwinny, szybki, z paką z przodu na dzieci, zakupy lub sprzęt. Nisko zawieszony środek ciężkości ułatwia jazdę.',
     basePrice: 100,
     image: 'https://images.unsplash.com/photo-1616972041269-e580e224e75d?auto=format&fit=crop&q=80&w=800',
-    icon: <CargoBikeIcon className="w-6 h-6" />, // Custom logo used here
+    icon: <CargoBikeIcon className="w-6 h-6" />,
     addons: [
       { id: 'daszek', name: 'Daszek przeciwdeszczowy', price: 15, icon: <Umbrella className="w-4 h-4" /> },
       { id: 'poncho', name: 'Poncho dla kierującego', price: 10, icon: <CloudRain className="w-4 h-4" /> },
@@ -98,7 +117,6 @@ const PRODUCTS = [
   }
 ];
 
-// MOCK BRAND ASSETS (explicit long-john bike usage)
 const BRAND_ASSETS = [
   { id: 'logo-full-light', name: 'Logo Główne (Jasne)', desc: 'Pełny logotyp z hasłem, na ciemne tła.', type: 'Logotyp', scale: '100%', variant: 'full' },
   { id: 'logo-full-dark', name: 'Logo Główne (Ciemne)', desc: 'Pełny logotyp z hasłem, na jasne tła.', type: 'Logotyp', scale: '100%', variant: 'full' },
@@ -122,23 +140,20 @@ const MOCK_ORDERS = [
 ];
 
 export default function App() {
-  const [currentView, setCurrentView] = useState('home'); // home, product, checkout, payment, success, user, admin, branding
+  const [currentView, setCurrentView] = useState('home');
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [cart, setCart] = useState([]);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
-  const [user, setUser] = useState(null); // Simple mock user
+  const [user, setUser] = useState(null);
 
-  // User & Checkout Details
   const [userDetails, setUserDetails] = useState({
     name: '', email: '', phone: '', address: '', isAdult: false, acceptTos: false, password: ''
   });
-  const [paymentMethod, setPaymentMethod] = useState('blik'); // blik, cash
+  const [paymentMethod, setPaymentMethod] = useState('blik');
 
-  // Admin State
   const [adminOrders, setAdminOrders] = useState(MOCK_ORDERS);
 
-  // Calculate global totals from cart
   const { cartTotal, addonsTotal, finalTotal } = useMemo(() => {
     let base = 0;
     let addonsPrice = 0;
@@ -175,18 +190,16 @@ export default function App() {
     if (!userDetails.isAdult || !userDetails.acceptTos) {
       alert('Musisz potwierdzić pełnoletność oraz zaakceptować regulamin, aby wypożyczyć sprzęt.'); return;
     }
-    if (!user) setUser({...userDetails}); // Simple register at checkout
+    if (!user) setUser({...userDetails});
     navigateTo('payment');
   };
-
-  // --- SUBCOMPONENTS ---
 
   const Header = () => (
       <header className="sticky top-0 z-50 bg-white border-b border-gray-100 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-20">
             <div className="flex-shrink-0 flex items-center cursor-pointer" onClick={() => navigateTo('home')}>
-              {/* Custom Long-John Cargo Bike Logo */}
+              {/* Custom Urban Arrow Logo */}
               <CargoBikeIcon className="h-9 w-9 text-emerald-600" />
               <span className="ml-3 text-2xl font-black tracking-tighter text-gray-900">
               cargo.<span className="text-emerald-600">mleczki</span>.pl
@@ -243,6 +256,27 @@ export default function App() {
               </div>
             </div>
         )}
+
+        {/* Login Modal */}
+        {isLoginModalOpen && (
+            <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+              <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 shadow-2xl relative">
+                <button onClick={() => setIsLoginModalOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-900"><X className="w-6 h-6" /></button>
+                <h2 className="text-2xl font-black mb-6 text-gray-900">Zaloguj się</h2>
+                <form onSubmit={handleLogin} className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">E-mail</label>
+                    <input type="email" required className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500" placeholder="jan@example.com" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Hasło</label>
+                    <input type="password" required className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500" placeholder="••••••••" />
+                  </div>
+                  <button type="submit" className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 px-4 rounded-xl transition-colors mt-6">Zaloguj się (Demo)</button>
+                </form>
+              </div>
+            </div>
+        )}
       </header>
   );
 
@@ -275,7 +309,7 @@ export default function App() {
       if (!itemStartDate || !itemEndDate) return 1;
       const start = new Date(itemStartDate);
       const end = new Date(itemEndDate);
-      if (end < start) return 1; // Error case
+      if (end < start) return 1;
       const diffDays = Math.ceil(Math.abs(end - start) / (1000 * 60 * 60 * 24));
       return diffDays >= 0 ? diffDays + 1 : 1;
     }, [itemStartDate, itemEndDate]);
@@ -539,7 +573,6 @@ export default function App() {
   const AdminPanelView = () => (
       <div className="max-w-7xl mx-auto px-4 py-12">
         <div className="flex items-center justify-between mb-8"><h2 className="text-3xl font-black text-gray-900 flex items-center"><Settings className="w-8 h-8 mr-3 text-red-500"/> Panel Administratora</h2>
-          {/* New branding management button */}
           <button onClick={() => navigateTo('branding')} className="flex items-center space-x-2.5 bg-gray-900 hover:bg-gray-800 text-white px-5 py-3 rounded-xl font-semibold shadow">
             <Layers className="w-5 h-5 text-emerald-400" />
             <span>Zarządzaj Brandingiem</span>
@@ -550,75 +583,108 @@ export default function App() {
       </div>
   );
 
-  // --- NEW BRANDING ASSET VIEW ---
-  const BrandingView = () => (
-      <div className="max-w-7xl mx-auto px-4 py-12">
-        <div className="flex items-center justify-between mb-8">
-          <h2 className="text-3xl font-black text-gray-900 flex items-center">
-            <Layers className="w-8 h-8 mr-3 text-emerald-600"/> Biblioteka Assetów Brandingu
-          </h2>
-          <button onClick={() => navigateTo('admin')} className="flex items-center space-x-2 text-gray-500 hover:text-emerald-600 transition-colors">
-            <ArrowLeft className="w-5 h-5" />
-            <span>Wróć do Admin Panelu</span>
-          </button>
-        </div>
+  const BrandingView = () => {
+    // Funkcja do pobierania SVG jako pliku wektorowego
+    const handleDownloadSVG = (elementId, filename) => {
+      const svgElement = document.getElementById(elementId);
+      if (!svgElement) return;
 
-        <div className="bg-emerald-50 border border-emerald-100 text-emerald-800 p-5 rounded-2xl mb-10 flex text-sm shadow-inner">
-          <Target className="w-5 h-5 mr-3 flex-shrink-0 mt-0.5" />
-          <p className="leading-relaxed"><strong>Kluczowa zmiana w logo:</strong> Dotychczasowa, standardowa ikona roweru została zastąpiona dedykowanym customowym symbolem **roweru cargo typu long-john** (charakterystyczna niskoprofilowa platforma transportowa z przodu). Ten motyw jest konsekwentnie stosowany we wszystkich poniższych assetach dla spójności i unikalności brandingu `cargo.mleczki.pl`.</p>
-        </div>
+      const clone = svgElement.cloneNode(true);
+      // Upewniamy się, że xmlns jest obecny, co jest wymagane przy zapisie do pliku
+      if (!clone.getAttribute('xmlns')) {
+        clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+      }
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-12">
-          {/* Render Logos & Profiles (variants) */}
-          {BRAND_ASSETS.filter(a => a.type !== 'Systemowa').map(a => (
-              <div key={a.id} className="bg-white rounded-2xl shadow border border-gray-100 p-6 flex flex-col">
-                <div className={`flex items-center justify-center p-6 rounded-xl ${a.id.includes('light') ? 'bg-gray-900' : 'bg-gray-100'} border border-gray-200 aspect-video mb-5`}>
-                  {a.variant === 'full' ? (
-                      <div className={`flex items-center ${a.id.includes('light') ? 'text-white' : 'text-gray-900'}`}>
-                        <CargoBikeIcon className={`h-10 w-10 ${a.id.includes('light') ? 'text-emerald-400' : 'text-emerald-600'}`} />
-                        <span className="ml-3 text-xl font-black tracking-tighter">cargo.<span className={`${a.id.includes('light') ? 'text-emerald-400' : 'text-emerald-600'}`}>mleczki</span>.pl</span>
-                      </div>
-                  ) : (
-                      <div className={`flex items-center justify-center ${a.id.includes('rounded') ? 'rounded-2xl' : ''} ${a.id.includes('icon') ? 'p-3 bg-emerald-600 text-white' : ''} h-20 w-20 border border-emerald-500 shadow`}>
-                        <CargoBikeIcon className="h-12 w-12" color={a.id.includes('icon') ? 'white' : 'currentColor'}/>
-                      </div>
-                  )}
-                </div>
-                <h3 className="font-bold text-lg text-gray-900">{a.name}</h3>
-                <p className="text-sm text-gray-500 mb-2">{a.desc}</p>
-                <div className="mt-auto pt-4 border-t border-gray-100 text-xs text-gray-400 flex items-center justify-between">
-                  <span>{a.type}</span>
-                  <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded">{a.scale || 'N/A'}</span>
-                </div>
-              </div>
-          ))}
-        </div>
+      const svgData = new XMLSerializer().serializeToString(clone);
+      const blob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
 
-        {/* Render System Icons Grid */}
-        <h3 className="font-bold text-xl text-gray-900 mb-6">Specyficzne Assety Systemowe (Favicon, iOS, Android, macOS)</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-          {BRAND_ASSETS.filter(a => a.type === 'Systemowa').map(a => (
-              <div key={a.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex flex-col items-center text-center">
-                <div className="flex items-center justify-center p-3 rounded-lg bg-gray-50 border border-gray-100 aspect-square h-20 w-20 mb-4 overflow-hidden shadow-inner">
-                  {a.id.includes('favicon') ? (
-                      <CargoBikeIcon className={`${a.size.startsWith('16') ? 'h-4 w-4' : 'h-8 w-8'} text-emerald-600`} strokeWidth={a.size.startsWith('16') ? 4 : 6}/>
-                  ) : (
-                      <div className={`flex items-center justify-center p-2 rounded ${a.id.includes('apple') ? 'bg-white rounded-lg' : 'bg-emerald-600'} border ${a.id.includes('apple') ? 'border-gray-100 shadow' : 'border-emerald-500'}`}>
-                        <CargoBikeIcon className={`${a.size.includes('512') ? 'h-10 w-10' : 'h-8 w-8'}`} color={a.id.includes('apple') ? 'black' : 'white'} />
-                      </div>
-                  )}
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${filename}.svg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    };
+
+    return (
+        <div className="max-w-7xl mx-auto px-4 py-12">
+          <div className="flex items-center justify-between mb-8">
+            <h2 className="text-3xl font-black text-gray-900 flex items-center">
+              <Layers className="w-8 h-8 mr-3 text-emerald-600"/> Biblioteka Assetów Brandingu
+            </h2>
+            <button onClick={() => navigateTo('admin')} className="flex items-center space-x-2 text-gray-500 hover:text-emerald-600 transition-colors">
+              <ArrowLeft className="w-5 h-5" />
+              <span>Wróć do Admin Panelu</span>
+            </button>
+          </div>
+
+          <div className="bg-emerald-50 border border-emerald-100 text-emerald-800 p-5 rounded-2xl mb-10 flex text-sm shadow-inner">
+            <Target className="w-5 h-5 mr-3 flex-shrink-0 mt-0.5" />
+            <p className="leading-relaxed"><strong>Kluczowa zmiana w logo:</strong> Dotychczasowa, standardowa ikona roweru została zastąpiona dedykowanym customowym symbolem **roweru cargo typu Urban Arrow**. Użyj przycisku poniżej danego assetu, aby pobrać czysty plik SVG gotowy do druku i dalszej obróbki wektorowej.</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 mb-12">
+            {BRAND_ASSETS.filter(a => a.type !== 'Systemowa').map(a => (
+                <div key={a.id} className="bg-white rounded-2xl shadow border border-gray-100 p-6 flex flex-col">
+                  <div className={`flex items-center justify-center p-6 rounded-xl ${a.id.includes('light') ? 'bg-gray-900' : 'bg-gray-100'} border border-gray-200 aspect-video mb-5 relative group`}>
+                    {a.variant === 'full' ? (
+                        <div className={`flex items-center ${a.id.includes('light') ? 'text-white' : 'text-gray-900'}`}>
+                          <CargoBikeIcon id={`svg-${a.id}`} className={`h-10 w-10 ${a.id.includes('light') ? 'text-emerald-400' : 'text-emerald-600'}`} />
+                          <span className="ml-3 text-xl font-black tracking-tighter">cargo.<span className={`${a.id.includes('light') ? 'text-emerald-400' : 'text-emerald-600'}`}>mleczki</span>.pl</span>
+                        </div>
+                    ) : (
+                        <div className={`flex items-center justify-center ${a.id.includes('rounded') ? 'rounded-2xl' : ''} ${a.id.includes('icon') ? 'p-3 bg-emerald-600 text-white' : ''} h-20 w-20 border border-emerald-500 shadow`}>
+                          <CargoBikeIcon id={`svg-${a.id}`} className="h-12 w-12" color={a.id.includes('icon') ? 'white' : 'currentColor'}/>
+                        </div>
+                    )}
+                  </div>
+                  <h3 className="font-bold text-lg text-gray-900">{a.name}</h3>
+                  <p className="text-sm text-gray-500 mb-4">{a.desc}</p>
+                  <div className="mt-auto flex flex-col space-y-3">
+                    <button onClick={() => handleDownloadSVG(`svg-${a.id}`, a.id)} className="flex items-center justify-center space-x-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 w-full py-2 rounded-lg text-sm font-semibold transition-colors">
+                      <Download className="w-4 h-4" /> <span>Pobierz sygnet (SVG)</span>
+                    </button>
+                    <div className="pt-3 border-t border-gray-100 text-xs text-gray-400 flex items-center justify-between">
+                      <span>{a.type}</span>
+                      <span className="font-mono bg-gray-100 px-1.5 py-0.5 rounded">{a.scale || 'N/A'}</span>
+                    </div>
+                  </div>
                 </div>
-                <h4 className="font-semibold text-sm text-gray-900 leading-snug">{a.name}</h4>
-                <p className="text-xs text-gray-500 mb-2 line-clamp-1">{a.desc}</p>
-                <div className="mt-auto w-full pt-3 border-t border-gray-100 text-xs text-gray-400 flex items-center justify-between font-mono">
-                  <span className="font-bold text-gray-700">{a.size}</span>
-                  <span className="bg-gray-100 px-1 py-0.5 rounded">{a.format}</span>
+            ))}
+          </div>
+
+          <h3 className="font-bold text-xl text-gray-900 mb-6">Specyficzne Assety Systemowe (Favicon, iOS, Android, macOS)</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            {BRAND_ASSETS.filter(a => a.type === 'Systemowa').map(a => (
+                <div key={a.id} className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 flex flex-col items-center text-center">
+                  <div className="flex items-center justify-center p-3 rounded-lg bg-gray-50 border border-gray-100 aspect-square h-20 w-20 mb-4 overflow-hidden shadow-inner">
+                    {a.id.includes('favicon') ? (
+                        <CargoBikeIcon id={`svg-${a.id}`} className={`${a.size.startsWith('16') ? 'h-4 w-4' : 'h-8 w-8'} text-emerald-600`} strokeWidth={a.size.startsWith('16') ? 4 : 6}/>
+                    ) : (
+                        <div className={`flex items-center justify-center p-2 rounded ${a.id.includes('apple') ? 'bg-white rounded-lg' : 'bg-emerald-600'} border ${a.id.includes('apple') ? 'border-gray-100 shadow' : 'border-emerald-500'}`}>
+                          <CargoBikeIcon id={`svg-${a.id}`} className={`${a.size.includes('512') ? 'h-10 w-10' : 'h-8 w-8'}`} color={a.id.includes('apple') ? 'black' : 'white'} />
+                        </div>
+                    )}
+                  </div>
+                  <h4 className="font-semibold text-sm text-gray-900 leading-snug">{a.name}</h4>
+                  <p className="text-xs text-gray-500 mb-4 line-clamp-1">{a.desc}</p>
+                  <div className="mt-auto w-full space-y-3 flex flex-col">
+                    <button onClick={() => handleDownloadSVG(`svg-${a.id}`, a.id)} className="w-full flex items-center justify-center space-x-1.5 bg-gray-100 hover:bg-emerald-50 hover:text-emerald-700 text-gray-700 py-1.5 rounded-lg text-xs font-semibold transition-colors">
+                      <Download className="w-3 h-3" /> <span>SVG</span>
+                    </button>
+                    <div className="pt-2 border-t border-gray-100 text-xs text-gray-400 flex items-center justify-between font-mono">
+                      <span className="font-bold text-gray-700">{a.size}</span>
+                      <span className="bg-gray-100 px-1 py-0.5 rounded">{a.format}</span>
+                    </div>
+                  </div>
                 </div>
-              </div>
-          ))}
+            ))}
+          </div>
         </div>
-      </div>
-  );
+    );
+  };
 
   return (
       <div className="min-h-screen bg-white font-sans text-gray-900 flex flex-col">
@@ -633,14 +699,13 @@ export default function App() {
           {currentView === 'success' && <SuccessView />}
           {currentView === 'user' && <UserPanelView />}
           {currentView === 'admin' && <AdminPanelView />}
-          {/* NEW VIEW CONNECTION */}
           {currentView === 'branding' && <BrandingView />}
         </main>
         <footer className="bg-gray-900 text-gray-400 py-16 border-t border-gray-800 text-sm">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 md:grid-cols-3 gap-10">
             <div><div className="flex items-center text-white mb-5"><CargoBikeIcon className="h-9 w-9 text-emerald-500" /><span className="ml-3 text-xl font-black tracking-tighter">cargo.<span className="text-emerald-500">mleczki</span>.pl</span></div><p className="leading-relaxed">Prywatna wypożyczalnia sprzętu rowerowego w okolicach Radzymina.</p></div>
             <div><h4 className="text-white font-bold mb-5">Informacje Prawne</h4><ul className="space-y-3"><li><a href="#" className="hover:text-emerald-400 transition-colors">Regulamin wypożyczalni</a></li><li><a href="#" className="hover:text-emerald-400 transition-colors">Wzór Umowy Najmu</a></li><li><a href="#" className="hover:text-emerald-400 transition-colors">Polityka Prywatności (RODO)</a></li></ul></div>
-            <div><h4 className="text-white font-bold mb-5 flex items-center"><Layers className="w-5 h-5 mr-2 text-emerald-500"/> Branding & Cookies</h4><p className="flex items-start text-xs leading-relaxed"><ShieldCheck className="w-5 h-5 mr-2.5 text-emerald-500 flex-shrink-0 mt-0.5" />Szanujemy prywatność. Logo `cargo.mleczki.pl` przedstawia rower cargo typu **long-john**. Wykorzystujemy wyłącznie niezbędne sesyjne ciasteczka (logowanie/koszyk). Brak skryptów śledzących.</p></div>
+            <div><h4 className="text-white font-bold mb-5 flex items-center"><Layers className="w-5 h-5 mr-2 text-emerald-500"/> Branding & Cookies</h4><p className="flex items-start text-xs leading-relaxed"><ShieldCheck className="w-5 h-5 mr-2.5 text-emerald-500 flex-shrink-0 mt-0.5" />Szanujemy prywatność. Logo `cargo.mleczki.pl` przedstawia rower cargo typu **Urban Arrow**. Wykorzystujemy wyłącznie niezbędne sesyjne ciasteczka (logowanie/koszyk). Brak skryptów śledzących.</p></div>
           </div>
         </footer>
       </div>

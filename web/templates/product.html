@@ -6,97 +6,190 @@
     <title>{{.Title}} - cargo.mleczki.pl</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="icon" type="image/svg+xml" href="/static/favicon-32.svg" sizes="32x32">
+    <link rel="icon" type="image/svg+xml" href="/static/favicon-16.svg" sizes="16x16">
+    <link rel="apple-touch-icon" href="/static/apple-touch-icon.svg">
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
         body { font-family: 'Inter', sans-serif; }
     </style>
 </head>
 <body class="min-h-screen bg-white font-sans text-gray-900 flex flex-col">
-    {{template "header" .}}
-    
-    <main class="flex-grow">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-            <a href="/" class="flex items-center text-gray-500 hover:text-emerald-600 mb-8 transition-colors">
-                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+
+<header class="sticky top-0 z-50 bg-white border-b border-gray-100 shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div class="flex justify-between items-center h-20">
+            <a href="/" class="flex-shrink-0 flex items-center cursor-pointer">
+                <svg viewBox="0 0 100 100" class="h-9 w-9 text-emerald-600" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="18" cy="75" r="14" />
+                    <circle cx="86" cy="79" r="10" />
+                    <circle cx="18" cy="75" r="2" fill="currentColor" />
+                    <circle cx="86" cy="79" r="2" fill="currentColor" />
+                    <path d="M 18 75 L 86 79" />
+                    <path d="M 38 75 L 26 40" />
+                    <path d="M 18 75 L 26 40" />
+                    <path d="M 18 40 L 34 40" stroke-width="6" />
+                    <path d="M 49 76 L 46 32" />
+                    <path d="M 38 32 L 52 32" stroke-width="6" />
+                    <path d="M 47 40 L 76 52 Q 86 56, 79 78 L 49 76 Z" fill="currentColor" fill-opacity="0.1" />
                 </svg>
-                Wróć do oferty
+                <span class="ml-3 text-2xl font-black tracking-tighter text-gray-900">
+                    cargo.<span class="text-emerald-600">mleczki</span>.pl
+                </span>
             </a>
 
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-12">
-                <div class="rounded-3xl overflow-hidden shadow-lg h-96 lg:h-[600px] sticky top-24">
-                    <img src="{{.Product.Image}}" alt="{{.Product.Name}}" class="w-full h-full object-cover" />
-                </div>
-
-                <div class="flex flex-col">
-                    <div class="flex items-center space-x-3 mb-4">
-                        <div class="p-3 bg-emerald-100 text-emerald-600 rounded-xl">
-                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-                            </svg>
-                        </div>
-                        <h1 class="text-3xl lg:text-4xl font-black text-gray-900">{{.Product.Name}}</h1>
+            <nav class="hidden md:flex space-x-6 items-center">
+                <a href="/" class="text-gray-600 hover:text-emerald-600 font-medium transition-colors">Oferta</a>
+                <a href="/login" class="text-gray-600 hover:text-emerald-600 font-medium transition-colors flex items-center">
+                    <i data-lucide="user" class="w-4 h-4 mr-1"></i>
+                    Zaloguj się
+                </a>
+                <a href="/checkout" class="relative cursor-pointer group ml-4">
+                    <div class="flex items-center space-x-2 bg-emerald-50 text-emerald-700 px-4 py-2 rounded-full font-medium hover:bg-emerald-100 transition-colors">
+                        <i data-lucide="shopping-cart" class="w-5 h-5"></i>
+                        <span>{{if .CartTotal}}{{.CartTotal}} zł{{else}}Koszyk (0){{end}}</span>
                     </div>
-                    
-                    <p class="text-lg text-gray-600 mb-8 leading-relaxed">
-                        {{.Product.Description}}
-                    </p>
-
-                    <div class="bg-gray-50 border border-gray-200 rounded-2xl p-6 mb-8">
-                        <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
-                            <svg class="w-5 h-5 mr-2 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-                            </svg>
-                            Dostępność i rezerwacja
-                        </h3>
-                        <p class="text-sm text-gray-500 mb-4">Zaznacz dzień odbioru i zwrotu. Wyszarzone dni są już zarezerwowane.</p>
-                        
-                        <div id="calendar-container" hx-get="/product/{{.Product.ID}}/calendar?month={{.CurrentMonth}}&year={{.CurrentYear}}" hx-trigger="load" hx-target="#calendar-container">
-                            Loading calendar...
-                        </div>
-                    </div>
-
-                    {{if .Product.Addons}}
-                    <div class="mb-8">
-                        <h3 class="text-lg font-bold text-gray-900 mb-4">Opcje dodatkowe</h3>
-                        <div class="space-y-3">
-                            {{range .Product.Addons}}
-                            <label class="flex items-center justify-between p-4 rounded-xl cursor-pointer transition-colors border border-gray-200 hover:border-emerald-300 bg-white">
-                                <div class="flex items-center space-x-4">
-                                    <input type="checkbox" name="addon_{{.ID}}" value="{{.ID}}" class="w-5 h-5 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500" />
-                                    <div class="flex items-center space-x-2">
-                                        <span class="text-gray-500">{{.Icon}}</span>
-                                        <span class="font-medium text-gray-900">{{.Name}}</span>
-                                    </div>
-                                </div>
-                                <span class="font-semibold text-emerald-700">+{{.Price}} zł / dobę</span>
-                            </label>
-                            {{end}}
-                        </div>
-                    </div>
+                    {{if .CartCount}}
+                        <span class="absolute -top-1 -right-1 bg-red-500 text-white text-xs font-bold rounded-full w-5 h-5 flex items-center justify-center animate-bounce">
+                            {{.CartCount}}
+                        </span>
                     {{end}}
+                </a>
+            </nav>
+        </div>
+    </div>
+</header>
 
-                    <div class="mt-auto bg-gray-900 rounded-2xl p-6 text-white flex flex-col sm:flex-row items-center justify-between">
-                        <div class="mb-4 sm:mb-0 text-center sm:text-left">
-                            <p class="text-gray-400 text-sm">Cena za wybrany okres:</p>
-                            <p id="total-price" class="text-3xl font-black text-emerald-400">{{.Product.BasePrice}} zł</p>
-                        </div>
-                        <button id="add-to-cart-btn" class="w-full sm:w-auto font-bold py-4 px-8 rounded-xl transition-colors duration-300 flex items-center justify-center space-x-2 bg-gray-700 text-gray-400 cursor-not-allowed" disabled>
-                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
-                            </svg>
-                            <span>Dodaj do rezerwacji</span>
-                        </button>
+<script>lucide.createIcons();</script>
+
+<main class="flex-grow">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <a href="/" class="flex items-center text-gray-500 hover:text-emerald-600 mb-8 transition-colors">
+            <i data-lucide="arrow-left" class="w-5 h-5 mr-2"></i>
+            Wróć do oferty
+        </a>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-12">
+            <div class="rounded-3xl overflow-hidden shadow-lg h-96 lg:h-[600px] sticky top-24">
+                <img src="{{.Product.Image}}" alt="{{.Product.Name}}" class="w-full h-full object-cover" />
+            </div>
+
+            <div class="flex flex-col">
+                <div class="flex items-center space-x-3 mb-4">
+                    <div class="p-3 bg-emerald-100 text-emerald-600 rounded-xl">
+                        <svg viewBox="0 0 100 100" class="w-6 h-6" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="18" cy="75" r="14" />
+                            <circle cx="86" cy="79" r="10" />
+                            <circle cx="18" cy="75" r="2" fill="currentColor" />
+                            <circle cx="86" cy="79" r="2" fill="currentColor" />
+                            <path d="M 18 75 L 86 79" />
+                            <path d="M 38 75 L 26 40" />
+                            <path d="M 18 75 L 26 40" />
+                            <path d="M 18 40 L 34 40" stroke-width="6" />
+                            <path d="M 49 76 L 46 32" />
+                            <path d="M 38 32 L 52 32" stroke-width="6" />
+                            <path d="M 47 40 L 76 52 Q 86 56, 79 78 L 49 76 Z" fill="currentColor" fill-opacity="0.1" />
+                        </svg>
                     </div>
-                    <p class="text-xs text-gray-500 text-center mt-4">Płatność bezpiecznym przelewem BLIK lub gotówką przy odbiorze.</p>
+                    <h1 class="text-3xl lg:text-4xl font-black text-gray-900">{{.Product.Name}}</h1>
                 </div>
+
+                <p class="text-lg text-gray-600 mb-8 leading-relaxed">
+                    {{.Product.Description}}
+                </p>
+
+                <div class="bg-gray-50 border border-gray-200 rounded-2xl p-6 mb-8">
+                    <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                        <i data-lucide="calendar" class="w-5 h-5 mr-2 text-emerald-600"></i>
+                        Dostępność i rezerwacja
+                    </h3>
+                    <p class="text-sm text-gray-500 mb-4">Zaznacz dzień odbioru i zwrotu. Wyszarzone dni są już zarezerwowane.</p>
+
+                    <div id="calendar-container" hx-get="/product/{{.Product.ID}}/calendar?month={{.CurrentMonth}}&year={{.CurrentYear}}" hx-trigger="load" hx-target="#calendar-container">
+                        Loading calendar...
+                    </div>
+                </div>
+
+                {{if .Product.Addons}}
+                <div class="mb-8">
+                    <h3 class="text-lg font-bold text-gray-900 mb-4">Opcje dodatkowe</h3>
+                    <div class="space-y-3">
+                        {{range .Product.Addons}}
+                        <label class="flex items-center justify-between p-4 rounded-xl cursor-pointer transition-colors border border-gray-200 hover:border-emerald-300 bg-white">
+                            <div class="flex items-center space-x-4">
+                                <input type="checkbox" name="addon_{{.ID}}" value="{{.ID}}" class="w-5 h-5 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500" />
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-gray-500">{{.Icon}}</span>
+                                    <span class="font-medium text-gray-900">{{.Name}}</span>
+                                </div>
+                            </div>
+                            <span class="font-semibold text-emerald-700">+{{.Price}} zł / dobę</span>
+                        </label>
+                        {{end}}
+                    </div>
+                </div>
+                {{end}}
+
+                <div class="mt-auto bg-gray-900 rounded-2xl p-6 text-white flex flex-col sm:flex-row items-center justify-between">
+                    <div class="mb-4 sm:mb-0 text-center sm:text-left">
+                        <p class="text-gray-400 text-sm">Cena za wybrany okres:</p>
+                        <p id="total-price" class="text-3xl font-black text-emerald-400">{{.Product.BasePrice}} zł</p>
+                    </div>
+                    <button id="add-to-cart-btn" class="w-full sm:w-auto font-bold py-4 px-8 rounded-xl transition-colors duration-300 flex items-center justify-center space-x-2 bg-gray-700 text-gray-400 cursor-not-allowed" disabled>
+                        <i data-lucide="shopping-cart" class="w-5 h-5"></i>
+                        <span>Dodaj do rezerwacji</span>
+                    </button>
+                </div>
+                <p class="text-xs text-gray-500 text-center mt-4">Płatność bezpiecznym przelewem BLIK lub gotówką przy odbiorze.</p>
             </div>
         </div>
-    </main>
+    </div>
+</main>
 
-    {{template "footer" .}}
-</body>
-</html>
+<footer class="bg-gray-900 text-gray-400 py-16 border-t border-gray-800 text-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div>
+            <div class="flex items-center text-white mb-5">
+                <svg viewBox="0 0 100 100" class="h-9 w-9 text-emerald-500" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="18" cy="75" r="14" />
+                    <circle cx="86" cy="79" r="10" />
+                    <circle cx="18" cy="75" r="2" fill="currentColor" />
+                    <circle cx="86" cy="79" r="2" fill="currentColor" />
+                    <path d="M 18 75 L 86 79" />
+                    <path d="M 38 75 L 26 40" />
+                    <path d="M 18 75 L 26 40" />
+                    <path d="M 18 40 L 34 40" stroke-width="6" />
+                    <path d="M 49 76 L 46 32" />
+                    <path d="M 38 32 L 52 32" stroke-width="6" />
+                    <path d="M 47 40 L 76 52 Q 86 56, 79 78 L 49 76 Z" fill="currentColor" fill-opacity="0.1" />
+                </svg>
+                <span class="ml-3 text-xl font-black tracking-tighter">cargo.<span class="text-emerald-500">mleczki</span>.pl</span>
+            </div>
+            <p class="leading-relaxed">Prywatna wypożyczalnia sprzętu rowerowego w okolicach Radzymina.</p>
+        </div>
+        <div>
+            <h4 class="text-white font-bold mb-5">Informacje Prawne</h4>
+            <ul class="space-y-3">
+                <li><a href="#" class="hover:text-emerald-400 transition-colors">Regulamin wypożyczalni</a></li>
+                <li><a href="#" class="hover:text-emerald-400 transition-colors">Wzór Umowy Najmu</a></li>
+                <li><a href="#" class="hover:text-emerald-400 transition-colors">Polityka Prywatności (RODO)</a></li>
+            </ul>
+        </div>
+        <div>
+            <h4 class="text-white font-bold mb-5 flex items-center">
+                <i data-lucide="lock" class="w-5 h-5 mr-2 text-emerald-500"></i>
+                Branding & Cookies
+            </h4>
+            <p class="flex items-start text-xs leading-relaxed">
+                <i data-lucide="shield-check" class="w-5 h-5 mr-2.5 text-emerald-500 flex-shrink-0 mt-0.5"></i>
+                Szanujemy prywatność. Logo `cargo.mleczki.pl` przedstawia rower cargo typu **Urban Arrow**. Wykorzystujemy wyłącznie niezbędne sesyjne ciasteczka (logowanie/koszyk). Brak skryptów śledzących.
+            </p>
+        </div>
+    </div>
+</footer>
+
+<script>lucide.createIcons();</script>
 
 <script>
     let selectedStartDate = null;
@@ -107,15 +200,15 @@
     function updateTotal() {
         const basePrice = {{.Product.BasePrice}};
         let addonsPrice = 0;
-        
+
         document.querySelectorAll('input[type="checkbox"][name^="addon_"]:checked').forEach(cb => {
             const price = parseInt(cb.closest('label').querySelector('.font-semibold').textContent.replace('+', '').replace(' zł / dobę', ''));
             addonsPrice += price;
         });
-        
+
         const total = (basePrice + addonsPrice) * rentalDays;
         document.getElementById('total-price').textContent = total + ' zł';
-        
+
         const btn = document.getElementById('add-to-cart-btn');
         if (selectedStartDate) {
             btn.disabled = false;
@@ -134,19 +227,19 @@
 
     document.getElementById('add-to-cart-btn').addEventListener('click', function() {
         if (!selectedStartDate) return;
-        
+
         const addons = [];
         document.querySelectorAll('input[type="checkbox"][name^="addon_"]:checked').forEach(cb => {
             addons.push(cb.value);
         });
-        
+
         const formData = new FormData();
         formData.append('product_id', '{{.Product.ID}}');
         formData.append('start_date', selectedStartDate);
         formData.append('end_date', selectedEndDate || selectedStartDate);
         formData.append('rental_days', rentalDays);
         addons.forEach(a => formData.append('addons', a));
-        
+
         fetch('/cart/add', {
             method: 'POST',
             body: formData
@@ -156,3 +249,5 @@
     });
 </script>
 
+</body>
+</html>
