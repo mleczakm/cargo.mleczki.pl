@@ -65,17 +65,20 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 	r.Post("/payment/confirm", s.handlePaymentConfirm)
 	r.Get("/payment/status/{id}", s.handlePaymentStatus)
 	
-	// User panel
+	// User panel (protected)
 	r.Get("/user", s.handleUserPanel)
 	r.Post("/user/delete-request", s.handleUserDeleteRequest)
 	r.Post("/user/delete-confirm", s.handleUserDeleteConfirm)
 	r.Post("/user/delete-cancel", s.handleUserDeleteCancel)
 	
-	// Admin panel
-	r.Get("/admin", s.handleAdminPanel)
-	r.Get("/admin/user/{id}", s.handleAdminUserDetail)
-	r.Post("/admin/order/{id}/mark-paid", s.handleAdminOrderMarkPaid)
-	r.Post("/admin/transfer/{id}/link", s.handleAdminTransferLink)
+	// Admin panel (protected)
+	r.Group(func(r chi.Router) {
+		r.Use(s.adminAuthMiddleware)
+		r.Get("/admin", s.handleAdminPanel)
+		r.Get("/admin/user/{id}", s.handleAdminUserDetail)
+		r.Post("/admin/order/{id}/mark-paid", s.handleAdminOrderMarkPaid)
+		r.Post("/admin/transfer/{id}/link", s.handleAdminTransferLink)
+	})
 	
 	// Health check
 	r.Get("/health", s.handleHealth)
@@ -97,7 +100,7 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		"CartTotal": getCartTotal(r),
 	}
 
-	s.renderTemplate(w, "home.html", data, nil)
+	s.renderTemplate(w, "base.html", data, nil)
 }
 
 // handleProduct renders the product detail page
@@ -125,9 +128,7 @@ func (s *Server) handleProduct(w http.ResponseWriter, r *http.Request) {
 		"CartTotal":     getCartTotal(r),
 	}
 
-	s.renderTemplate(w, "layout.html", data, func() {
-		s.renderTemplate(w, "product.html", data, nil)
-	})
+	s.renderTemplate(w, "base.html", data, nil)
 }
 
 
@@ -298,9 +299,7 @@ func (s *Server) handleCheckout(w http.ResponseWriter, r *http.Request) {
 		"CartCount":    len(cart),
 	}
 
-	s.renderTemplate(w, "layout.html", data, func() {
-		s.renderTemplate(w, "checkout.html", data, nil)
-	})
+	s.renderTemplate(w, "base.html", data, nil)
 }
 
 // handlePayment renders the payment page
@@ -313,9 +312,7 @@ func (s *Server) handlePayment(w http.ResponseWriter, r *http.Request) {
 		"OrderID":       "1234",
 	}
 
-	s.renderTemplate(w, "layout.html", data, func() {
-		s.renderTemplate(w, "payment.html", data, nil)
-	})
+	s.renderTemplate(w, "base.html", data, nil)
 }
 
 // handleCartAdd adds an item to the cart (HTMX)
@@ -440,9 +437,7 @@ func (s *Server) handleUserPanel(w http.ResponseWriter, r *http.Request) {
 		"DeleteState": "idle",
 	}
 
-	s.renderTemplate(w, "layout.html", data, func() {
-		s.renderTemplate(w, "user_panel.html", data, nil)
-	})
+	s.renderTemplate(w, "base.html", data, nil)
 }
 
 // handleUserDeleteRequest initiates account deletion (HTMX)
@@ -488,9 +483,7 @@ func (s *Server) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		"Transfers": []interface{}{},
 	}
 
-	s.renderTemplate(w, "layout.html", data, func() {
-		s.renderTemplate(w, "admin_panel.html", data, nil)
-	})
+	s.renderTemplate(w, "base.html", data, nil)
 }
 
 // handleAdminUserDetail renders admin user detail page
@@ -503,9 +496,7 @@ func (s *Server) handleAdminUserDetail(w http.ResponseWriter, r *http.Request) {
 		"UserOrders": []interface{}{},
 	}
 
-	s.renderTemplate(w, "layout.html", data, func() {
-		s.renderTemplate(w, "admin_user_detail.html", data, nil)
-	})
+	s.renderTemplate(w, "base.html", data, nil)
 }
 
 // handleAdminOrderMarkPaid marks an order as paid (HTMX)
@@ -546,7 +537,36 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 
 // Helper functions
 
+// adminAuthMiddleware checks if user is authenticated as admin
+func (s *Server) adminAuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Check for admin session cookie
+		cookie, err := r.Cookie("admin_session")
+		if err != nil || cookie.Value != "authenticated" {
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (s *Server) renderTemplate(w http.ResponseWriter, name string, data interface{}, contentFn func()) {
+	// Add default values for authentication and cart
+	if dataMap, ok := data.(map[string]interface{}); ok {
+		if _, hasKey := dataMap["IsLoggedIn"]; !hasKey {
+			dataMap["IsLoggedIn"] = false
+		}
+		if _, hasKey := dataMap["IsAdmin"]; !hasKey {
+			dataMap["IsAdmin"] = false
+		}
+		if _, hasKey := dataMap["CartCount"]; !hasKey {
+			dataMap["CartCount"] = 0
+		}
+		if _, hasKey := dataMap["CartTotal"]; !hasKey {
+			dataMap["CartTotal"] = 0
+		}
+	}
+
 	if contentFn != nil {
 		// For nested templates, execute the content function first
 		// This is a simplified approach - in production, use proper template composition
