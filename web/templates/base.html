@@ -15,7 +15,11 @@
     {{template "header" .}}
     
     <main class="flex-grow">
-        {{block "content" .}}{{end}}
+        {{block "content" .}}
+        <div class="max-w-7xl mx-auto px-4 py-12 text-center">
+            <p class="text-gray-500">Loading...</p>
+        </div>
+        {{end}}
     </main>
 
     {{template "footer" .}}
