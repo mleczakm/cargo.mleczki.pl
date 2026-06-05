@@ -1,4 +1,20 @@
-{{define "content"}}
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} - cargo.mleczki.pl</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="min-h-screen bg-white font-sans text-gray-900 flex flex-col">
+    {{template "header" .}}
+    
+    <main class="flex-grow">
 <div class="max-w-7xl mx-auto px-4 py-12 lg:flex lg:space-x-12">
     <div class="lg:w-2/3">
         <h2 class="text-3xl font-black text-gray-900 mb-8">Dane do umowy i zamówienie</h2>
@@ -153,4 +169,8 @@
         </div>
     </div>
 </div>
-{{end}}
+    </main>
+
+    {{template "footer" .}}
+</body>
+</html>

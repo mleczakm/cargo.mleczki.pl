@@ -1,81 +1,102 @@
-{{define "content"}}
-<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-    <a href="/" class="flex items-center text-gray-500 hover:text-emerald-600 mb-8 transition-colors">
-        <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
-        </svg>
-        Wróć do oferty
-    </a>
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{.Title}} - cargo.mleczki.pl</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="min-h-screen bg-white font-sans text-gray-900 flex flex-col">
+    {{template "header" .}}
+    
+    <main class="flex-grow">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+            <a href="/" class="flex items-center text-gray-500 hover:text-emerald-600 mb-8 transition-colors">
+                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+                </svg>
+                Wróć do oferty
+            </a>
 
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-12">
-        <div class="rounded-3xl overflow-hidden shadow-lg h-96 lg:h-[600px] sticky top-24">
-            <img src="{{.Product.Image}}" alt="{{.Product.Name}}" class="w-full h-full object-cover" />
-        </div>
-
-        <div class="flex flex-col">
-            <div class="flex items-center space-x-3 mb-4">
-                <div class="p-3 bg-emerald-100 text-emerald-600 rounded-xl">
-                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
-                    </svg>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-12">
+                <div class="rounded-3xl overflow-hidden shadow-lg h-96 lg:h-[600px] sticky top-24">
+                    <img src="{{.Product.Image}}" alt="{{.Product.Name}}" class="w-full h-full object-cover" />
                 </div>
-                <h1 class="text-3xl lg:text-4xl font-black text-gray-900">{{.Product.Name}}</h1>
-            </div>
-            
-            <p class="text-lg text-gray-600 mb-8 leading-relaxed">
-                {{.Product.Description}}
-            </p>
 
-            <div class="bg-gray-50 border border-gray-200 rounded-2xl p-6 mb-8">
-                <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
-                    <svg class="w-5 h-5 mr-2 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-                    </svg>
-                    Dostępność i rezerwacja
-                </h3>
-                <p class="text-sm text-gray-500 mb-4">Zaznacz dzień odbioru i zwrotu. Wyszarzone dni są już zarezerwowane.</p>
-                
-                <div id="calendar-container" hx-get="/product/{{.Product.ID}}/calendar?month={{.CurrentMonth}}&year={{.CurrentYear}}" hx-trigger="load" hx-target="#calendar-container">
-                    Loading calendar...
-                </div>
-            </div>
-
-            {{if .Product.Addons}}
-            <div class="mb-8">
-                <h3 class="text-lg font-bold text-gray-900 mb-4">Opcje dodatkowe</h3>
-                <div class="space-y-3">
-                    {{range .Product.Addons}}
-                    <label class="flex items-center justify-between p-4 rounded-xl cursor-pointer transition-colors border border-gray-200 hover:border-emerald-300 bg-white">
-                        <div class="flex items-center space-x-4">
-                            <input type="checkbox" name="addon_{{.ID}}" value="{{.ID}}" class="w-5 h-5 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500" />
-                            <div class="flex items-center space-x-2">
-                                <span class="text-gray-500">{{.Icon}}</span>
-                                <span class="font-medium text-gray-900">{{.Name}}</span>
-                            </div>
+                <div class="flex flex-col">
+                    <div class="flex items-center space-x-3 mb-4">
+                        <div class="p-3 bg-emerald-100 text-emerald-600 rounded-xl">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                            </svg>
                         </div>
-                        <span class="font-semibold text-emerald-700">+{{.Price}} zł / dobę</span>
-                    </label>
-                    {{end}}
-                </div>
-            </div>
-            {{end}}
+                        <h1 class="text-3xl lg:text-4xl font-black text-gray-900">{{.Product.Name}}</h1>
+                    </div>
+                    
+                    <p class="text-lg text-gray-600 mb-8 leading-relaxed">
+                        {{.Product.Description}}
+                    </p>
 
-            <div class="mt-auto bg-gray-900 rounded-2xl p-6 text-white flex flex-col sm:flex-row items-center justify-between">
-                <div class="mb-4 sm:mb-0 text-center sm:text-left">
-                    <p class="text-gray-400 text-sm">Cena za wybrany okres:</p>
-                    <p id="total-price" class="text-3xl font-black text-emerald-400">{{.Product.BasePrice}} zł</p>
+                    <div class="bg-gray-50 border border-gray-200 rounded-2xl p-6 mb-8">
+                        <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
+                            <svg class="w-5 h-5 mr-2 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                            </svg>
+                            Dostępność i rezerwacja
+                        </h3>
+                        <p class="text-sm text-gray-500 mb-4">Zaznacz dzień odbioru i zwrotu. Wyszarzone dni są już zarezerwowane.</p>
+                        
+                        <div id="calendar-container" hx-get="/product/{{.Product.ID}}/calendar?month={{.CurrentMonth}}&year={{.CurrentYear}}" hx-trigger="load" hx-target="#calendar-container">
+                            Loading calendar...
+                        </div>
+                    </div>
+
+                    {{if .Product.Addons}}
+                    <div class="mb-8">
+                        <h3 class="text-lg font-bold text-gray-900 mb-4">Opcje dodatkowe</h3>
+                        <div class="space-y-3">
+                            {{range .Product.Addons}}
+                            <label class="flex items-center justify-between p-4 rounded-xl cursor-pointer transition-colors border border-gray-200 hover:border-emerald-300 bg-white">
+                                <div class="flex items-center space-x-4">
+                                    <input type="checkbox" name="addon_{{.ID}}" value="{{.ID}}" class="w-5 h-5 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500" />
+                                    <div class="flex items-center space-x-2">
+                                        <span class="text-gray-500">{{.Icon}}</span>
+                                        <span class="font-medium text-gray-900">{{.Name}}</span>
+                                    </div>
+                                </div>
+                                <span class="font-semibold text-emerald-700">+{{.Price}} zł / dobę</span>
+                            </label>
+                            {{end}}
+                        </div>
+                    </div>
+                    {{end}}
+
+                    <div class="mt-auto bg-gray-900 rounded-2xl p-6 text-white flex flex-col sm:flex-row items-center justify-between">
+                        <div class="mb-4 sm:mb-0 text-center sm:text-left">
+                            <p class="text-gray-400 text-sm">Cena za wybrany okres:</p>
+                            <p id="total-price" class="text-3xl font-black text-emerald-400">{{.Product.BasePrice}} zł</p>
+                        </div>
+                        <button id="add-to-cart-btn" class="w-full sm:w-auto font-bold py-4 px-8 rounded-xl transition-colors duration-300 flex items-center justify-center space-x-2 bg-gray-700 text-gray-400 cursor-not-allowed" disabled>
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
+                            </svg>
+                            <span>Dodaj do rezerwacji</span>
+                        </button>
+                    </div>
+                    <p class="text-xs text-gray-500 text-center mt-4">Płatność bezpiecznym przelewem BLIK lub gotówką przy odbiorze.</p>
                 </div>
-                <button id="add-to-cart-btn" class="w-full sm:w-auto font-bold py-4 px-8 rounded-xl transition-colors duration-300 flex items-center justify-center space-x-2 bg-gray-700 text-gray-400 cursor-not-allowed" disabled>
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/>
-                    </svg>
-                    <span>Dodaj do rezerwacji</span>
-                </button>
             </div>
-            <p class="text-xs text-gray-500 text-center mt-4">Płatność bezpiecznym przelewem BLIK lub gotówką przy odbiorze.</p>
         </div>
-    </div>
-</div>
+    </main>
+
+    {{template "footer" .}}
+</body>
+</html>
 
 <script>
     let selectedStartDate = null;
@@ -134,4 +155,4 @@
         });
     });
 </script>
-{{end}}
+

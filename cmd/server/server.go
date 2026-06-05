@@ -100,7 +100,7 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		"CartTotal": getCartTotal(r),
 	}
 
-	s.renderTemplate(w, "base.html", data, nil)
+	s.renderTemplate(w, "home.html", data, nil)
 }
 
 // handleProduct renders the product detail page
@@ -128,7 +128,7 @@ func (s *Server) handleProduct(w http.ResponseWriter, r *http.Request) {
 		"CartTotal":     getCartTotal(r),
 	}
 
-	s.renderTemplate(w, "base.html", data, nil)
+	s.renderTemplate(w, "product.html", data, nil)
 }
 
 
@@ -299,7 +299,7 @@ func (s *Server) handleCheckout(w http.ResponseWriter, r *http.Request) {
 		"CartCount":    len(cart),
 	}
 
-	s.renderTemplate(w, "base.html", data, nil)
+	s.renderTemplate(w, "checkout.html", data, nil)
 }
 
 // handlePayment renders the payment page
@@ -312,7 +312,7 @@ func (s *Server) handlePayment(w http.ResponseWriter, r *http.Request) {
 		"OrderID":       "1234",
 	}
 
-	s.renderTemplate(w, "base.html", data, nil)
+	s.renderTemplate(w, "payment.html", data, nil)
 }
 
 // handleCartAdd adds an item to the cart (HTMX)
@@ -437,7 +437,7 @@ func (s *Server) handleUserPanel(w http.ResponseWriter, r *http.Request) {
 		"DeleteState": "idle",
 	}
 
-	s.renderTemplate(w, "base.html", data, nil)
+	s.renderTemplate(w, "user_panel.html", data, nil)
 }
 
 // handleUserDeleteRequest initiates account deletion (HTMX)
@@ -483,7 +483,7 @@ func (s *Server) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		"Transfers": []interface{}{},
 	}
 
-	s.renderTemplate(w, "base.html", data, nil)
+	s.renderTemplate(w, "admin_panel.html", data, nil)
 }
 
 // handleAdminUserDetail renders admin user detail page
@@ -496,7 +496,7 @@ func (s *Server) handleAdminUserDetail(w http.ResponseWriter, r *http.Request) {
 		"UserOrders": []interface{}{},
 	}
 
-	s.renderTemplate(w, "base.html", data, nil)
+	s.renderTemplate(w, "admin_user_detail.html", data, nil)
 }
 
 // handleAdminOrderMarkPaid marks an order as paid (HTMX)
