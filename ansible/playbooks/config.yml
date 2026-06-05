@@ -1,0 +1,14 @@
+---
+# Cargo Deployment Configuration
+apps:
+  - name: cargo
+    domain: "{{ domain | default('cargo.mleczki.pl') }}"
+    port: 8080
+    image: ghcr.io/mleczakm/cargo.mleczki.pl:{{ app_version | default('latest') }}
+    env:
+      APP_ENV: prod
+      APP_VERSION: "{{ app_version | default('latest') }}"
+    healthcheck_enabled: true
+    ipv6: "{{ mikrus_ipv6 }}"
+    cytrus_host: "{{ cytrus_host }}"
+    proxied: true
