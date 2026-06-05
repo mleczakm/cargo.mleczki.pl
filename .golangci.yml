@@ -1,0 +1,131 @@
+run:
+  timeout: 5m
+  go: "1.26.4"
+
+linters:
+  enable:
+    - asasalint
+    - asciicheck
+    - bidichk
+    - bodyclose
+    - contextcheck
+    - decorder
+    - dupl
+    - durationcheck
+    - errcheck
+    - errname
+    - errorlint
+    - exhaustive
+    - exportloopref
+    - forbidigo
+    - forcetypeassert
+    - funlen
+    - gocheckcompileerrors
+    - gochecksumtype
+    - gocognit
+    - goconst
+    - gocritic
+    - gocyclo
+    - godot
+    - godox
+    - goerr113
+    - gofmt
+    - gofumpt
+    - goheader
+    - goimports
+    - gomnd
+    - gomodguard
+    - goprintffuncname
+    - gosec
+    - gosimple
+    - gosmopolitan
+    - govet
+    - grouper
+    - importas
+    - inamedparam
+    - ineffassign
+    - interfacebloat
+    - intrange
+    - ireturn
+    - lll
+    - localvartypecheck
+    - log
+    - loggercheck
+    - maintidx
+    - makezero
+    - mirror
+    - misspell
+    - mnd
+    - musttag
+    - nakedret
+    - nctx
+    - nilerr
+    - nilnil
+    - nolintlint
+    - nonamedreturns
+    - nosprintfhostport
+    - nstmt
+    - perfsprint
+    - prealloc
+    - predeclared
+    - reassign
+    - revive
+    - rowserrcheck
+    - sloglint
+    - slurp
+    - spancheck
+    - sqlclosecheck
+    - staticcheck
+    - stdlibusecheck
+    - tagalign
+    - tagliatelle
+    - tenv
+    - testableexamples
+    - testifylint
+    - testpackage
+    - thelper
+    - tparallel
+    - typecheck
+    - unconvert
+    - undeclaredname
+    - unparam
+    - unused
+    - usestdlibvars
+    - varnamelen
+    - wastedassign
+    - whitespace
+    - wsl
+    - zerologlint
+  disable:
+    - execinquery
+    - exhaustruct
+    - exhaustivestruct
+
+issues:
+  exclude-rules:
+    - path: "_test.go"
+      linters:
+        - gosec
+        - gocyclo
+        - dupl
+        - goconst
+    - linters:
+        - godox
+      text: "TODO|FIXME"
+
+linters-settings:
+  golint:
+    min-confidence: 0.8
+  gocyclo:
+    min-complexity: 15
+  dupl:
+    threshold: 100
+  lll:
+    line-length: 120
+  goimports:
+    local-prefixes: cargo.mleczki.pl
+  varnamelen:
+    min-name-length: 2
+    ignore-names: []
+    ignore-decls: []
+

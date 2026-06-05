@@ -5,6 +5,7 @@
 *.so
 *.dylib
 ./server
+cargo-server
 
 # Test binary, built with `go test -c`
 *.test
@@ -36,6 +37,7 @@ db/
 
 # Logs
 *.log
+build-errors.log
 
 # Temporary files
 tmp/

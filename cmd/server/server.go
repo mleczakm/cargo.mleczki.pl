@@ -605,25 +605,35 @@ func getCart(r *http.Request) []CartItem {
 
 func setCart(w http.ResponseWriter, r *http.Request, cart []CartItem) {
 	data, _ := json.Marshal(cart)
+	// Only set Secure flag for non-localhost requests (for development)
+	isLocalhost := r.Host == "localhost" || r.Host == "127.0.0.1" || 
+	               len(r.Host) >= 9 && r.Host[:9] == "localhost:" ||
+	               len(r.Host) >= 10 && r.Host[:10] == "127.0.0.1:"
+	
 	http.SetCookie(w, &http.Cookie{
 		Name:     "cart",
 		Value:    string(data),
 		Path:     "/",
 		MaxAge:   86400 * 7, // 7 days
 		HttpOnly: true,
-		Secure:   true,
+		Secure:   !isLocalhost,
 		SameSite: http.SameSiteLaxMode,
 	})
 }
 
 func clearCart(w http.ResponseWriter, r *http.Request) {
+	// Only set Secure flag for non-localhost requests (for development)
+	isLocalhost := r.Host == "localhost" || r.Host == "127.0.0.1" || 
+	               len(r.Host) >= 9 && r.Host[:9] == "localhost:" ||
+	               len(r.Host) >= 10 && r.Host[:10] == "127.0.0.1:"
+	
 	http.SetCookie(w, &http.Cookie{
 		Name:     "cart",
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   true,
+		Secure:   !isLocalhost,
 		SameSite: http.SameSiteLaxMode,
 	})
 }
