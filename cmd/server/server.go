@@ -6,6 +6,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -363,20 +364,33 @@ func (s *Server) handleCartAdd(w http.ResponseWriter, r *http.Request) {
 
 // handleCartRemove removes an item from the cart (HTMX)
 func (s *Server) handleCartRemove(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
 	cartID := chi.URLParam(r, "id")
 	cart := getCart(r)
 	
 	var newCart []CartItem
+	found := false
 	for _, item := range cart {
 		if item.CartID != cartID {
 			newCart = append(newCart, item)
+		} else {
+			found = true
 		}
 	}
-	
+
+	if !found {
+		http.Error(w, "Item not found in cart", http.StatusNotFound)
+		return
+	}
+
 	setCart(w, r, newCart)
 	
-	// Return updated cart content
-	s.handleCheckout(w, r)
+	// Redirect back to checkout to show updated cart
+	http.Redirect(w, r, "/checkout", http.StatusFound)
 }
 
 // handleCheckoutSubmit processes the checkout form (HTMX)
@@ -596,15 +610,32 @@ type CartItem struct {
 
 func getCart(r *http.Request) []CartItem {
 	if cookie, err := r.Cookie("cart"); err == nil {
+		// URL-decode the cookie value to get the JSON
+		decodedValue, err := url.QueryUnescape(cookie.Value)
+		if err != nil {
+			log.Printf("Error decoding cart cookie: %v", err)
+			return []CartItem{}
+		}
 		var cart []CartItem
-		json.Unmarshal([]byte(cookie.Value), &cart)
+		if err := json.Unmarshal([]byte(decodedValue), &cart); err != nil {
+			log.Printf("Error unmarshaling cart: %v", err)
+			return []CartItem{}
+		}
 		return cart
 	}
 	return []CartItem{}
 }
 
 func setCart(w http.ResponseWriter, r *http.Request, cart []CartItem) {
-	data, _ := json.Marshal(cart)
+	data, err := json.Marshal(cart)
+	if err != nil {
+		log.Printf("Error marshaling cart: %v", err)
+		return
+	}
+
+	// URL-encode the JSON data to make it safe for cookies
+	encodedValue := url.QueryEscape(string(data))
+
 	// Only set Secure flag for non-localhost requests (for development)
 	isLocalhost := r.Host == "localhost" || r.Host == "127.0.0.1" || 
 	               len(r.Host) >= 9 && r.Host[:9] == "localhost:" ||
@@ -612,7 +643,7 @@ func setCart(w http.ResponseWriter, r *http.Request, cart []CartItem) {
 	
 	http.SetCookie(w, &http.Cookie{
 		Name:     "cart",
-		Value:    string(data),
+		Value:    encodedValue,
 		Path:     "/",
 		MaxAge:   86400 * 7, // 7 days
 		HttpOnly: true,
