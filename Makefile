@@ -26,9 +26,9 @@ build:
 run:
 	go run ./cmd/server
 
-# Run with hot reload (requires air - install with: go install github.com/cosmtrek/air@latest)
+# Run with hot reload (requires air - install with: go install github.com/air-verse/air@latest)
 dev:
-	air
+	~/go/bin/air
 
 # Run unit tests
 test:
