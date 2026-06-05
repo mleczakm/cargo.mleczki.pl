@@ -1,4 +1,4 @@
-{{define "content"}}
+{{define "login-content"}}
 <div class="fixed inset-0 z-[100] flex items-center justify-center bg-gray-900/50 backdrop-blur-sm p-4">
     <div class="bg-white rounded-3xl shadow-2xl max-w-md w-full p-8 relative">
         <a href="/" class="absolute top-4 right-4 text-gray-400 hover:text-gray-900 transition-colors">
@@ -13,7 +13,7 @@
         </div>
         <h2 class="text-2xl font-black text-gray-900 mb-2">Zaloguj się</h2>
         <p class="text-gray-500 text-sm mb-6">Wpisz swoje dane, aby uzyskać dostęp do historii rezerwacji i szybciej zamawiać bez wpisywania danych.</p>
-        
+
         <form hx-post="/login" hx-target="body">
             <div class="space-y-4 mb-6">
                 <div>

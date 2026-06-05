@@ -521,5 +521,3 @@ func TestCartPersistenceAcrossRequests(t *testing.T) {
 		t.Errorf("Expected 2 items after adding, got %d", len(finalCart))
 	}
 }
-
-

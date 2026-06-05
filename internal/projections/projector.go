@@ -12,8 +12,8 @@ import (
 
 // Projector handles event processing and updates read models
 type Projector struct {
-	eventStore   eventstore.EventStore
-	readModels   *ReadModelsDB
+	eventStore     eventstore.EventStore
+	readModels     *ReadModelsDB
 	projectionName string
 }
 

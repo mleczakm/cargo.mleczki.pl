@@ -33,11 +33,11 @@ type RegisterUserCommand struct {
 }
 
 type UpdateUserDetailsCommand struct {
-	UserID   string
-	Name     string
-	Email    string
-	Phone    string
-	Address  string
+	UserID  string
+	Name    string
+	Email   string
+	Phone   string
+	Address string
 }
 
 type RequestAccountDeletionCommand struct {

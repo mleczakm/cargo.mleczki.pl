@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -15,27 +16,32 @@ import (
 
 	"cargo.mleczki.pl/internal/domain"
 	"cargo.mleczki.pl/internal/eventstore"
-	"cargo.mleczki.pl/internal/projections"
 	"cargo.mleczki.pl/internal/products"
+	"cargo.mleczki.pl/internal/projections"
 )
 
 // Server holds the application state
 type Server struct {
-	eventStore     eventstore.EventStore
-	readModels     *projections.ReadModelsDB
-	productParser  *products.Parser
-	templates      *template.Template
+	eventStore    eventstore.EventStore
+	readModels    *projections.ReadModelsDB
+	productParser *products.Parser
+	templates     *template.Template
+}
+
+// partialTemplates are HTMX fragments rendered without the site layout.
+var partialTemplates = map[string]struct{}{
+	"calendar.html":        {},
+	"payment_success.html": {},
 }
 
 // NewServer creates a new HTTP server
 func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadModelsDB, productParser *products.Parser) *Server {
-	// Create template functions map
 	funcMap := template.FuncMap{
 		"upper": strings.ToUpper,
 	}
 
-	// Parse templates from filesystem
-	tmpl := template.Must(template.New("").Funcs(funcMap).ParseGlob("web/templates/*.html"))
+	tmpl := template.Must(template.New("").Funcs(funcMap).ParseFiles("web/templates/layout.html"))
+	tmpl = template.Must(tmpl.ParseGlob("web/templates/*.html"))
 
 	return &Server{
 		eventStore:    eventStore,
@@ -47,6 +53,11 @@ func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadMod
 
 // RegisterRoutes sets up all HTTP routes
 func (s *Server) RegisterRoutes(r chi.Router) {
+	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
+	r.Get("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/static/favicon-32.svg", http.StatusMovedPermanently)
+	})
+
 	// Public routes
 	r.Get("/", s.handleHome)
 	r.Get("/product/{id}", s.handleProduct)
@@ -54,24 +65,25 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 	r.Get("/login", s.handleLogin)
 	r.Get("/checkout", s.handleCheckout)
 	r.Get("/payment/{id}", s.handlePayment)
-	
+	r.Get("/success", s.handleSuccess)
+
 	// Cart API (HTMX)
 	r.Post("/cart/add", s.handleCartAdd)
 	r.Post("/cart/remove/{id}", s.handleCartRemove)
-	
+
 	// Checkout API (HTMX)
 	r.Post("/checkout/submit", s.handleCheckoutSubmit)
-	
+
 	// Payment API (HTMX)
 	r.Post("/payment/confirm", s.handlePaymentConfirm)
 	r.Get("/payment/status/{id}", s.handlePaymentStatus)
-	
+
 	// User panel (protected)
 	r.Get("/user", s.handleUserPanel)
 	r.Post("/user/delete-request", s.handleUserDeleteRequest)
 	r.Post("/user/delete-confirm", s.handleUserDeleteConfirm)
 	r.Post("/user/delete-cancel", s.handleUserDeleteCancel)
-	
+
 	// Admin panel (protected)
 	r.Group(func(r chi.Router) {
 		r.Use(s.adminAuthMiddleware)
@@ -80,7 +92,7 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 		r.Post("/admin/order/{id}/mark-paid", s.handleAdminOrderMarkPaid)
 		r.Post("/admin/transfer/{id}/link", s.handleAdminTransferLink)
 	})
-	
+
 	// Health check
 	r.Get("/health", s.handleHealth)
 }
@@ -101,13 +113,13 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		"CartTotal": getCartTotal(r),
 	}
 
-	s.renderTemplate(w, "home.html", data, nil)
+	s.renderTemplate(w, r, "home.html", data)
 }
 
 // handleProduct renders the product detail page
 func (s *Server) handleProduct(w http.ResponseWriter, r *http.Request) {
 	productID := chi.URLParam(r, "id")
-	
+
 	if productID == "" {
 		http.Redirect(w, r, "/", http.StatusFound)
 		return
@@ -121,17 +133,16 @@ func (s *Server) handleProduct(w http.ResponseWriter, r *http.Request) {
 
 	now := time.Now()
 	data := map[string]interface{}{
-		"Title":         product.Name,
-		"Product":       product,
-		"CurrentMonth":  int(now.Month()),
-		"CurrentYear":   now.Year(),
-		"CartCount":     getCartCount(r),
-		"CartTotal":     getCartTotal(r),
+		"Title":        product.Name,
+		"Product":      product,
+		"CurrentMonth": int(now.Month()),
+		"CurrentYear":  now.Year(),
+		"CartCount":    getCartCount(r),
+		"CartTotal":    getCartTotal(r),
 	}
 
-	s.renderTemplate(w, "product.html", data, nil)
+	s.renderTemplate(w, r, "product.html", data)
 }
-
 
 // handleProductCalendar renders the calendar widget (HTMX)
 func (s *Server) handleProductCalendar(w http.ResponseWriter, r *http.Request) {
@@ -170,28 +181,28 @@ func (s *Server) handleProductCalendar(w http.ResponseWriter, r *http.Request) {
 	monthNames := []string{"Styczeń", "Luty", "Marzec", "Kwiecień", "Maj", "Czerwiec", "Lipiec", "Sierpień", "Wrzesień", "Październik", "Listopad", "Grudzień"}
 
 	data := map[string]interface{}{
-		"ProductID":        productID,
-		"Month":            month,
-		"Year":             year,
-		"MonthName":        monthNames[month-1],
-		"PrevMonth":        month - 1,
-		"PrevYear":         year,
-		"NextMonth":        month + 1,
-		"NextYear":         year,
-		"CalendarGrid":    calendarGrid,
+		"ProductID":         productID,
+		"Month":             month,
+		"Year":              year,
+		"MonthName":         monthNames[month-1],
+		"PrevMonth":         month - 1,
+		"PrevYear":          year,
+		"NextMonth":         month + 1,
+		"NextYear":          year,
+		"CalendarGrid":      calendarGrid,
 		"SelectedStartDate": startDate,
 		"SelectedEndDate":   endDate,
-		"RentalDays":       rentalDays,
+		"RentalDays":        rentalDays,
 	}
 
-	s.renderTemplate(w, "calendar.html", data, nil)
+	s.renderTemplate(w, r, "calendar.html", data)
 }
 
 // generateCalendarGrid generates the calendar grid for a given month
 func (s *Server) generateCalendarGrid(year, month int, bookedDates []string, startDate, endDate string) [][]CalendarDay {
 	firstDay := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
 	lastDay := firstDay.AddDate(0, 1, -1)
-	
+
 	// Get first weekday (Monday = 0)
 	firstWeekday := int(firstDay.Weekday())
 	if firstWeekday == 0 {
@@ -199,21 +210,21 @@ func (s *Server) generateCalendarGrid(year, month int, bookedDates []string, sta
 	} else {
 		firstWeekday--
 	}
-	
+
 	var grid [][]CalendarDay
 	var row []CalendarDay
-	
+
 	// Add empty cells for days before the first of the month
 	for i := 0; i < firstWeekday; i++ {
 		row = append(row, CalendarDay{Empty: true})
 	}
-	
+
 	// Add days of the month
 	now := time.Now().Truncate(24 * time.Hour)
 	for day := 1; day <= lastDay.Day(); day++ {
 		dateStr := fmt.Sprintf("%04d-%02d-%02d", year, month, day)
 		currentDate := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)
-		
+
 		isBooked := false
 		for _, bd := range bookedDates {
 			if bd == dateStr {
@@ -221,7 +232,7 @@ func (s *Server) generateCalendarGrid(year, month int, bookedDates []string, sta
 				break
 			}
 		}
-		
+
 		isSelected := dateStr == startDate || dateStr == endDate
 		isBetween := false
 		if startDate != "" && endDate != "" {
@@ -231,25 +242,25 @@ func (s *Server) generateCalendarGrid(year, month int, bookedDates []string, sta
 				isBetween = true
 			}
 		}
-		
+
 		isPast := currentDate.Before(now)
-		
+
 		row = append(row, CalendarDay{
-			Day:       day,
-			DateStr:   dateStr,
-			Empty:     false,
-			IsBooked:  isBooked,
+			Day:        day,
+			DateStr:    dateStr,
+			Empty:      false,
+			IsBooked:   isBooked,
 			IsSelected: isSelected,
-			IsBetween: isBetween,
-			IsPast:    isPast,
+			IsBetween:  isBetween,
+			IsPast:     isPast,
 		})
-		
+
 		if len(row) == 7 {
 			grid = append(grid, row)
 			row = []CalendarDay{}
 		}
 	}
-	
+
 	// Add remaining cells
 	if len(row) > 0 {
 		for len(row) < 7 {
@@ -257,19 +268,19 @@ func (s *Server) generateCalendarGrid(year, month int, bookedDates []string, sta
 		}
 		grid = append(grid, row)
 	}
-	
+
 	return grid
 }
 
 // CalendarDay represents a single day in the calendar
 type CalendarDay struct {
-	Day       int
-	DateStr   string
-	Empty     bool
-	IsBooked  bool
+	Day        int
+	DateStr    string
+	Empty      bool
+	IsBooked   bool
 	IsSelected bool
-	IsBetween bool
-	IsPast    bool
+	IsBetween  bool
+	IsPast     bool
 }
 
 // handleLogin renders the login page
@@ -284,23 +295,24 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		"Title": "Zaloguj się",
 	}
 
-	s.renderTemplate(w, "login.html", data, nil)
+	s.renderTemplate(w, r, "login.html", data)
 }
 
 // handleCheckout renders the checkout page
 func (s *Server) handleCheckout(w http.ResponseWriter, r *http.Request) {
 	cart := getCart(r)
-	
+
 	data := map[string]interface{}{
-		"Title":        "Koszyk",
-		"Cart":         cart,
-		"CartTotal":    calculateCartTotal(cart),
-		"AddonsTotal":  calculateAddonsTotal(cart),
-		"FinalTotal":   calculateFinalTotal(cart),
-		"CartCount":    len(cart),
+		"Title":       "Koszyk",
+		"Cart":        cart,
+		"CartTotal":   calculateCartTotal(cart),
+		"AddonsTotal": calculateAddonsTotal(cart),
+		"FinalTotal":  calculateFinalTotal(cart),
+		"CartCount":   len(cart),
+		"UserDetails": map[string]string{},
 	}
 
-	s.renderTemplate(w, "checkout.html", data, nil)
+	s.renderTemplate(w, r, "checkout.html", data)
 }
 
 // handlePayment renders the payment page
@@ -313,7 +325,7 @@ func (s *Server) handlePayment(w http.ResponseWriter, r *http.Request) {
 		"OrderID":       "1234",
 	}
 
-	s.renderTemplate(w, "payment.html", data, nil)
+	s.renderTemplate(w, r, "payment.html", data)
 }
 
 // handleCartAdd adds an item to the cart (HTMX)
@@ -371,7 +383,7 @@ func (s *Server) handleCartRemove(w http.ResponseWriter, r *http.Request) {
 
 	cartID := chi.URLParam(r, "id")
 	cart := getCart(r)
-	
+
 	var newCart []CartItem
 	found := false
 	for _, item := range cart {
@@ -388,7 +400,7 @@ func (s *Server) handleCartRemove(w http.ResponseWriter, r *http.Request) {
 	}
 
 	setCart(w, r, newCart)
-	
+
 	// Redirect back to checkout to show updated cart
 	http.Redirect(w, r, "/checkout", http.StatusFound)
 }
@@ -430,28 +442,39 @@ func (s *Server) handlePaymentConfirm(w http.ResponseWriter, r *http.Request) {
 // handlePaymentStatus checks payment status (HTMX polling)
 func (s *Server) handlePaymentStatus(w http.ResponseWriter, r *http.Request) {
 	orderID := chi.URLParam(r, "id")
-	
+
 	// In real implementation, check order status from read models
 	// For now, simulate payment confirmation after a few checks
 	_ = orderID
-	
+
 	// Return success fragment
 	data := map[string]interface{}{
 		"Email": "user@example.com",
 	}
-	s.renderTemplate(w, "success.html", data, nil)
+	s.renderTemplate(w, r, "payment_success.html", data)
+}
+
+// handleSuccess renders the order success page
+func (s *Server) handleSuccess(w http.ResponseWriter, r *http.Request) {
+	data := map[string]interface{}{
+		"Title": "Potwierdzenie zamówienia",
+		"Email": "user@example.com",
+	}
+
+	s.renderTemplate(w, r, "success.html", data)
 }
 
 // handleUserPanel renders the user panel
 func (s *Server) handleUserPanel(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
-		"Title":      "Panel Klienta",
-		"User":       map[string]interface{}{"Name": "Jan Kowalski", "Email": "jan@example.com", "Phone": "500 111 222", "Address": "Warszawska 1, Radzymin"},
-		"Orders":     []interface{}{},
+		"Title":       "Panel Klienta",
+		"User":        map[string]interface{}{"Name": "Jan Kowalski", "Email": "jan@example.com", "Phone": "500 111 222", "Address": "Warszawska 1, Radzymin"},
+		"Orders":      []interface{}{},
 		"DeleteState": "idle",
 	}
 
-	s.renderTemplate(w, "user_panel.html", data, nil)
+	data["IsLoggedIn"] = true
+	s.renderTemplate(w, r, "user_panel.html", data)
 }
 
 // handleUserDeleteRequest initiates account deletion (HTMX)
@@ -497,29 +520,31 @@ func (s *Server) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		"Transfers": []interface{}{},
 	}
 
-	s.renderTemplate(w, "admin_panel.html", data, nil)
+	data["IsAdmin"] = true
+	s.renderTemplate(w, r, "admin_panel.html", data)
 }
 
 // handleAdminUserDetail renders admin user detail page
 func (s *Server) handleAdminUserDetail(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "id")
-	
+
 	data := map[string]interface{}{
 		"Title":      "Szczegóły użytkownika",
 		"User":       map[string]interface{}{"ID": userID, "Name": "Jan Kowalski", "Email": "jan@example.com", "Phone": "500 111 222", "Address": "Warszawska 1, Radzymin"},
 		"UserOrders": []interface{}{},
 	}
 
-	s.renderTemplate(w, "admin_user_detail.html", data, nil)
+	data["IsAdmin"] = true
+	s.renderTemplate(w, r, "admin_user_detail.html", data)
 }
 
 // handleAdminOrderMarkPaid marks an order as paid (HTMX)
 func (s *Server) handleAdminOrderMarkPaid(w http.ResponseWriter, r *http.Request) {
 	orderID := chi.URLParam(r, "id")
-	
+
 	// In real implementation, emit OrderPaid event
 	_ = orderID
-	
+
 	// Return updated orders section
 	s.handleAdminPanel(w, r)
 }
@@ -532,13 +557,13 @@ func (s *Server) handleAdminTransferLink(w http.ResponseWriter, r *http.Request)
 	}
 
 	transferID := chi.URLParam(r, "id")
-	
+
 	orderID := r.FormValue("value")
-	
+
 	// In real implementation, emit TransferLinked and OrderPaid events
 	_ = transferID
 	_ = orderID
-	
+
 	// Return updated transfers section
 	s.handleAdminPanel(w, r)
 }
@@ -564,34 +589,57 @@ func (s *Server) adminAuthMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-func (s *Server) renderTemplate(w http.ResponseWriter, name string, data interface{}, contentFn func()) {
-	// Add default values for authentication and cart
-	if dataMap, ok := data.(map[string]interface{}); ok {
-		if _, hasKey := dataMap["IsLoggedIn"]; !hasKey {
-			dataMap["IsLoggedIn"] = false
-		}
-		if _, hasKey := dataMap["IsAdmin"]; !hasKey {
-			dataMap["IsAdmin"] = false
-		}
-		if _, hasKey := dataMap["CartCount"]; !hasKey {
-			dataMap["CartCount"] = 0
-		}
-		if _, hasKey := dataMap["CartTotal"]; !hasKey {
-			dataMap["CartTotal"] = 0
-		}
+func (s *Server) renderTemplate(w http.ResponseWriter, r *http.Request, name string, data map[string]interface{}) {
+	if data == nil {
+		data = map[string]interface{}{}
 	}
 
-	if contentFn != nil {
-		// For nested templates, execute the content function first
-		// This is a simplified approach - in production, use proper template composition
-		contentFn()
+	if _, ok := data["IsLoggedIn"]; !ok {
+		data["IsLoggedIn"] = isLoggedIn(r)
+	}
+	if _, ok := data["IsAdmin"]; !ok {
+		data["IsAdmin"] = isAdmin(r)
+	}
+	if _, ok := data["CartCount"]; !ok {
+		data["CartCount"] = getCartCount(r)
+	}
+	if _, ok := data["CartTotal"]; !ok {
+		data["CartTotal"] = getCartTotal(r)
+	}
+
+	if _, isPartial := partialTemplates[name]; isPartial {
+		if err := s.templates.ExecuteTemplate(w, name, data); err != nil {
+			log.Printf("Template error (%s): %v", name, err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
 		return
 	}
-	
-	if err := s.templates.ExecuteTemplate(w, name, data); err != nil {
-		log.Printf("Template error: %v", err)
+
+	baseName := strings.TrimSuffix(name, ".html")
+	contentName := baseName + "-content"
+
+	var contentBuf bytes.Buffer
+	if err := s.templates.ExecuteTemplate(&contentBuf, contentName, data); err != nil {
+		log.Printf("Template error (%s): %v", contentName, err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		return
+	}
+	data["Content"] = template.HTML(contentBuf.String())
+
+	if err := s.templates.ExecuteTemplate(w, "layout.html", data); err != nil {
+		log.Printf("Template error (%s): %v", name, err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
+}
+
+func isLoggedIn(r *http.Request) bool {
+	cookie, err := r.Cookie("user_session")
+	return err == nil && cookie.Value != ""
+}
+
+func isAdmin(r *http.Request) bool {
+	cookie, err := r.Cookie("admin_session")
+	return err == nil && cookie.Value == "authenticated"
 }
 
 // Cart types and functions
@@ -637,10 +685,10 @@ func setCart(w http.ResponseWriter, r *http.Request, cart []CartItem) {
 	encodedValue := url.QueryEscape(string(data))
 
 	// Only set Secure flag for non-localhost requests (for development)
-	isLocalhost := r.Host == "localhost" || r.Host == "127.0.0.1" || 
-	               len(r.Host) >= 9 && r.Host[:9] == "localhost:" ||
-	               len(r.Host) >= 10 && r.Host[:10] == "127.0.0.1:"
-	
+	isLocalhost := r.Host == "localhost" || r.Host == "127.0.0.1" ||
+		len(r.Host) >= 9 && r.Host[:9] == "localhost:" ||
+		len(r.Host) >= 10 && r.Host[:10] == "127.0.0.1:"
+
 	http.SetCookie(w, &http.Cookie{
 		Name:     "cart",
 		Value:    encodedValue,
@@ -654,10 +702,10 @@ func setCart(w http.ResponseWriter, r *http.Request, cart []CartItem) {
 
 func clearCart(w http.ResponseWriter, r *http.Request) {
 	// Only set Secure flag for non-localhost requests (for development)
-	isLocalhost := r.Host == "localhost" || r.Host == "127.0.0.1" || 
-	               len(r.Host) >= 9 && r.Host[:9] == "localhost:" ||
-	               len(r.Host) >= 10 && r.Host[:10] == "127.0.0.1:"
-	
+	isLocalhost := r.Host == "localhost" || r.Host == "127.0.0.1" ||
+		len(r.Host) >= 9 && r.Host[:9] == "localhost:" ||
+		len(r.Host) >= 10 && r.Host[:10] == "127.0.0.1:"
+
 	http.SetCookie(w, &http.Cookie{
 		Name:     "cart",
 		Value:    "",

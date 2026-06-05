@@ -1,0 +1,26 @@
+{
+  "name": "cargo.mleczki.pl",
+  "short_name": "cargo.mleczki",
+  "description": "Prywatna wypożyczalnia sprzętu rowerowego",
+  "icons": [
+    {
+      "src": "/static/favicon-32.svg",
+      "sizes": "32x32",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/static/apple-touch-icon.svg",
+      "sizes": "180x180",
+      "type": "image/svg+xml"
+    },
+    {
+      "src": "/static/android-icon-512.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml"
+    }
+  ],
+  "theme_color": "#059669",
+  "background_color": "#ffffff",
+  "display": "standalone",
+  "start_url": "/"
+}

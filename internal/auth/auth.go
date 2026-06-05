@@ -115,7 +115,7 @@ func (am *AuthManager) Login(ctx context.Context, email, password string) (strin
 	// Insert session into database
 	expiresAt := time.Now().UTC().Add(30 * 24 * time.Hour).Format(time.RFC3339)
 	now := time.Now().UTC().Format(time.RFC3339)
-	
+
 	// Check if user is admin (hardcoded for now, should be from database)
 	isAdmin := false // TODO: Add is_admin field to users table
 

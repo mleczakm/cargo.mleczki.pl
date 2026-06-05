@@ -6,18 +6,18 @@ import (
 
 // Order Aggregate
 type Order struct {
-	ID           string
-	UserID       string
-	Items        []OrderItem
-	TotalAmount  int
-	Status       string // "pending_payment", "paid", "cancelled", "accepted"
+	ID            string
+	UserID        string
+	Items         []OrderItem
+	TotalAmount   int
+	Status        string // "pending_payment", "paid", "cancelled", "accepted"
 	PaymentMethod string // "blik", "cash"
-	StartDate    string
-	EndDate      string
-	RentalDays   int
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
-	Version      int
+	StartDate     string
+	EndDate       string
+	RentalDays    int
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	Version       int
 }
 
 type OrderItem struct {
@@ -57,15 +57,15 @@ type CancelOrderCommand struct {
 
 // Order Events
 type OrderPlacedEvent struct {
-	OrderID       string    `json:"order_id"`
-	UserID        string    `json:"user_id"`
+	OrderID       string      `json:"order_id"`
+	UserID        string      `json:"user_id"`
 	Items         []OrderItem `json:"items"`
-	TotalAmount   int       `json:"total_amount"`
-	PaymentMethod string    `json:"payment_method"`
-	StartDate     string    `json:"start_date"`
-	EndDate       string    `json:"end_date"`
-	RentalDays    int       `json:"rental_days"`
-	Timestamp     time.Time `json:"timestamp"`
+	TotalAmount   int         `json:"total_amount"`
+	PaymentMethod string      `json:"payment_method"`
+	StartDate     string      `json:"start_date"`
+	EndDate       string      `json:"end_date"`
+	RentalDays    int         `json:"rental_days"`
+	Timestamp     time.Time   `json:"timestamp"`
 }
 
 func (e *OrderPlacedEvent) EventType() string {

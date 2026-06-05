@@ -4,13 +4,13 @@ import "encoding/json"
 
 // Event represents a domain event in the event store
 type Event struct {
-	ID           string          `json:"id"`
-	AggregateID  string          `json:"aggregate_id"`
-	AggregateType string         `json:"aggregate_type"`
-	EventType    string          `json:"event_type"`
-	Payload      json.RawMessage `json:"payload"`
-	Version      int             `json:"version"`
-	CreatedAt    string          `json:"created_at"`
+	ID            string          `json:"id"`
+	AggregateID   string          `json:"aggregate_id"`
+	AggregateType string          `json:"aggregate_type"`
+	EventType     string          `json:"event_type"`
+	Payload       json.RawMessage `json:"payload"`
+	Version       int             `json:"version"`
+	CreatedAt     string          `json:"created_at"`
 }
 
 // EventData is the interface that all domain events must implement

@@ -11,8 +11,8 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"cargo.mleczki.pl/internal/eventstore"
-	"cargo.mleczki.pl/internal/projections"
 	"cargo.mleczki.pl/internal/products"
+	"cargo.mleczki.pl/internal/projections"
 )
 
 func main() {
@@ -60,12 +60,12 @@ func main() {
 
 	// Create chi router
 	r := chi.NewRouter()
-	
+
 	// Add middleware
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.RequestID)
-	
+
 	// Register routes
 	server.RegisterRoutes(r)
 

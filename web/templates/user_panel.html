@@ -1,20 +1,4 @@
-<!DOCTYPE html>
-<html lang="pl">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{.Title}} - cargo.mleczki.pl</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap');
-        body { font-family: 'Inter', sans-serif; }
-    </style>
-</head>
-<body class="min-h-screen bg-white font-sans text-gray-900 flex flex-col">
-    {{template "header" .}}
-    
-    <main class="flex-grow">
+{{define "user_panel-content"}}
 <div class="max-w-5xl mx-auto px-4 py-12">
     <h2 class="text-3xl font-black text-gray-900 mb-8">Panel Klienta</h2>
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -32,13 +16,13 @@
                     <p><strong>Adres:</strong> {{.User.Address}}</p>
                 </div>
 
-                <div class="border-t border-gray-100 pt-4 mt-4">
+                <div class="border-t border-gray-100 pt-4 mt-4" id="delete-section">
                     {{if eq .DeleteState "idle"}}
                         <button hx-post="/user/delete-request" hx-target="#delete-section" class="text-red-500 text-sm hover:underline font-medium">
                             Zażądaj usunięcia konta (RODO)
                         </button>
                     {{else if eq .DeleteState "confirming"}}
-                        <div id="delete-section" class="bg-red-50 p-4 rounded-xl border border-red-100">
+                        <div class="bg-red-50 p-4 rounded-xl border border-red-100">
                             <h4 class="font-bold text-red-900 mb-1">Czy na pewno?</h4>
                             <p class="text-xs text-red-700 mb-3 leading-relaxed">
                                 Wysyłasz żądanie usunięcia wszystkich swoich danych osobowych oraz historii zamówień z naszego systemu. Tej operacji nie można cofnąć.
@@ -90,8 +74,4 @@
         </div>
     </div>
 </div>
-    </main>
-
-    {{template "footer" .}}
-</body>
-</html>
+{{end}}
