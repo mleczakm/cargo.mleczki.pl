@@ -16,11 +16,10 @@ linters:
     - errname
     - errorlint
     - exhaustive
-    - exportloopref
+    - copyloopvar
     - forbidigo
     - forcetypeassert
     - funlen
-    - gocheckcompileerrors
     - gochecksumtype
     - gocognit
     - goconst
@@ -28,12 +27,12 @@ linters:
     - gocyclo
     - godot
     - godox
-    - goerr113
+    - err113
     - gofmt
     - gofumpt
     - goheader
     - goimports
-    - gomnd
+    - mnd
     - gomodguard
     - goprintffuncname
     - gosec
@@ -48,8 +47,6 @@ linters:
     - intrange
     - ireturn
     - lll
-    - localvartypecheck
-    - log
     - loggercheck
     - maintidx
     - makezero
@@ -58,13 +55,11 @@ linters:
     - mnd
     - musttag
     - nakedret
-    - nctx
     - nilerr
     - nilnil
     - nolintlint
     - nonamedreturns
     - nosprintfhostport
-    - nstmt
     - perfsprint
     - prealloc
     - predeclared
@@ -72,14 +67,12 @@ linters:
     - revive
     - rowserrcheck
     - sloglint
-    - slurp
     - spancheck
     - sqlclosecheck
     - staticcheck
-    - stdlibusecheck
     - tagalign
     - tagliatelle
-    - tenv
+    - usetesting
     - testableexamples
     - testifylint
     - testpackage
@@ -87,19 +80,19 @@ linters:
     - tparallel
     - typecheck
     - unconvert
-    - undeclaredname
     - unparam
     - unused
-    - usestdlibvars
     - varnamelen
     - wastedassign
     - whitespace
-    - wsl
     - zerologlint
   disable:
-    - execinquery
     - exhaustruct
-    - exhaustivestruct
+    - lll
+    - mnd
+    - perfsprint
+    - prealloc
+    - usestdlibvars
 
 issues:
   exclude-rules:
@@ -126,6 +119,6 @@ linters-settings:
     local-prefixes: cargo.mleczki.pl
   varnamelen:
     min-name-length: 2
-    ignore-names: []
+    ignore-names: ["w", "r", "i", "e"]
     ignore-decls: []
 
