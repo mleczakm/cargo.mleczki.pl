@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -558,8 +556,8 @@ func TestHandleTermsContent(t *testing.T) {
 	funcMap := template.FuncMap{
 		"upper": strings.ToUpper,
 	}
-	tmpl := template.Must(template.New("").Funcs(funcMap).ParseFiles("web/templates/layout.html"))
-	tmpl = template.Must(tmpl.ParseGlob("web/templates/*.html"))
+	tmpl := template.Must(template.New("").Funcs(funcMap).ParseFiles("../../web/templates/layout.html"))
+	tmpl = template.Must(tmpl.ParseGlob("../../web/templates/*.html"))
 
 	server := &Server{
 		templates: tmpl,
