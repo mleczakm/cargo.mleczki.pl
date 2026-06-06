@@ -2,7 +2,7 @@ package domain
 
 import "time"
 
-// User Aggregate
+// User Aggregate.
 type User struct {
 	ID                  string
 	Name                string
@@ -20,7 +20,7 @@ type User struct {
 	Version             int
 }
 
-// User Commands
+// User Commands.
 type RegisterUserCommand struct {
 	UserID      string
 	Name        string
@@ -44,15 +44,15 @@ type RequestAccountDeletionCommand struct {
 	UserID string
 }
 
-// User Events
+// User Events.
 type UserRegisteredEvent struct {
-	UserID      string    `json:"user_id"`
+	UserID      string    `json:"userId"`
 	Name        string    `json:"name"`
 	Email       string    `json:"email"`
 	Phone       string    `json:"phone"`
 	Address     string    `json:"address"`
-	IsAdult     bool      `json:"is_adult"`
-	AcceptedTOS bool      `json:"accepted_tos"`
+	IsAdult     bool      `json:"isAdult"`
+	AcceptedTOS bool      `json:"acceptedTos"`
 	Timestamp   time.Time `json:"timestamp"`
 }
 
@@ -61,7 +61,7 @@ func (e *UserRegisteredEvent) EventType() string {
 }
 
 type UserDetailsUpdatedEvent struct {
-	UserID    string    `json:"user_id"`
+	UserID    string    `json:"userId"`
 	Name      string    `json:"name"`
 	Email     string    `json:"email"`
 	Phone     string    `json:"phone"`
@@ -74,7 +74,7 @@ func (e *UserDetailsUpdatedEvent) EventType() string {
 }
 
 type UserDeletionRequestedEvent struct {
-	UserID    string    `json:"user_id"`
+	UserID    string    `json:"userId"`
 	Timestamp time.Time `json:"timestamp"`
 }
 

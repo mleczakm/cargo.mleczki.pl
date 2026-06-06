@@ -1,14 +1,15 @@
-package eventstore
+package eventstore_test
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
+
+	"cargo.mleczki.pl/internal/eventstore"
 )
 
 func TestSQLiteEventStore_Save(t *testing.T) {
 	// Create in-memory database for testing
-	store, err := NewSQLiteEventStore(":memory:")
+	store, err := eventstore.NewSQLiteEventStore(":memory:")
 	if err != nil {
 		t.Fatalf("Failed to create event store: %v", err)
 	}
@@ -18,7 +19,7 @@ func TestSQLiteEventStore_Save(t *testing.T) {
 	data := map[string]interface{}{"test": "data"}
 	payload, _ := json.Marshal(data)
 
-	event := &Event{
+	event := &eventstore.Event{
 		ID:            "test-event-1",
 		AggregateID:   "aggregate-1",
 		AggregateType: "Order",
@@ -28,7 +29,7 @@ func TestSQLiteEventStore_Save(t *testing.T) {
 	}
 
 	// Save event
-	ctx := context.Background()
+	ctx := t.Context()
 	if err := store.Save(ctx, event); err != nil {
 		t.Fatalf("Save failed: %v", err)
 	}
@@ -50,7 +51,7 @@ func TestSQLiteEventStore_Save(t *testing.T) {
 
 func TestSQLiteEventStore_GetEvents(t *testing.T) {
 	// Create in-memory database for testing
-	store, err := NewSQLiteEventStore(":memory:")
+	store, err := eventstore.NewSQLiteEventStore(":memory:")
 	if err != nil {
 		t.Fatalf("Failed to create event store: %v", err)
 	}
@@ -58,19 +59,19 @@ func TestSQLiteEventStore_GetEvents(t *testing.T) {
 
 	// Create and save multiple events for same aggregate
 	aggregateID := "test-aggregate"
-	ctx := context.Background()
+	ctx := t.Context()
 
-	for i := 0; i < 3; i++ {
-		data := map[string]interface{}{"index": i}
+	for idx := 0; idx < 3; idx++ {
+		data := map[string]interface{}{"index": idx}
 		payload, _ := json.Marshal(data)
 
-		event := &Event{
-			ID:            "test-event-" + string(rune('0'+i)),
+		event := &eventstore.Event{
+			ID:            "test-event-" + string(rune('0'+idx)),
 			AggregateID:   aggregateID,
 			AggregateType: "Order",
 			EventType:     "OrderPlaced",
 			Payload:       payload,
-			Version:       i + 1,
+			Version:       idx + 1,
 		}
 		if err := store.Save(ctx, event); err != nil {
 			t.Fatalf("Save failed: %v", err)
@@ -90,7 +91,7 @@ func TestSQLiteEventStore_GetEvents(t *testing.T) {
 
 func TestSQLiteEventStore_GetEventsByType(t *testing.T) {
 	// Create in-memory database for testing
-	store, err := NewSQLiteEventStore(":memory:")
+	store, err := eventstore.NewSQLiteEventStore(":memory:")
 	if err != nil {
 		t.Fatalf("Failed to create event store: %v", err)
 	}
@@ -98,15 +99,15 @@ func TestSQLiteEventStore_GetEventsByType(t *testing.T) {
 
 	// Save events of different types
 	eventTypes := []string{"OrderPlaced", "OrderPaid", "OrderCancelled"}
-	ctx := context.Background()
+	ctx := t.Context()
 
-	for i, eventType := range eventTypes {
+	for idx, eventType := range eventTypes {
 		data := map[string]interface{}{"type": eventType}
 		payload, _ := json.Marshal(data)
 
-		event := &Event{
-			ID:            "test-event-" + string(rune('0'+i)),
-			AggregateID:   "aggregate-" + string(rune('0'+i)),
+		event := &eventstore.Event{
+			ID:            "test-event-" + string(rune('0'+idx)),
+			AggregateID:   "aggregate-" + string(rune('0'+idx)),
 			AggregateType: "Order",
 			EventType:     eventType,
 			Payload:       payload,

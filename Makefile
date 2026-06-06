@@ -13,7 +13,7 @@ help:
 	@echo "  make lint               - Run golangci-lint"
 	@echo "  make security           - Run security checks (gosec)"
 	@echo "  make qa                 - Run all QA checks (test, fmt, vet, lint)"
-	@echo "  make deps               - Download dependencies"
+	@echo "  make deps               - Download dependencies and install QA/dev tools"
 	@echo "  make clean              - Clean build artifacts"
 	@echo "  make docker-build       - Build Docker image"
 	@echo "  make docker-run         - Run Docker container"
@@ -48,6 +48,9 @@ vet:
 deps:
 	go mod tidy
 	go mod download
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	go install github.com/securego/gosec/v2/cmd/gosec@latest
+	go install github.com/air-verse/air@latest
 
 # Format code
 fmt:
@@ -61,13 +64,13 @@ fmt-check:
 		exit 1; \
 	fi
 
-# Lint code (requires golangci-lint - install with: curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(go env GOPATH)/bin)
+# Lint code (requires golangci-lint - install with: make install)
 lint:
-	golangci-lint run ./...
+	~/go/bin/golangci-lint run ./...
 
-# Security checks (requires gosec - install with: go install github.com/securego/gosec/v2/cmd/gosec@latest)
+# Security checks (requires gosec - install with: make install)
 security:
-	gosec -no-fail ./...
+	~/go/bin/gosec -no-fail ./...
 
 # Run all QA checks
 qa: fmt-check vet test lint
@@ -93,3 +96,6 @@ clean:
 	rm -rf tmp/
 	rm -f coverage.out
 	rm -f coverage.html
+
+lint-fix:
+	~/go/bin/golangci-lint run --fix ./...

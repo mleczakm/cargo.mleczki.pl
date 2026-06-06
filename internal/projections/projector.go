@@ -10,14 +10,14 @@ import (
 	"cargo.mleczki.pl/internal/eventstore"
 )
 
-// Projector handles event processing and updates read models
+// Projector handles event processing and updates read models.
 type Projector struct {
 	eventStore     eventstore.EventStore
 	readModels     *ReadModelsDB
 	projectionName string
 }
 
-// NewProjector creates a new projector
+// NewProjector creates a new projector.
 func NewProjector(eventStore eventstore.EventStore, readModels *ReadModelsDB, projectionName string) *Projector {
 	return &Projector{
 		eventStore:     eventStore,
@@ -26,7 +26,7 @@ func NewProjector(eventStore eventstore.EventStore, readModels *ReadModelsDB, pr
 	}
 }
 
-// Run processes all events since the last checkpoint
+// Run processes all events since the last checkpoint.
 func (p *Projector) Run(ctx context.Context) error {
 	lastVersion, err := p.readModels.GetCheckpoint(p.projectionName)
 	if err != nil {
@@ -49,7 +49,7 @@ func (p *Projector) Run(ctx context.Context) error {
 	return p.readModels.SaveCheckpoint(p.projectionName, lastVersion)
 }
 
-// processEvent handles a single event and updates the appropriate read model
+// processEvent handles a single event and updates the appropriate read model.
 func (p *Projector) processEvent(event *eventstore.Event) error {
 	switch event.EventType {
 	case "OrderPlaced":
@@ -74,14 +74,14 @@ func (p *Projector) processEvent(event *eventstore.Event) error {
 	return nil
 }
 
-// handleOrderPlaced creates or updates an order in the read model
+// handleOrderPlaced creates or updates an order in the read model.
 func (p *Projector) handleOrderPlaced(event *eventstore.Event) error {
-	var e domain.OrderPlacedEvent
-	if err := json.Unmarshal(event.Payload, &e); err != nil {
+	var eventData domain.OrderPlacedEvent
+	if err := json.Unmarshal(event.Payload, &eventData); err != nil {
 		return err
 	}
 
-	itemsJSON, err := json.Marshal(e.Items)
+	itemsJSON, err := json.Marshal(eventData.Items)
 	if err != nil {
 		return err
 	}
@@ -101,23 +101,23 @@ func (p *Projector) handleOrderPlaced(event *eventstore.Event) error {
 	`
 
 	_, err = p.readModels.GetDB().Exec(query,
-		e.OrderID,
-		e.UserID,
+		eventData.OrderID,
+		eventData.UserID,
 		itemsJSON,
-		e.TotalAmount,
+		eventData.TotalAmount,
 		"pending_payment",
-		e.PaymentMethod,
-		e.StartDate,
-		e.EndDate,
-		e.RentalDays,
-		e.Timestamp.Format("2006-01-02 15:04:05"),
-		e.Timestamp.Format("2006-01-02 15:04:05"),
+		eventData.PaymentMethod,
+		eventData.StartDate,
+		eventData.EndDate,
+		eventData.RentalDays,
+		eventData.Timestamp.Format("2006-01-02 15:04:05"),
+		eventData.Timestamp.Format("2006-01-02 15:04:05"),
 	)
 
 	return err
 }
 
-// handleOrderPaid updates the order status to paid
+// handleOrderPaid updates the order status to paid.
 func (p *Projector) handleOrderPaid(event *eventstore.Event) error {
 	var e domain.OrderPaidEvent
 	if err := json.Unmarshal(event.Payload, &e); err != nil {
@@ -134,7 +134,7 @@ func (p *Projector) handleOrderPaid(event *eventstore.Event) error {
 	return err
 }
 
-// handleOrderCancelled updates the order status to cancelled
+// handleOrderCancelled updates the order status to cancelled.
 func (p *Projector) handleOrderCancelled(event *eventstore.Event) error {
 	var e domain.OrderCancelledEvent
 	if err := json.Unmarshal(event.Payload, &e); err != nil {
@@ -151,7 +151,7 @@ func (p *Projector) handleOrderCancelled(event *eventstore.Event) error {
 	return err
 }
 
-// handleUserRegistered creates a user in the read model
+// handleUserRegistered creates a user in the read model.
 func (p *Projector) handleUserRegistered(event *eventstore.Event) error {
 	var e domain.UserRegisteredEvent
 	if err := json.Unmarshal(event.Payload, &e); err != nil {
@@ -181,7 +181,7 @@ func (p *Projector) handleUserRegistered(event *eventstore.Event) error {
 	return err
 }
 
-// handleUserDetailsUpdated updates user information
+// handleUserDetailsUpdated updates user information.
 func (p *Projector) handleUserDetailsUpdated(event *eventstore.Event) error {
 	var e domain.UserDetailsUpdatedEvent
 	if err := json.Unmarshal(event.Payload, &e); err != nil {
@@ -206,7 +206,7 @@ func (p *Projector) handleUserDetailsUpdated(event *eventstore.Event) error {
 	return err
 }
 
-// handleUserDeletionRequested marks user for deletion
+// handleUserDeletionRequested marks user for deletion.
 func (p *Projector) handleUserDeletionRequested(event *eventstore.Event) error {
 	var e domain.UserDeletionRequestedEvent
 	if err := json.Unmarshal(event.Payload, &e); err != nil {
@@ -228,7 +228,7 @@ func (p *Projector) handleUserDeletionRequested(event *eventstore.Event) error {
 	return err
 }
 
-// handleTransferReceived creates a transfer record
+// handleTransferReceived creates a transfer record.
 func (p *Projector) handleTransferReceived(event *eventstore.Event) error {
 	var e domain.TransferReceivedEvent
 	if err := json.Unmarshal(event.Payload, &e); err != nil {
@@ -259,7 +259,7 @@ func (p *Projector) handleTransferReceived(event *eventstore.Event) error {
 	return err
 }
 
-// handleTransferLinked links a transfer to an order
+// handleTransferLinked links a transfer to an order.
 func (p *Projector) handleTransferLinked(event *eventstore.Event) error {
 	var e domain.TransferLinkedEvent
 	if err := json.Unmarshal(event.Payload, &e); err != nil {

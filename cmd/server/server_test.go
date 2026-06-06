@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// TestGetCartEmpty tests getting an empty cart
+// TestGetCartEmpty tests getting an empty cart.
 func TestGetCartEmpty(t *testing.T) {
 	req := httptest.NewRequest("GET", "/", nil)
 	cart := getCart(req)
@@ -21,7 +21,7 @@ func TestGetCartEmpty(t *testing.T) {
 	}
 }
 
-// TestSetAndGetCart tests setting and retrieving a cart
+// TestSetAndGetCart tests setting and retrieving a cart.
 func TestSetAndGetCart(t *testing.T) {
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/cart/add", nil)
@@ -74,7 +74,7 @@ func TestSetAndGetCart(t *testing.T) {
 	}
 }
 
-// TestSetMultipleCartItems tests setting multiple items in cart
+// TestSetMultipleCartItems tests setting multiple items in cart.
 func TestSetMultipleCartItems(t *testing.T) {
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/cart/add", nil)
@@ -123,7 +123,7 @@ func TestSetMultipleCartItems(t *testing.T) {
 	}
 }
 
-// TestRemoveCartItem tests removing an item from cart
+// TestRemoveCartItem tests removing an item from cart.
 func TestRemoveCartItem(t *testing.T) {
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/cart/add", nil)
@@ -181,7 +181,7 @@ func TestRemoveCartItem(t *testing.T) {
 	}
 }
 
-// TestCartCookieEncoding tests that cart data is properly URL-encoded
+// TestCartCookieEncoding tests that cart data is properly URL-encoded.
 func TestCartCookieEncoding(t *testing.T) {
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/cart/add", nil)
@@ -229,7 +229,7 @@ func TestCartCookieEncoding(t *testing.T) {
 	}
 }
 
-// TestClearCart tests clearing the cart
+// TestClearCart tests clearing the cart.
 func TestClearCart(t *testing.T) {
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/cart/add", nil)
@@ -272,7 +272,7 @@ func TestClearCart(t *testing.T) {
 	}
 }
 
-// TestCartItemCalculations tests cart item total calculations
+// TestCartItemCalculations tests cart item total calculations.
 func TestCalculateItemTotal(t *testing.T) {
 	tests := []struct {
 		name       string
@@ -313,9 +313,8 @@ func TestCalculateItemTotal(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			total := 0
 			// Simplified calculation
-			total = tt.basePrice
+			total := tt.basePrice
 
 			// Add addon prices (hardcoded for test)
 			for _, addonID := range tt.addons {
@@ -335,7 +334,7 @@ func TestCalculateItemTotal(t *testing.T) {
 	}
 }
 
-// TestCartWithSpecialCharacters tests cart with special characters
+// TestCartWithSpecialCharacters tests cart with special characters.
 func TestCartWithSpecialCharacters(t *testing.T) {
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/cart/add", nil)
@@ -376,8 +375,8 @@ func TestCartWithSpecialCharacters(t *testing.T) {
 	}
 }
 
-// TestHandleCartRemoveInvalid tests removing with invalid HTTP method
-func TestHandleCartRemoveInvalid(t *testing.T) {
+// TestHandleCartRemoveInvalid tests removing with invalid HTTP method.
+func TestHandleCartRemoveInvalid(_ *testing.T) {
 	// Create a mock cart item
 	items := []CartItem{
 		{
@@ -405,12 +404,10 @@ func TestHandleCartRemoveInvalid(t *testing.T) {
 
 	// Test that we can't remove with GET
 	// (would need to mock the server to fully test, this just tests logic)
-	if req.Method != "POST" {
-		// ✓ Verification that invalid method would be caught
-	}
+	_ = req.Method != "POST"
 }
 
-// TestRemoveNonexistentItem tests removing an item that doesn't exist
+// TestRemoveNonexistentItem tests removing an item that doesn't exist.
 func TestRemoveNonexistentItem(t *testing.T) {
 	items := []CartItem{
 		{
@@ -453,7 +450,7 @@ func TestRemoveNonexistentItem(t *testing.T) {
 	}
 }
 
-// TestCartPersistenceAcrossRequests tests that cart persists with cookies
+// TestCartPersistenceAcrossRequests tests that cart persists with cookies.
 func TestCartPersistenceAcrossRequests(t *testing.T) {
 	// First request - set cart
 	w1 := httptest.NewRecorder()

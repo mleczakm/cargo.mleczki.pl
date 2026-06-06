@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -12,13 +13,13 @@ import (
 	"cargo.mleczki.pl/internal/eventstore"
 )
 
-// AuthManager handles user authentication and registration
+// AuthManager handles user authentication and registration.
 type AuthManager struct {
 	db         *sql.DB
 	eventStore eventstore.EventStore
 }
 
-// NewAuthManager creates a new authentication manager
+// NewAuthManager creates a new authentication manager.
 func NewAuthManager(db *sql.DB, eventStore eventstore.EventStore) *AuthManager {
 	return &AuthManager{
 		db:         db,
@@ -26,12 +27,12 @@ func NewAuthManager(db *sql.DB, eventStore eventstore.EventStore) *AuthManager {
 	}
 }
 
-// RegisterUser registers a new user and emits UserRegistered event
+// RegisterUser registers a new user and emits UserRegistered event.
 func (am *AuthManager) RegisterUser(ctx context.Context, cmd *domain.RegisterUserCommand) error {
 	// Check if user already exists
 	var exists bool
 	err := am.db.QueryRowContext(ctx, "SELECT EXISTS(SELECT 1 FROM users WHERE email = ?)", cmd.Email).Scan(&exists)
-	if err != nil && err != sql.ErrNoRows {
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("failed to check user existence: %w", err)
 	}
 	if exists {
@@ -78,7 +79,7 @@ func (am *AuthManager) RegisterUser(ctx context.Context, cmd *domain.RegisterUse
 	return nil
 }
 
-// Login authenticates a user and returns session token
+// Login authenticates a user and returns session token.
 func (am *AuthManager) Login(ctx context.Context, email, password string) (string, *domain.User, error) {
 	// Query user by email
 	var user domain.User
@@ -91,7 +92,7 @@ func (am *AuthManager) Login(ctx context.Context, email, password string) (strin
 		&user.IsAdult, &user.AcceptedTOS, &user.DeletionRequested, &user.DeletionRequestedAt,
 		&user.CreatedAt, &user.UpdatedAt,
 	)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil, fmt.Errorf("invalid email or password")
 	}
 	if err != nil {
@@ -130,7 +131,7 @@ func (am *AuthManager) Login(ctx context.Context, email, password string) (strin
 	return sessionToken, &user, nil
 }
 
-// VerifySession verifies a session token and returns the user
+// VerifySession verifies a session token and returns the user.
 func (am *AuthManager) VerifySession(ctx context.Context, sessionToken string) (*domain.User, bool, error) {
 	// Query session
 	var userID string
@@ -139,7 +140,7 @@ func (am *AuthManager) VerifySession(ctx context.Context, sessionToken string) (
 	err := am.db.QueryRowContext(ctx, `
 		SELECT user_id, is_admin, expires_at FROM user_sessions WHERE id = ?
 	`, sessionToken).Scan(&userID, &isAdmin, &expiresAt)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, false, fmt.Errorf("invalid session")
 	}
 	if err != nil {
@@ -183,7 +184,7 @@ func (am *AuthManager) VerifySession(ctx context.Context, sessionToken string) (
 	return &user, isAdmin, nil
 }
 
-// Logout removes a session
+// Logout removes a session.
 func (am *AuthManager) Logout(ctx context.Context, sessionToken string) error {
 	_, err := am.db.ExecContext(ctx, "DELETE FROM user_sessions WHERE id = ?", sessionToken)
 	if err != nil {
@@ -192,7 +193,7 @@ func (am *AuthManager) Logout(ctx context.Context, sessionToken string) error {
 	return nil
 }
 
-// generateSessionToken generates a random session token
+// generateSessionToken generates a random session token.
 func generateSessionToken() string {
 	return fmt.Sprintf("%d", time.Now().UnixNano())
 }

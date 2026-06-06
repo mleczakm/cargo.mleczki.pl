@@ -7,12 +7,12 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-// ReadModelsDB handles the read models database
+// ReadModelsDB handles the read models database.
 type ReadModelsDB struct {
 	db *sql.DB
 }
 
-// NewReadModelsDB creates a new read models database connection
+// NewReadModelsDB creates a new read models database connection.
 func NewReadModelsDB(dbPath string) (*ReadModelsDB, error) {
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
@@ -32,7 +32,7 @@ func NewReadModelsDB(dbPath string) (*ReadModelsDB, error) {
 	return rm, nil
 }
 
-// initSchema creates the read model tables
+// initSchema creates the read model tables.
 func (rm *ReadModelsDB) initSchema() error {
 	// Users table
 	usersTable := `
@@ -180,17 +180,17 @@ func (rm *ReadModelsDB) initSchema() error {
 	return nil
 }
 
-// GetDB returns the underlying database connection
+// GetDB returns the underlying database connection.
 func (rm *ReadModelsDB) GetDB() *sql.DB {
 	return rm.db
 }
 
-// Close closes the database connection
+// Close closes the database connection.
 func (rm *ReadModelsDB) Close() error {
 	return rm.db.Close()
 }
 
-// GetCheckpoint retrieves the last processed event version for a projection
+// GetCheckpoint retrieves the last processed event version for a projection.
 func (rm *ReadModelsDB) GetCheckpoint(projectionName string) (int, error) {
 	var version int
 	err := rm.db.QueryRow("SELECT last_event_version FROM projection_checkpoint WHERE projection_name = ?", projectionName).Scan(&version)
@@ -200,7 +200,7 @@ func (rm *ReadModelsDB) GetCheckpoint(projectionName string) (int, error) {
 	return version, err
 }
 
-// SaveCheckpoint saves the last processed event version for a projection
+// SaveCheckpoint saves the last processed event version for a projection.
 func (rm *ReadModelsDB) SaveCheckpoint(projectionName string, version int) error {
 	query := `
 	INSERT INTO projection_checkpoint (projection_name, last_event_version)

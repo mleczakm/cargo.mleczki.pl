@@ -1,11 +1,11 @@
-package projections
+package projections_test
 
 import (
-	"context"
 	"encoding/json"
 	"testing"
 
 	"cargo.mleczki.pl/internal/eventstore"
+	"cargo.mleczki.pl/internal/projections"
 )
 
 func TestProjector_Run(t *testing.T) {
@@ -16,17 +16,17 @@ func TestProjector_Run(t *testing.T) {
 	}
 	defer eventStore.Close()
 
-	readModels, err := NewReadModelsDB(":memory:")
+	readModels, err := projections.NewReadModelsDB(":memory:")
 	if err != nil {
 		t.Fatalf("Failed to create read models: %v", err)
 	}
 	defer readModels.Close()
 
 	// Create projector
-	projector := NewProjector(eventStore, readModels, "test")
+	projector := projections.NewProjector(eventStore, readModels, "test")
 
 	// Save a test event
-	ctx := context.Background()
+	ctx := t.Context()
 	data := map[string]interface{}{"test": "data"}
 	payload, _ := json.Marshal(data)
 
@@ -61,7 +61,7 @@ func TestProjector_Run(t *testing.T) {
 
 func TestReadModelsDB_GetCheckpoint(t *testing.T) {
 	// Create in-memory database
-	readModels, err := NewReadModelsDB(":memory:")
+	readModels, err := projections.NewReadModelsDB(":memory:")
 	if err != nil {
 		t.Fatalf("Failed to create read models: %v", err)
 	}
@@ -80,7 +80,7 @@ func TestReadModelsDB_GetCheckpoint(t *testing.T) {
 
 func TestReadModelsDB_SaveCheckpoint(t *testing.T) {
 	// Create in-memory database
-	readModels, err := NewReadModelsDB(":memory:")
+	readModels, err := projections.NewReadModelsDB(":memory:")
 	if err != nil {
 		t.Fatalf("Failed to create read models: %v", err)
 	}

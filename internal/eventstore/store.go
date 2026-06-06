@@ -4,7 +4,7 @@ import (
 	"context"
 )
 
-// EventStore defines the interface for storing and retrieving events
+// EventStore defines the interface for storing and retrieving events.
 type EventStore interface {
 	// Save appends a new event to the store
 	Save(ctx context.Context, event *Event) error

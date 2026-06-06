@@ -6,15 +6,15 @@ import (
 	"fmt"
 	"time"
 
-	_ "modernc.org/sqlite"
+	_ "modernc.org/sqlite" // Register SQLite driver
 )
 
-// SQLiteEventStore implements EventStore using SQLite
+// SQLiteEventStore implements EventStore using SQLite.
 type SQLiteEventStore struct {
 	db *sql.DB
 }
 
-// NewSQLiteEventStore creates a new SQLite event store
+// NewSQLiteEventStore creates a new SQLite event store.
 func NewSQLiteEventStore(dbPath string) (*SQLiteEventStore, error) {
 	db, err := sql.Open("sqlite", dbPath)
 	if err != nil {
@@ -34,7 +34,7 @@ func NewSQLiteEventStore(dbPath string) (*SQLiteEventStore, error) {
 	return store, nil
 }
 
-// initSchema creates the events table if it doesn't exist
+// initSchema creates the events table if it doesn't exist.
 func (s *SQLiteEventStore) initSchema() error {
 	eventsTable := `
 	CREATE TABLE IF NOT EXISTS events (
@@ -75,7 +75,7 @@ func (s *SQLiteEventStore) initSchema() error {
 	return nil
 }
 
-// Save appends a new event to the store
+// Save appends a new event to the store.
 func (s *SQLiteEventStore) Save(ctx context.Context, event *Event) error {
 	if event.CreatedAt == "" {
 		event.CreatedAt = time.Now().UTC().Format(time.RFC3339)
@@ -99,7 +99,32 @@ func (s *SQLiteEventStore) Save(ctx context.Context, event *Event) error {
 	return err
 }
 
-// GetEvents retrieves all events for a specific aggregate
+// scanEvents scans events from sql.Rows.
+func scanEvents(rows *sql.Rows) ([]*Event, error) {
+	var events []*Event
+	for rows.Next() {
+		event := &Event{}
+		err := rows.Scan(
+			&event.ID,
+			&event.AggregateID,
+			&event.AggregateType,
+			&event.EventType,
+			&event.Payload,
+			&event.Version,
+			&event.CreatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		events = append(events, event)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return events, nil
+}
+
+// GetEvents retrieves all events for a specific aggregate.
 func (s *SQLiteEventStore) GetEvents(ctx context.Context, aggregateID string) ([]*Event, error) {
 	query := `
 	SELECT id, aggregate_id, aggregate_type, event_type, payload, version, created_at
@@ -114,28 +139,10 @@ func (s *SQLiteEventStore) GetEvents(ctx context.Context, aggregateID string) ([
 	}
 	defer rows.Close()
 
-	var events []*Event
-	for rows.Next() {
-		event := &Event{}
-		err := rows.Scan(
-			&event.ID,
-			&event.AggregateID,
-			&event.AggregateType,
-			&event.EventType,
-			&event.Payload,
-			&event.Version,
-			&event.CreatedAt,
-		)
-		if err != nil {
-			return nil, err
-		}
-		events = append(events, event)
-	}
-
-	return events, nil
+	return scanEvents(rows)
 }
 
-// GetEventsByType retrieves all events of a specific type
+// GetEventsByType retrieves all events of a specific type.
 func (s *SQLiteEventStore) GetEventsByType(ctx context.Context, eventType string) ([]*Event, error) {
 	query := `
 	SELECT id, aggregate_id, aggregate_type, event_type, payload, version, created_at
@@ -150,28 +157,10 @@ func (s *SQLiteEventStore) GetEventsByType(ctx context.Context, eventType string
 	}
 	defer rows.Close()
 
-	var events []*Event
-	for rows.Next() {
-		event := &Event{}
-		err := rows.Scan(
-			&event.ID,
-			&event.AggregateID,
-			&event.AggregateType,
-			&event.EventType,
-			&event.Payload,
-			&event.Version,
-			&event.CreatedAt,
-		)
-		if err != nil {
-			return nil, err
-		}
-		events = append(events, event)
-	}
-
-	return events, nil
+	return scanEvents(rows)
 }
 
-// GetAllEvents retrieves all events from the store
+// GetAllEvents retrieves all events from the store.
 func (s *SQLiteEventStore) GetAllEvents(ctx context.Context) ([]*Event, error) {
 	query := `
 	SELECT id, aggregate_id, aggregate_type, event_type, payload, version, created_at
@@ -185,28 +174,10 @@ func (s *SQLiteEventStore) GetAllEvents(ctx context.Context) ([]*Event, error) {
 	}
 	defer rows.Close()
 
-	var events []*Event
-	for rows.Next() {
-		event := &Event{}
-		err := rows.Scan(
-			&event.ID,
-			&event.AggregateID,
-			&event.AggregateType,
-			&event.EventType,
-			&event.Payload,
-			&event.Version,
-			&event.CreatedAt,
-		)
-		if err != nil {
-			return nil, err
-		}
-		events = append(events, event)
-	}
-
-	return events, nil
+	return scanEvents(rows)
 }
 
-// GetEventsSince retrieves all events after a specific version
+// GetEventsSince retrieves all events after a specific version.
 func (s *SQLiteEventStore) GetEventsSince(ctx context.Context, version int) ([]*Event, error) {
 	query := `
 	SELECT id, aggregate_id, aggregate_type, event_type, payload, version, created_at
@@ -221,28 +192,10 @@ func (s *SQLiteEventStore) GetEventsSince(ctx context.Context, version int) ([]*
 	}
 	defer rows.Close()
 
-	var events []*Event
-	for rows.Next() {
-		event := &Event{}
-		err := rows.Scan(
-			&event.ID,
-			&event.AggregateID,
-			&event.AggregateType,
-			&event.EventType,
-			&event.Payload,
-			&event.Version,
-			&event.CreatedAt,
-		)
-		if err != nil {
-			return nil, err
-		}
-		events = append(events, event)
-	}
-
-	return events, nil
+	return scanEvents(rows)
 }
 
-// Close closes the database connection
+// Close closes the database connection.
 func (s *SQLiteEventStore) Close() error {
 	return s.db.Close()
 }

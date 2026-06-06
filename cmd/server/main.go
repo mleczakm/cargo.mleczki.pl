@@ -69,10 +69,17 @@ func main() {
 	// Register routes
 	server.RegisterRoutes(r)
 
-	// Start HTTP server
+	// Start HTTP server with timeouts
 	addr := ":8080"
 	log.Printf("Starting server on %s", addr)
-	if err := http.ListenAndServe(addr, r); err != nil {
+	srv := &http.Server{
+		Addr:         addr,
+		Handler:      r,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatalf("Server failed: %v", err)
 	}
 }

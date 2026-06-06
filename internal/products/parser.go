@@ -15,13 +15,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// Parser handles parsing product markdown files
+// Parser handles parsing product markdown files.
 type Parser struct {
 	productsDir string
 	markdown    goldmark.Markdown
 }
 
-// NewParser creates a new product parser
+// NewParser creates a new product parser.
 func NewParser(productsDir string) *Parser {
 	md := goldmark.New(
 		goldmark.WithExtensions(extension.GFM),
@@ -39,14 +39,14 @@ func NewParser(productsDir string) *Parser {
 	}
 }
 
-// ProductFrontmatter represents the YAML frontmatter in product files
+// ProductFrontmatter represents the YAML frontmatter in product files.
 type ProductFrontmatter struct {
 	ID          string             `yaml:"id"`
 	Name        string             `yaml:"name"`
-	BasePrice   int                `yaml:"base_price"`
+	BasePrice   int                `yaml:"basePrice"`
 	Image       string             `yaml:"image"`
 	Icon        string             `yaml:"icon"`
-	BookedDates []string           `yaml:"booked_dates"`
+	BookedDates []string           `yaml:"bookedDates"`
 	Addons      []AddonFrontmatter `yaml:"addons"`
 }
 
@@ -57,7 +57,7 @@ type AddonFrontmatter struct {
 	Icon  string `yaml:"icon"`
 }
 
-// LoadAllProducts loads all products from the products directory
+// LoadAllProducts loads all products from the products directory.
 func (p *Parser) LoadAllProducts() ([]domain.Product, error) {
 	var products []domain.Product
 
@@ -82,7 +82,7 @@ func (p *Parser) LoadAllProducts() ([]domain.Product, error) {
 	return products, nil
 }
 
-// LoadProduct loads a single product from a markdown file
+// LoadProduct loads a single product from a markdown file.
 func (p *Parser) LoadProduct(filename string) (*domain.Product, error) {
 	filePath := filepath.Join(p.productsDir, filename)
 	content, err := os.ReadFile(filePath)
@@ -133,7 +133,7 @@ func (p *Parser) LoadProduct(filename string) (*domain.Product, error) {
 	return product, nil
 }
 
-// LoadProductByID loads a product by its ID
+// LoadProductByID loads a product by its ID.
 func (p *Parser) LoadProductByID(id string) (*domain.Product, error) {
 	files, err := os.ReadDir(p.productsDir)
 	if err != nil {

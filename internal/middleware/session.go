@@ -7,7 +7,16 @@ import (
 	"cargo.mleczki.pl/internal/auth"
 )
 
-// SessionMiddleware adds user information to the request context from session cookie
+// contextKey is a custom type for context keys to avoid collisions.
+type contextKey string
+
+const (
+	contextKeyUser    contextKey = "user"
+	contextKeyIsAdmin contextKey = "is_admin"
+	contextKeyUserID  contextKey = "user_id"
+)
+
+// SessionMiddleware adds user information to the request context from session cookie.
 func SessionMiddleware(authManager *auth.AuthManager) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -28,37 +37,37 @@ func SessionMiddleware(authManager *auth.AuthManager) func(http.Handler) http.Ha
 			}
 
 			// Add user to request context
-			ctx := context.WithValue(r.Context(), "user", user)
-			ctx = context.WithValue(ctx, "is_admin", isAdmin)
-			ctx = context.WithValue(ctx, "user_id", user.ID)
+			ctx := context.WithValue(r.Context(), contextKeyUser, user)
+			ctx = context.WithValue(ctx, contextKeyIsAdmin, isAdmin)
+			ctx = context.WithValue(ctx, contextKeyUserID, user.ID)
 
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
 
-// GetUserID retrieves the user ID from the request context
+// GetUserID retrieves the user ID from the request context.
 func GetUserID(r *http.Request) string {
-	if userID, ok := r.Context().Value("user_id").(string); ok {
+	if userID, ok := r.Context().Value(contextKeyUserID).(string); ok {
 		return userID
 	}
 	return ""
 }
 
-// GetUser retrieves the user from the request context
+// GetUser retrieves the user from the request context.
 func GetUser(r *http.Request) interface{} {
-	return r.Context().Value("user")
+	return r.Context().Value(contextKeyUser)
 }
 
-// IsAdmin checks if the current user is an admin
+// IsAdmin checks if the current user is an admin.
 func IsAdmin(r *http.Request) bool {
-	if isAdmin, ok := r.Context().Value("is_admin").(bool); ok {
+	if isAdmin, ok := r.Context().Value(contextKeyIsAdmin).(bool); ok {
 		return isAdmin
 	}
 	return false
 }
 
-// IsAuthenticated checks if a user is authenticated
+// IsAuthenticated checks if a user is authenticated.
 func IsAuthenticated(r *http.Request) bool {
 	return GetUser(r) != nil
 }

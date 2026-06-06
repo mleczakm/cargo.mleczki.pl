@@ -4,7 +4,7 @@ import (
 	"net/http"
 )
 
-// AdminMiddleware checks if the user is authenticated as an admin
+// AdminMiddleware checks if the user is authenticated as an admin.
 func AdminMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !IsAuthenticated(r) {
@@ -21,7 +21,7 @@ func AdminMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// RequireAuth checks if the user is authenticated
+// RequireAuth checks if the user is authenticated.
 func RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !IsAuthenticated(r) {

@@ -4,7 +4,7 @@ import (
 	"time"
 )
 
-// Order Aggregate
+// Order Aggregate.
 type Order struct {
 	ID            string
 	UserID        string
@@ -21,20 +21,20 @@ type Order struct {
 }
 
 type OrderItem struct {
-	ProductID      string
-	ProductName    string
-	BasePrice      int
-	SelectedAddons []Addon
-	RentalDays     int
+	ProductID      string  `json:"productId"`
+	ProductName    string  `json:"productName"`
+	BasePrice      int     `json:"basePrice"`
+	SelectedAddons []Addon `json:"selectedAddons"`
+	RentalDays     int     `json:"rentalDays"`
 }
 
 type Addon struct {
-	ID    string
-	Name  string
-	Price int
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Price int    `json:"price"`
 }
 
-// Order Commands
+// Order Commands.
 type PlaceOrderCommand struct {
 	OrderID       string
 	UserID        string
@@ -55,16 +55,16 @@ type CancelOrderCommand struct {
 	OrderID string
 }
 
-// Order Events
+// Order Events.
 type OrderPlacedEvent struct {
-	OrderID       string      `json:"order_id"`
-	UserID        string      `json:"user_id"`
+	OrderID       string      `json:"orderId"`
+	UserID        string      `json:"userId"`
 	Items         []OrderItem `json:"items"`
-	TotalAmount   int         `json:"total_amount"`
-	PaymentMethod string      `json:"payment_method"`
-	StartDate     string      `json:"start_date"`
-	EndDate       string      `json:"end_date"`
-	RentalDays    int         `json:"rental_days"`
+	TotalAmount   int         `json:"totalAmount"`
+	PaymentMethod string      `json:"paymentMethod"`
+	StartDate     string      `json:"startDate"`
+	EndDate       string      `json:"endDate"`
+	RentalDays    int         `json:"rentalDays"`
 	Timestamp     time.Time   `json:"timestamp"`
 }
 
@@ -73,7 +73,7 @@ func (e *OrderPlacedEvent) EventType() string {
 }
 
 type OrderPaidEvent struct {
-	OrderID   string    `json:"order_id"`
+	OrderID   string    `json:"orderId"`
 	Method    string    `json:"method"`
 	Timestamp time.Time `json:"timestamp"`
 }
@@ -83,7 +83,7 @@ func (e *OrderPaidEvent) EventType() string {
 }
 
 type OrderCancelledEvent struct {
-	OrderID   string    `json:"order_id"`
+	OrderID   string    `json:"orderId"`
 	Timestamp time.Time `json:"timestamp"`
 }
 

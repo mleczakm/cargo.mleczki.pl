@@ -20,7 +20,9 @@ import (
 	"cargo.mleczki.pl/internal/projections"
 )
 
-// Server holds the application state
+const methodPost = "POST"
+
+// Server holds the application state.
 type Server struct {
 	eventStore    eventstore.EventStore
 	readModels    *projections.ReadModelsDB
@@ -34,7 +36,7 @@ var partialTemplates = map[string]struct{}{
 	"payment_success.html": {},
 }
 
-// NewServer creates a new HTTP server
+// NewServer creates a new HTTP server.
 func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadModelsDB, productParser *products.Parser) *Server {
 	funcMap := template.FuncMap{
 		"upper": strings.ToUpper,
@@ -51,7 +53,7 @@ func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadMod
 	}
 }
 
-// RegisterRoutes sets up all HTTP routes
+// RegisterRoutes sets up all HTTP routes.
 func (s *Server) RegisterRoutes(r chi.Router) {
 	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
 	r.Get("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
@@ -97,7 +99,7 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 	r.Get("/health", s.handleHealth)
 }
 
-// handleHome renders the home page
+// handleHome renders the home page.
 func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	products, err := s.productParser.LoadAllProducts()
 	if err != nil {
@@ -116,7 +118,7 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	s.renderTemplate(w, r, "home.html", data)
 }
 
-// handleProduct renders the product detail page
+// handleProduct renders the product detail page.
 func (s *Server) handleProduct(w http.ResponseWriter, r *http.Request) {
 	productID := chi.URLParam(r, "id")
 
@@ -144,7 +146,7 @@ func (s *Server) handleProduct(w http.ResponseWriter, r *http.Request) {
 	s.renderTemplate(w, r, "product.html", data)
 }
 
-// handleProductCalendar renders the calendar widget (HTMX)
+// handleProductCalendar renders the calendar widget (HTMX).
 func (s *Server) handleProductCalendar(w http.ResponseWriter, r *http.Request) {
 	productID := chi.URLParam(r, "id")
 
@@ -198,7 +200,7 @@ func (s *Server) handleProductCalendar(w http.ResponseWriter, r *http.Request) {
 	s.renderTemplate(w, r, "calendar.html", data)
 }
 
-// generateCalendarGrid generates the calendar grid for a given month
+// generateCalendarGrid generates the calendar grid for a given month.
 func (s *Server) generateCalendarGrid(year, month int, bookedDates []string, startDate, endDate string) [][]CalendarDay {
 	firstDay := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
 	lastDay := firstDay.AddDate(0, 1, -1)
@@ -272,7 +274,7 @@ func (s *Server) generateCalendarGrid(year, month int, bookedDates []string, sta
 	return grid
 }
 
-// CalendarDay represents a single day in the calendar
+// CalendarDay represents a single day in the calendar.
 type CalendarDay struct {
 	Day        int
 	DateStr    string
@@ -283,9 +285,9 @@ type CalendarDay struct {
 	IsPast     bool
 }
 
-// handleLogin renders the login page
+// handleLogin renders the login page.
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "POST" {
+	if r.Method == methodPost {
 		// Handle login (simplified for now)
 		http.Redirect(w, r, "/user", http.StatusFound)
 		return
@@ -298,7 +300,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	s.renderTemplate(w, r, "login.html", data)
 }
 
-// handleCheckout renders the checkout page
+// handleCheckout renders the checkout page.
 func (s *Server) handleCheckout(w http.ResponseWriter, r *http.Request) {
 	cart := getCart(r)
 
@@ -315,7 +317,7 @@ func (s *Server) handleCheckout(w http.ResponseWriter, r *http.Request) {
 	s.renderTemplate(w, r, "checkout.html", data)
 }
 
-// handlePayment renders the payment page
+// handlePayment renders the payment page.
 func (s *Server) handlePayment(w http.ResponseWriter, r *http.Request) {
 	// Simplified payment handling
 	data := map[string]interface{}{
@@ -328,9 +330,9 @@ func (s *Server) handlePayment(w http.ResponseWriter, r *http.Request) {
 	s.renderTemplate(w, r, "payment.html", data)
 }
 
-// handleCartAdd adds an item to the cart (HTMX)
+// handleCartAdd adds an item to the cart (HTMX).
 func (s *Server) handleCartAdd(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
+	if r.Method != methodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -374,9 +376,9 @@ func (s *Server) handleCartAdd(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/checkout", http.StatusFound)
 }
 
-// handleCartRemove removes an item from the cart (HTMX)
+// handleCartRemove removes an item from the cart (HTMX).
 func (s *Server) handleCartRemove(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
+	if r.Method != methodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -405,9 +407,9 @@ func (s *Server) handleCartRemove(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/checkout", http.StatusFound)
 }
 
-// handleCheckoutSubmit processes the checkout form (HTMX)
+// handleCheckoutSubmit processes the checkout form (HTMX).
 func (s *Server) handleCheckoutSubmit(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
+	if r.Method != methodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -425,9 +427,9 @@ func (s *Server) handleCheckoutSubmit(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, redirectURL, http.StatusFound)
 }
 
-// handlePaymentConfirm confirms payment (HTMX)
+// handlePaymentConfirm confirms payment (HTMX).
 func (s *Server) handlePaymentConfirm(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
+	if r.Method != methodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -439,7 +441,7 @@ func (s *Server) handlePaymentConfirm(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/success", http.StatusFound)
 }
 
-// handlePaymentStatus checks payment status (HTMX polling)
+// handlePaymentStatus checks payment status (HTMX polling).
 func (s *Server) handlePaymentStatus(w http.ResponseWriter, r *http.Request) {
 	orderID := chi.URLParam(r, "id")
 
@@ -454,7 +456,7 @@ func (s *Server) handlePaymentStatus(w http.ResponseWriter, r *http.Request) {
 	s.renderTemplate(w, r, "payment_success.html", data)
 }
 
-// handleSuccess renders the order success page
+// handleSuccess renders the order success page.
 func (s *Server) handleSuccess(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
 		"Title": "Potwierdzenie zamówienia",
@@ -464,7 +466,7 @@ func (s *Server) handleSuccess(w http.ResponseWriter, r *http.Request) {
 	s.renderTemplate(w, r, "success.html", data)
 }
 
-// handleUserPanel renders the user panel
+// handleUserPanel renders the user panel.
 func (s *Server) handleUserPanel(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
 		"Title":       "Panel Klienta",
@@ -477,7 +479,7 @@ func (s *Server) handleUserPanel(w http.ResponseWriter, r *http.Request) {
 	s.renderTemplate(w, r, "user_panel.html", data)
 }
 
-// handleUserDeleteRequest initiates account deletion (HTMX)
+// handleUserDeleteRequest initiates account deletion (HTMX).
 func (s *Server) handleUserDeleteRequest(w http.ResponseWriter, r *http.Request) {
 	// Return confirmation dialog
 	w.Header().Set("Content-Type", "text/html")
@@ -493,7 +495,7 @@ func (s *Server) handleUserDeleteRequest(w http.ResponseWriter, r *http.Request)
 	</div>`)
 }
 
-// handleUserDeleteConfirm confirms account deletion (HTMX)
+// handleUserDeleteConfirm confirms account deletion (HTMX).
 func (s *Server) handleUserDeleteConfirm(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	fmt.Fprintf(w, `<div id="delete-section" class="bg-emerald-50 text-emerald-800 p-4 rounded-xl text-sm flex items-center font-medium border border-emerald-100">
@@ -504,7 +506,7 @@ func (s *Server) handleUserDeleteConfirm(w http.ResponseWriter, r *http.Request)
 	</div>`)
 }
 
-// handleUserDeleteCancel cancels account deletion (HTMX)
+// handleUserDeleteCancel cancels account deletion (HTMX).
 func (s *Server) handleUserDeleteCancel(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	fmt.Fprintf(w, `<button hx-post="/user/delete-request" hx-target="#delete-section" class="text-red-500 text-sm hover:underline font-medium">
@@ -512,7 +514,7 @@ func (s *Server) handleUserDeleteCancel(w http.ResponseWriter, r *http.Request) 
 	</button>`)
 }
 
-// handleAdminPanel renders the admin panel
+// handleAdminPanel renders the admin panel.
 func (s *Server) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
 		"Title":     "Panel Administratora",
@@ -524,7 +526,7 @@ func (s *Server) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 	s.renderTemplate(w, r, "admin_panel.html", data)
 }
 
-// handleAdminUserDetail renders admin user detail page
+// handleAdminUserDetail renders admin user detail page.
 func (s *Server) handleAdminUserDetail(w http.ResponseWriter, r *http.Request) {
 	userID := chi.URLParam(r, "id")
 
@@ -538,7 +540,7 @@ func (s *Server) handleAdminUserDetail(w http.ResponseWriter, r *http.Request) {
 	s.renderTemplate(w, r, "admin_user_detail.html", data)
 }
 
-// handleAdminOrderMarkPaid marks an order as paid (HTMX)
+// handleAdminOrderMarkPaid marks an order as paid (HTMX).
 func (s *Server) handleAdminOrderMarkPaid(w http.ResponseWriter, r *http.Request) {
 	orderID := chi.URLParam(r, "id")
 
@@ -549,9 +551,9 @@ func (s *Server) handleAdminOrderMarkPaid(w http.ResponseWriter, r *http.Request
 	s.handleAdminPanel(w, r)
 }
 
-// handleAdminTransferLink links a transfer to an order (HTMX)
+// handleAdminTransferLink links a transfer to an order (HTMX).
 func (s *Server) handleAdminTransferLink(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
+	if r.Method != methodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
@@ -568,15 +570,15 @@ func (s *Server) handleAdminTransferLink(w http.ResponseWriter, r *http.Request)
 	s.handleAdminPanel(w, r)
 }
 
-// handleHealth returns health status
+// handleHealth returns health status.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("OK"))
+	_, _ = w.Write([]byte("OK"))
 }
 
 // Helper functions
 
-// adminAuthMiddleware checks if user is authenticated as admin
+// adminAuthMiddleware checks if user is authenticated as admin.
 func (s *Server) adminAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Check for admin session cookie
@@ -624,6 +626,7 @@ func (s *Server) renderTemplate(w http.ResponseWriter, r *http.Request, name str
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 		return
 	}
+	// #nosec G203 - content is already escaped by template engine
 	data["Content"] = template.HTML(contentBuf.String())
 
 	if err := s.templates.ExecuteTemplate(w, "layout.html", data); err != nil {
@@ -645,15 +648,15 @@ func isAdmin(r *http.Request) bool {
 // Cart types and functions
 
 type CartItem struct {
-	CartID      string
-	ProductID   string
-	ProductName string
-	BasePrice   int
-	StartDate   string
-	EndDate     string
-	RentalDays  int
-	Addons      []string
-	Total       int
+	CartID      string   `json:"cartId"`
+	ProductID   string   `json:"productId"`
+	ProductName string   `json:"productName"`
+	BasePrice   int      `json:"basePrice"`
+	StartDate   string   `json:"startDate"`
+	EndDate     string   `json:"endDate"`
+	RentalDays  int      `json:"rentalDays"`
+	Addons      []string `json:"addons"`
+	Total       int      `json:"total"`
 }
 
 func getCart(r *http.Request) []CartItem {

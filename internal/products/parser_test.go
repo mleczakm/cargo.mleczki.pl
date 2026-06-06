@@ -1,9 +1,11 @@
-package products
+package products_test
 
 import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"cargo.mleczki.pl/internal/products"
 )
 
 func TestParser_LoadAllProducts(t *testing.T) {
@@ -58,22 +60,22 @@ Test description 2
 	}
 
 	// Create parser with test directory
-	parser := NewParser(tmpDir)
+	parser := products.NewParser(tmpDir)
 
 	// Load all products
-	products, err := parser.LoadAllProducts()
+	productList, err := parser.LoadAllProducts()
 	if err != nil {
 		t.Fatalf("LoadAllProducts failed: %v", err)
 	}
 
 	// Verify we got 2 products
-	if len(products) != 2 {
-		t.Errorf("Expected 2 products, got %d", len(products))
+	if len(productList) != 2 {
+		t.Errorf("Expected 2 products, got %d", len(productList))
 	}
 
 	// Verify product IDs
 	productIDs := make(map[string]bool)
-	for _, p := range products {
+	for _, p := range productList {
 		productIDs[p.ID] = true
 	}
 
@@ -114,7 +116,7 @@ Test product description with **markdown** formatting.
 	}
 
 	// Create parser with test directory
-	parser := NewParser(tmpDir)
+	parser := products.NewParser(tmpDir)
 
 	// Load product by ID
 	product, err := parser.LoadProductByID("test-product")
@@ -153,7 +155,7 @@ func TestParser_LoadProductByID_NotFound(t *testing.T) {
 	tmpDir := t.TempDir()
 
 	// Create parser with empty directory
-	parser := NewParser(tmpDir)
+	parser := products.NewParser(tmpDir)
 
 	// Try to load non-existent product
 	_, err := parser.LoadProductByID("non-existent")

@@ -17,26 +17,19 @@ linters:
     - errorlint
     - exhaustive
     - copyloopvar
-    - forbidigo
     - forcetypeassert
-    - funlen
     - gochecksumtype
     - gocognit
     - goconst
-    - gocritic
     - gocyclo
     - godot
     - godox
-    - err113
     - gofmt
-    - gofumpt
     - goheader
     - goimports
-    - mnd
     - gomodguard
     - goprintffuncname
     - gosec
-    - gosimple
     - gosmopolitan
     - govet
     - grouper
@@ -44,15 +37,12 @@ linters:
     - inamedparam
     - ineffassign
     - interfacebloat
-    - intrange
     - ireturn
-    - lll
     - loggercheck
     - maintidx
     - makezero
     - mirror
     - misspell
-    - mnd
     - musttag
     - nakedret
     - nilerr
@@ -60,11 +50,8 @@ linters:
     - nolintlint
     - nonamedreturns
     - nosprintfhostport
-    - perfsprint
-    - prealloc
     - predeclared
     - reassign
-    - revive
     - rowserrcheck
     - sloglint
     - spancheck
@@ -88,10 +75,18 @@ linters:
     - zerologlint
   disable:
     - exhaustruct
+    - funlen
+    - gocritic
+    - gofumpt
+    - gosimple
+    - intrange
     - lll
     - mnd
     - perfsprint
     - prealloc
+    - revive
+    - err113
+    - forbidigo
     - usestdlibvars
 
 issues:

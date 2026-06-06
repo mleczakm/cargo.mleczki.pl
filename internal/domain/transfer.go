@@ -2,7 +2,7 @@ package domain
 
 import "time"
 
-// Transfer Aggregate
+// Transfer Aggregate.
 type Transfer struct {
 	ID        string
 	Date      string
@@ -15,7 +15,7 @@ type Transfer struct {
 	Version   int
 }
 
-// Transfer Commands
+// Transfer Commands.
 type RegisterTransferCommand struct {
 	TransferID string
 	Date       string
@@ -29,9 +29,9 @@ type LinkTransferToOrderCommand struct {
 	OrderID    string
 }
 
-// Transfer Events
+// Transfer Events.
 type TransferReceivedEvent struct {
-	TransferID string    `json:"transfer_id"`
+	TransferID string    `json:"transferId"`
 	Date       string    `json:"date"`
 	Sender     string    `json:"sender"`
 	Title      string    `json:"title"`
@@ -44,8 +44,8 @@ func (e *TransferReceivedEvent) EventType() string {
 }
 
 type TransferLinkedEvent struct {
-	TransferID string    `json:"transfer_id"`
-	OrderID    string    `json:"order_id"`
+	TransferID string    `json:"transferId"`
+	OrderID    string    `json:"orderId"`
 	Timestamp  time.Time `json:"timestamp"`
 }
 

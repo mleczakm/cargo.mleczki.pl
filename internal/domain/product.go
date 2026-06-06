@@ -1,6 +1,6 @@
 package domain
 
-// Product represents a rental item
+// Product represents a rental item.
 type Product struct {
 	ID          string
 	Name        string
@@ -12,7 +12,7 @@ type Product struct {
 	BookedDates []string
 }
 
-// ProductAddon represents an optional add-on for a product
+// ProductAddon represents an optional add-on for a product.
 type ProductAddon struct {
 	ID    string
 	Name  string
@@ -20,7 +20,7 @@ type ProductAddon struct {
 	Icon  string
 }
 
-// ProductAvailability represents availability for a specific date
+// ProductAvailability represents availability for a specific date.
 type ProductAvailability struct {
 	ProductID string
 	Date      string
