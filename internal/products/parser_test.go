@@ -23,10 +23,10 @@ func TestParser_LoadAllProducts(t *testing.T) {
 			content: `---
 id: test1
 name: Test Product 1
-base_price: 100
+basePrice: 100
 image: https://example.com/image1.jpg
 icon: 🚲
-booked_dates: []
+bookedDates: []
 addons: []
 ---
 
@@ -39,10 +39,10 @@ Test description 1
 			content: `---
 id: test2
 name: Test Product 2
-base_price: 200
+basePrice: 200
 image: https://example.com/image2.jpg
 icon: 🚗
-booked_dates: []
+bookedDates: []
 addons: []
 ---
 
@@ -94,10 +94,10 @@ func TestParser_LoadProductByID(t *testing.T) {
 	content := `---
 id: test-product
 name: Test Product
-base_price: 150
+basePrice: 150
 image: https://example.com/image.jpg
 icon: 🚲
-booked_dates:
+bookedDates:
   - "2026-06-10"
   - "2026-06-11"
 addons:

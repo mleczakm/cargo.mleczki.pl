@@ -98,4 +98,5 @@ clean:
 	rm -f coverage.html
 
 lint-fix:
+	make fmt
 	~/go/bin/golangci-lint run --fix ./...

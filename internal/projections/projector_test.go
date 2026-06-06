@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
+	"cargo.mleczki.pl/internal/domain"
 	"cargo.mleczki.pl/internal/eventstore"
 	"cargo.mleczki.pl/internal/projections"
 )
@@ -27,8 +28,18 @@ func TestProjector_Run(t *testing.T) {
 
 	// Save a test event
 	ctx := t.Context()
-	data := map[string]interface{}{"test": "data"}
-	payload, _ := json.Marshal(data)
+	eventData := map[string]interface{}{
+		"orderId":       "order-1",
+		"userId":        "user-1",
+		"items":         []domain.OrderItem{},
+		"totalAmount":   100,
+		"paymentMethod": "blik",
+		"startDate":     "2024-01-01",
+		"endDate":       "2024-01-03",
+		"rentalDays":    2,
+		"timestamp":     "2024-01-01T00:00:00Z",
+	}
+	payload, _ := json.Marshal(eventData)
 
 	event := &eventstore.Event{
 		ID:            "test-event-1",
