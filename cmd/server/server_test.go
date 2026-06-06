@@ -7,10 +7,21 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 )
+
+// getTemplatePath returns the correct path to templates regardless of working directory.
+func getTemplatePath() string {
+	wd, _ := os.Getwd()
+	if filepath.Base(wd) == "server" {
+		return "../../web/templates"
+	}
+	return "web/templates"
+}
 
 // TestGetCartEmpty tests getting an empty cart.
 func TestGetCartEmpty(t *testing.T) {
@@ -529,8 +540,9 @@ func TestHandleTermsContentType(t *testing.T) {
 	funcMap := template.FuncMap{
 		"upper": strings.ToUpper,
 	}
-	tmpl := template.Must(template.New("").Funcs(funcMap).ParseFiles("web/templates/layout.html"))
-	tmpl = template.Must(tmpl.ParseGlob("web/templates/*.html"))
+	templatePath := getTemplatePath()
+	tmpl := template.Must(template.New("").Funcs(funcMap).ParseFiles(filepath.Join(templatePath, "layout.html")))
+	tmpl = template.Must(tmpl.ParseGlob(filepath.Join(templatePath, "*.html")))
 
 	server := &Server{
 		templates: tmpl,
@@ -556,8 +568,9 @@ func TestHandleTermsContent(t *testing.T) {
 	funcMap := template.FuncMap{
 		"upper": strings.ToUpper,
 	}
-	tmpl := template.Must(template.New("").Funcs(funcMap).ParseFiles("../../web/templates/layout.html"))
-	tmpl = template.Must(tmpl.ParseGlob("../../web/templates/*.html"))
+	templatePath := getTemplatePath()
+	tmpl := template.Must(template.New("").Funcs(funcMap).ParseFiles(filepath.Join(templatePath, "layout.html")))
+	tmpl = template.Must(tmpl.ParseGlob(filepath.Join(templatePath, "*.html")))
 
 	server := &Server{
 		templates: tmpl,
