@@ -1,0 +1,97 @@
+{{define "terms.html"}}
+<div class="px-6 py-6">
+    <div class="flex justify-between items-start mb-4">
+        <h3 class="text-2xl font-bold text-gray-900" id="modal-title">Regulamin i Umowa Najmu</h3>
+        <button onclick="closeModal()" class="text-gray-400 hover:text-gray-600 transition-colors">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+        </button>
+    </div>
+    
+    <div class="max-h-96 overflow-y-auto pr-2 text-sm text-gray-700 space-y-4">
+        <div>
+            <h4 class="font-bold text-gray-900 mb-2">§1 Postanowienia ogólne</h4>
+            <p class="leading-relaxed">
+                1. Niniejszy regulamin określa zasady wynajmu sprzętu rowerowego prowadzonego przez cargo.mleczki.pl.<br>
+                2. Wypożyczalnia jest prowadzona przez osobę fizyczną w okolicach Radzymina.<br>
+                3. Wypożyczając sprzęt, Najemca akceptuje niniejszy regulamin i zobowiązuje się do jego przestrzegania.
+            </p>
+        </div>
+
+        <div>
+            <h4 class="font-bold text-gray-900 mb-2">§2 Warunki wynajmu</h4>
+            <p class="leading-relaxed">
+                1. Wypożyczenie sprzętu możliwe jest przez osoby pełnoletnie posiadające ważny dokument tożsamości.<br>
+                2. Przy odbiorze sprzętu wymagane jest okazanie dokumentu tożsamości oraz podpisanie umowy najmu.<br>
+                3. Minimalny okres wynajmu to 1 dzień.<br>
+                4. Wypożyczalnia zastrzega sobie prawo do odmowy wynajmu bez podania przyczyny.
+            </p>
+        </div>
+
+        <div>
+            <h4 class="font-bold text-gray-900 mb-2">§3 Opłaty i kaucja</h4>
+            <p class="leading-relaxed">
+                1. Opłata za wynajem pobierana jest zgodnie z cennikiem dostępnym na stronie.<br>
+                2. Płatność możliwa jest gotówką przy odbiorze lub przelewem BLIK.<br>
+                3. Przy odbiorze sprzętu wymagana jest kaucja zwrotna w wysokości 200 zł (płatna gotówką lub kartą).<br>
+                4. Kaucja zwracana jest po zwrocie sprzętu w stanie niezmienionym.
+            </p>
+        </div>
+
+        <div>
+            <h4 class="font-bold text-gray-900 mb-2">§4 Odpowiedzialność Najemcy</h4>
+            <p class="leading-relaxed">
+                1. Najemca ponosi pełną odpowiedzialność za powierzone mu mienie.<br>
+                2. W przypadku uszkodzenia, zagubienia lub kradzieży sprzętu, Najemca zobowiązany jest do pokrycia kosztów naprawy lub zakupu nowego sprzętu.<br>
+                3. Najemca zobowiązuje się do korzystania ze sprzętu zgodnie z jego przeznaczeniem i zasadami bezpieczeństwa.<br>
+                4. Najemca odpowiada za szkody wyrządzone osobom trzecim podczas korzystania ze sprzętu.
+            </p>
+        </div>
+
+        <div>
+            <h4 class="font-bold text-gray-900 mb-2">§5 Zwrot sprzętu</h4>
+            <p class="leading-relaxed">
+                1. Sprzęt należy zwrócić w umówionym terminie.<br>
+                2. Zwrot sprzętu po terminie skutkuje naliczeniem opłaty za każdy dzień zwłoki w wysokości 150% dziennej stawki wynajmu.<br>
+                3. Sprzęt powinien być zwrócony w stanie czystym i technicznym pozwalającym na dalsze użytkowanie.<br>
+                4. W przypadku stwierdzenia uszkodzeń, Wypożyczający zastrzega sobie prawo do potrącenia kosztów z kaucji.
+            </p>
+        </div>
+
+        <div>
+            <h4 class="font-bold text-gray-900 mb-2">§6 Rezygnacja z wynajmu</h4>
+            <p class="leading-relaxed">
+                1. Rezygnacja z wynajemu możliwa jest bezpłatnie na co najmniej 48 godzin przed planowanym odbiorem.<br>
+                2. Rezygnacja na mniej niż 48 godzin przed odbiorem skutkuje naliczeniem opłaty w wysokości 50% wartości wynajmu.<br>
+                3. Rezygnacja w dniu odbioru lub nie stawienie się po sprzęt skutkuje naliczeniem pełnej opłaty za wynajem.
+            </p>
+        </div>
+
+        <div>
+            <h4 class="font-bold text-gray-900 mb-2">§7 Ochrona danych osobowych</h4>
+            <p class="leading-relaxed">
+                1. Administratorem danych osobowych jest właściciel wypożyczalni.<br>
+                2. Dane osobowe przetwarzane są w celu realizacji umowy najmu oraz kontaktu z Najemcą.<br>
+                3. Dane nie są udostępniane podmiotom trzecim, z wyjątkiem sytuacji wymaganych przepisami prawa.<br>
+                4. Najemca ma prawo do wglądu, poprawiania oraz żądania usunięcia swoich danych osobowych (RODO).
+            </p>
+        </div>
+
+        <div>
+            <h4 class="font-bold text-gray-900 mb-2">§8 Postanowienia końcowe</h4>
+            <p class="leading-relaxed">
+                1. W sprawach nieuregulowanych niniejszym regulaminem zastosowanie mają przepisy Kodeksu Cywilnego.<br>
+                2. Wypożyczalnia zastrzega sobie prawo do zmiany regulaminu. Zmiany wchodzą w życie po opublikowaniu na stronie.<br>
+                3. Wszelkie spory rozstrzygane będą przez sąd właściwy dla siedziby Wypożyczającego.
+            </p>
+        </div>
+    </div>
+
+    <div class="mt-6 pt-4 border-t border-gray-200 flex justify-end">
+        <button onclick="closeModal()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-xl font-semibold transition-colors">
+            Zamknij
+        </button>
+    </div>
+</div>
+{{end}}
