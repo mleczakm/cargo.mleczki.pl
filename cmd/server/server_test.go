@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -516,5 +517,67 @@ func TestCartPersistenceAcrossRequests(t *testing.T) {
 
 	if len(finalCart) != 2 {
 		t.Errorf("Expected 2 items after adding, got %d", len(finalCart))
+	}
+}
+
+// TestHandleTerms tests the /terms endpoint returns correct content type.
+func TestHandleTermsContentType(t *testing.T) {
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/terms", nil)
+
+	// Create a minimal server for testing with templates initialized
+	funcMap := template.FuncMap{
+		"upper": strings.ToUpper,
+	}
+	tmpl := template.Must(template.New("").Funcs(funcMap).ParseFiles("../../web/templates/layout.html"))
+	tmpl = template.Must(tmpl.ParseGlob("../../web/templates/*.html"))
+
+	server := &Server{
+		templates: tmpl,
+	}
+	server.handleTerms(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+
+	contentType := w.Header().Get("Content-Type")
+	if contentType != "text/html" {
+		t.Errorf("Expected Content-Type 'text/html', got '%s'", contentType)
+	}
+}
+
+// TestHandleTermsContent tests the /terms endpoint returns terms content.
+func TestHandleTermsContent(t *testing.T) {
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/terms", nil)
+
+	// Create a minimal server for testing with templates initialized
+	funcMap := template.FuncMap{
+		"upper": strings.ToUpper,
+	}
+	tmpl := template.Must(template.New("").Funcs(funcMap).ParseFiles("../../web/templates/layout.html"))
+	tmpl = template.Must(tmpl.ParseGlob("../../web/templates/*.html"))
+
+	server := &Server{
+		templates: tmpl,
+	}
+	server.handleTerms(w, req)
+
+	body := w.Body.String()
+
+	// Check for expected content in the terms
+	expectedStrings := []string{
+		"Regulamin i Umowa Najmu",
+		"Postanowienia ogólne",
+		"Warunki wynajmu",
+		"Odpowiedzialność Najemcy",
+		"Zwrot sprzętu",
+	}
+
+	for _, expected := range expectedStrings {
+		if !strings.Contains(body, expected) {
+			t.Errorf("Expected response to contain '%s', but it was not found", expected)
+		}
 	}
 }

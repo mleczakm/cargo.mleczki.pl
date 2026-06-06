@@ -95,7 +95,7 @@
                     </label>
                     <label class="flex items-start space-x-3 cursor-pointer">
                         <input type="checkbox" name="accept_tos" class="mt-1 w-5 h-5 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500" required />
-                        <span class="text-sm text-gray-700">Akceptuję <a href="#" class="text-emerald-600 underline">Regulamin i Umowę Najmu</a>. Wyrażam zgodę na przetwarzanie danych osobowych w celu realizacji zamówienia (zgodnie z RODO).*</span>
+                        <span class="text-sm text-gray-700">Akceptuję <a href="/terms" hx-get="/terms" hx-target="#modal-content" hx-trigger="click" onclick="document.getElementById('modal-container').classList.remove('hidden')" class="text-emerald-600 underline">Regulamin i Umowę Najmu</a>. Wyrażam zgodę na przetwarzanie danych osobowych w celu realizacji zamówienia (zgodnie z RODO).*</span>
                     </label>
                 </div>
             </form>

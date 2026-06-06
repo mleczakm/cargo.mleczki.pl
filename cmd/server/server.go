@@ -68,6 +68,7 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 	r.Get("/checkout", s.handleCheckout)
 	r.Get("/payment/{id}", s.handlePayment)
 	r.Get("/success", s.handleSuccess)
+	r.Get("/terms", s.handleTerms)
 
 	// Cart API (HTMX)
 	r.Post("/cart/add", s.handleCartAdd)
@@ -464,6 +465,15 @@ func (s *Server) handleSuccess(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.renderTemplate(w, r, "success.html", data)
+}
+
+// handleTerms renders the terms modal content (HTMX).
+func (s *Server) handleTerms(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+	if err := s.templates.ExecuteTemplate(w, "terms.html", nil); err != nil {
+		log.Printf("Template error (terms.html): %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
 }
 
 // handleUserPanel renders the user panel.
