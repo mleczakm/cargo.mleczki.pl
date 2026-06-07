@@ -34,6 +34,9 @@ WORKDIR /app
 # Copy binary from builder
 COPY --from=builder /build/cargo-server .
 
+# Copy web directory (templates and static files)
+COPY --from=builder /build/web ./web
+
 # Create data directories
 RUN mkdir -p /app/data /app/db && \
     chown -R appuser:appuser /app
