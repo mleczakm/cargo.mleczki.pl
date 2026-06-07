@@ -62,27 +62,6 @@
   wait_for:
     timeout: 30
 
-- name: "Verify Cytrus Domain for {{ app.domain }}"
-  uri:
-    url: "https://api.mikr.us/domain"
-    method: POST
-    body_format: form-urlencoded
-    body:
-      srv: "{{ ansible_host | regex_replace('\\..*', '') }}"
-      key: "{{ cytrus_api_token }}"
-    status_code: 200
-  register: cytrus_domains
-  delegate_to: localhost
-  when: app.proxied | default(false)
-
-
-- name: "Check if {{ app.domain }} is in Cytrus domains"
-  assert:
-    that:
-      - app.domain in (cytrus_domains.json | map(attribute='name') | list)
-    fail_msg: "Domain {{ app.domain }} is not configured in Cytrus. Available domains: {{ cytrus_domains.json | map(attribute='name') | list }}"
-  when: app.proxied | default(false)
-
 - name: "Update Cloudflare DNS for {{ app.domain }}"
   uri:
     url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/dns_records"
@@ -111,8 +90,29 @@
     body:
       type: "A"
       name: "{{ app.domain }}"
-      content: "135.181.95.85" # Cytrus IPv4
+      content: "{{ cytrus_host }}"
       ttl: 1
       proxied: true
   delegate_to: localhost
   when: cf_record_id is defined
+
+- name: "Verify Cytrus Domain for {{ app.domain }}"
+  uri:
+    url: "https://api.mikr.us/domain"
+    method: POST
+    body_format: form-urlencoded
+    body:
+      srv: "{{ ansible_host | regex_replace('\\..*', '') }}"
+      key: "{{ cytrus_api_token }}"
+    status_code: 200
+  register: cytrus_domains
+  delegate_to: localhost
+  when: app.proxied | default(false)
+
+
+- name: "Check if {{ app.domain }} is in Cytrus domains"
+  assert:
+    that:
+      - app.domain in (cytrus_domains.json | map(attribute='name') | list)
+    fail_msg: "Domain {{ app.domain }} is not configured in Cytrus. Available domains: {{ cytrus_domains.json | map(attribute='name') | list }}"
+  when: app.proxied | default(false)
