@@ -62,7 +62,7 @@
   wait_for:
     timeout: 30
 
-- name: "Update Cloudflare DNS for {{ app.domain }}"
+- name: "Get Cloudflare DNS records for {{ app.domain }}"
   uri:
     url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/dns_records"
     method: GET
@@ -73,19 +73,18 @@
   delegate_to: localhost
   when: cloudflare_api_token is defined and cloudflare_zone_id is defined
 
-- name: "Find record ID for {{ app.domain }}"
+- name: "Find existing A record for {{ app.domain }}"
   set_fact:
-    cf_record_id: "{{ (cf_records.json.result | selectattr('name', 'equalto', app.domain) | first).id }}"
-  when: cloudflare_api_token is defined and cf_records.json.result | selectattr('name', 'equalto', app.domain) | list | length > 0
+    existing_record: "{{ cf_records.json.result | selectattr('name', 'equalto', app.domain) | selectattr('type', 'equalto', 'A') | first | default(None) }}"
+  when: cloudflare_api_token is defined and cf_records.json.result is defined
 
-- name: "Update Cloudflare A record"
+- name: "Create new Cloudflare A record for {{ app.domain }}"
   uri:
-    url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/dns_records/{{ cf_record_id }}"
-    method: PUT
+    url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/dns_records"
+    method: POST
     headers:
       Authorization: "Bearer {{ cloudflare_api_token }}"
       Content-Type: "application/json"
-
     body_format: json
     body:
       type: "A"
@@ -94,7 +93,24 @@
       ttl: 1
       proxied: true
   delegate_to: localhost
-  when: cf_record_id is defined
+  when: cloudflare_api_token is defined and existing_record is None
+
+- name: "Update existing Cloudflare A record for {{ app.domain }}"
+  uri:
+    url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/dns_records/{{ existing_record.id }}"
+    method: PUT
+    headers:
+      Authorization: "Bearer {{ cloudflare_api_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      type: "A"
+      name: "{{ app.domain }}"
+      content: "{{ cytrus_host }}"
+      ttl: 1
+      proxied: true
+  delegate_to: localhost
+  when: cloudflare_api_token is defined and existing_record is not None
 
 - name: "Verify Cytrus Domain for {{ app.domain }}"
   uri:
