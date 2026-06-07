@@ -93,7 +93,7 @@
       ttl: 1
       proxied: true
   delegate_to: localhost
-  when: cloudflare_api_token is defined and existing_record is None
+  when: cloudflare_api_token is defined and existing_record is none
 
 - name: "Update existing Cloudflare A record for {{ app.domain }}"
   uri:
@@ -110,7 +110,7 @@
       ttl: 1
       proxied: true
   delegate_to: localhost
-  when: cloudflare_api_token is defined and existing_record is not None
+  when: cloudflare_api_token is defined and existing_record is not none
 
 - name: "Verify Cytrus Domain for {{ app.domain }}"
   uri:
