@@ -45,6 +45,7 @@ type ProductFrontmatter struct {
 	Name        string             `yaml:"name"`
 	BasePrice   int                `yaml:"basePrice"`
 	Image       string             `yaml:"image"`
+	Images      []string           `yaml:"images"`
 	Icon        string             `yaml:"icon"`
 	BookedDates []string           `yaml:"bookedDates"`
 	Addons      []AddonFrontmatter `yaml:"addons"`
@@ -108,6 +109,16 @@ func (p *Parser) LoadProduct(filename string) (*domain.Product, error) {
 		return nil, fmt.Errorf("failed to convert markdown: %w", err)
 	}
 
+	// Ensure images have correct paths
+	if frontmatter.Image != "" && !strings.HasPrefix(frontmatter.Image, "http") && !strings.HasPrefix(frontmatter.Image, "/") {
+		frontmatter.Image = "/data/images/products/" + frontmatter.Image
+	}
+	for i, img := range frontmatter.Images {
+		if img != "" && !strings.HasPrefix(img, "http") && !strings.HasPrefix(img, "/") {
+			frontmatter.Images[i] = "/data/images/products/" + img
+		}
+	}
+
 	// Convert addons
 	addons := make([]domain.ProductAddon, len(frontmatter.Addons))
 	for i, addon := range frontmatter.Addons {
@@ -125,6 +136,7 @@ func (p *Parser) LoadProduct(filename string) (*domain.Product, error) {
 		Description: htmlBuilder.String(),
 		BasePrice:   frontmatter.BasePrice,
 		Image:       frontmatter.Image,
+		Images:      frontmatter.Images,
 		Icon:        frontmatter.Icon,
 		Addons:      addons,
 		BookedDates: frontmatter.BookedDates,

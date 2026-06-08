@@ -6,8 +6,19 @@
     </a>
 
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-12">
-        <div class="rounded-3xl overflow-hidden shadow-lg h-96 lg:h-[600px] sticky top-24">
-            <img src="{{.Product.Image}}" alt="{{.Product.Name}}" class="w-full h-full object-cover" />
+        <div class="space-y-4 sticky top-24">
+            <div class="rounded-3xl overflow-hidden shadow-lg h-96 lg:h-[600px]">
+                <img id="main-image" src="{{.Product.Image}}" alt="{{.Product.Name}}" class="w-full h-full object-cover" />
+            </div>
+            {{if .Product.Images}}
+            <div class="grid grid-cols-4 gap-4">
+                {{range .Product.Images}}
+                <div class="aspect-square rounded-xl overflow-hidden cursor-pointer border-2 border-transparent hover:border-emerald-500 transition-all shadow-sm" onclick="document.getElementById('main-image').src='{{.}}'">
+                    <img src="{{.}}" alt="" class="w-full h-full object-cover" />
+                </div>
+                {{end}}
+            </div>
+            {{end}}
         </div>
 
         <div class="flex flex-col">

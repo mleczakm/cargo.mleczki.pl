@@ -7,6 +7,7 @@ type Product struct {
 	Description string
 	BasePrice   int
 	Image       string
+	Images      []string
 	Icon        string
 	Addons      []ProductAddon
 	BookedDates []string

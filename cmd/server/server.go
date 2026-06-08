@@ -56,6 +56,7 @@ func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadMod
 // RegisterRoutes sets up all HTTP routes.
 func (s *Server) RegisterRoutes(r chi.Router) {
 	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
+	r.Handle("/data/images/*", http.StripPrefix("/data/images/", http.FileServer(http.Dir("data/images"))))
 	r.Get("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/static/favicon-32.svg", http.StatusMovedPermanently)
 	})
