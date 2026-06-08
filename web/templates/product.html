@@ -41,9 +41,9 @@
                 <h1 class="text-3xl lg:text-4xl font-black text-gray-900">{{.Product.Name}}</h1>
             </div>
 
-            <p class="text-lg text-gray-600 mb-8 leading-relaxed">
-                {{.Product.Description}}
-            </p>
+            <div class="text-lg text-gray-600 mb-8 leading-relaxed prose prose-emerald max-w-none">
+                {{.Product.Description | safeHTML}}
+            </div>
 
             <div class="bg-gray-50 border border-gray-200 rounded-2xl p-6 mb-8">
                 <h3 class="text-lg font-bold text-gray-900 mb-4 flex items-center">
@@ -98,7 +98,7 @@
     let rentalDays = 1;
 
     function updateTotal() {
-        const basePrice = {{.Product.BasePrice}};
+        const basePrice = {{.Product.BasePrice}}
         let addonsPrice = 0;
 
         document.querySelectorAll('input[type="checkbox"][name^="addon_"]:checked').forEach(cb => {

@@ -39,7 +39,8 @@ var partialTemplates = map[string]struct{}{
 // NewServer creates a new HTTP server.
 func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadModelsDB, productParser *products.Parser) *Server {
 	funcMap := template.FuncMap{
-		"upper": strings.ToUpper,
+		"upper":    strings.ToUpper,
+		"safeHTML": func(s string) template.HTML { return template.HTML(s) },
 	}
 
 	tmpl := template.Must(template.New("").Funcs(funcMap).ParseFiles("web/templates/layout.html"))
