@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"math/rand"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -84,20 +85,33 @@ func (am *AuthManager) Login(ctx context.Context, email, password string) (strin
 	// Query user by email
 	var user domain.User
 	var isAdmin int
+	var deletionRequestedAtStr, createdAtStr, updatedAtStr string
 	err := am.db.QueryRowContext(ctx, `
 		SELECT id, email, password_hash, name, phone, address, is_adult, accepted_tos, is_admin,
 		       deletion_requested, deletion_requested_at, created_at, updated_at
 		FROM users WHERE email = ?
 	`, email).Scan(
 		&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.Phone, &user.Address,
-		&user.IsAdult, &user.AcceptedTOS, &isAdmin, &user.DeletionRequested, &user.DeletionRequestedAt,
-		&user.CreatedAt, &user.UpdatedAt,
+		&user.IsAdult, &user.AcceptedTOS, &isAdmin, &user.DeletionRequested, &deletionRequestedAtStr,
+		&createdAtStr, &updatedAtStr,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil, fmt.Errorf("invalid email or password")
 	}
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to query user: %w", err)
+	}
+
+	// Parse time fields
+	if createdAtStr != "" {
+		user.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
+	}
+	if updatedAtStr != "" {
+		user.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAtStr)
+	}
+	if deletionRequestedAtStr != "" {
+		t, _ := time.Parse(time.RFC3339, deletionRequestedAtStr)
+		user.DeletionRequestedAt = &t
 	}
 
 	// Check if user requested deletion
@@ -110,6 +124,9 @@ func (am *AuthManager) Login(ctx context.Context, email, password string) (strin
 	if err != nil {
 		return "", nil, fmt.Errorf("invalid email or password")
 	}
+
+	// Set IsAdmin on user object
+	user.IsAdmin = isAdmin == 1
 
 	// Generate session token
 	sessionToken := generateSessionToken()
@@ -219,9 +236,9 @@ func (am *AuthManager) EnsureAdminUser(ctx context.Context) (string, error) {
 	now := time.Now().UTC().Format(time.RFC3339)
 	userID := fmt.Sprintf("user_%d", time.Now().UnixNano())
 	_, err = am.db.ExecContext(ctx, `
-		INSERT INTO users (id, email, password_hash, name, is_adult, accepted_tos, is_admin, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, userID, "admin@example.com", string(hash), "Admin", 1, 1, 1, now, now)
+		INSERT INTO users (id, email, password_hash, name, phone, address, is_adult, accepted_tos, is_admin, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, userID, "admin@example.com", string(hash), "Admin", "", "", 1, 1, 1, now, now)
 	if err != nil {
 		return "", fmt.Errorf("failed to insert admin user: %w", err)
 	}
@@ -233,8 +250,9 @@ func (am *AuthManager) EnsureAdminUser(ctx context.Context) (string, error) {
 func generateRandomPassword() string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
 	b := make([]byte, 16)
+	rand.Seed(time.Now().UnixNano())
 	for i := range b {
-		b[i] = charset[time.Now().UnixNano()%int64(len(charset))]
+		b[i] = charset[rand.Intn(len(charset))]
 	}
 	return string(b)
 }

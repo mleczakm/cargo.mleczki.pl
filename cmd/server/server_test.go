@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -12,6 +14,11 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	_ "modernc.org/sqlite"
+
+	"cargo.mleczki.pl/internal/auth"
+	"cargo.mleczki.pl/internal/eventstore"
 )
 
 // getTemplatePath returns the correct path to templates regardless of working directory.
@@ -592,7 +599,231 @@ func TestHandleTermsContent(t *testing.T) {
 
 	for _, expected := range expectedStrings {
 		if !strings.Contains(body, expected) {
-			t.Errorf("Expected response to contain '%s', but it was not found", expected)
+			t.Errorf("Expected terms to contain '%s'", expected)
 		}
+	}
+}
+
+// TestHandleLoginGET tests the GET /login endpoint renders the login page.
+func TestHandleLoginGET(t *testing.T) {
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/login", nil)
+
+	// Create a minimal server for testing with templates initialized
+	funcMap := template.FuncMap{
+		"upper":    strings.ToUpper,
+		"safeHTML": func(s string) template.HTML { return template.HTML(s) },
+	}
+	templatePath := getTemplatePath()
+	tmpl := template.Must(template.New("").Funcs(funcMap).ParseFiles(filepath.Join(templatePath, "layout.html")))
+	tmpl = template.Must(tmpl.ParseGlob(filepath.Join(templatePath, "*.html")))
+
+	server := &Server{
+		templates: tmpl,
+	}
+	server.handleLogin(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+}
+
+// TestHandleLoginPOST tests the POST /login endpoint with valid credentials.
+func TestHandleLoginPOST(t *testing.T) {
+	// Setup in-memory database
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open database: %v", err)
+	}
+	defer db.Close()
+
+	// Initialize schema
+	_, err = db.Exec(`
+		CREATE TABLE users (
+			id TEXT PRIMARY KEY,
+			email TEXT UNIQUE NOT NULL,
+			password_hash TEXT,
+			name TEXT NOT NULL,
+			phone TEXT,
+			address TEXT,
+			is_adult INTEGER DEFAULT 0,
+			accepted_tos INTEGER DEFAULT 0,
+			is_admin INTEGER DEFAULT 0,
+			deletion_requested INTEGER DEFAULT 0,
+			deletion_requested_at TEXT,
+			created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE user_sessions (
+			id TEXT PRIMARY KEY,
+			user_id TEXT,
+			is_admin INTEGER,
+			created_at TEXT,
+			expires_at TEXT,
+			last_activity TEXT
+		);
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create schema: %v", err)
+	}
+
+	// Create event store
+	eventStore, err := eventstore.NewSQLiteEventStore(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create event store: %v", err)
+	}
+	defer eventStore.Close()
+
+	// Create auth manager
+	authManager := auth.NewAuthManager(db, eventStore)
+
+	// Create a test user
+	ctx := context.Background()
+	password, err := authManager.EnsureAdminUser(ctx)
+	if err != nil {
+		t.Fatalf("Failed to create admin user: %v", err)
+	}
+	if password == "" {
+		t.Fatal("Expected password to be returned when creating new admin user")
+	}
+	t.Logf("Generated password: %s", password)
+
+	// Verify user was created in database
+	var count int
+	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM users WHERE email = ?", "admin@example.com").Scan(&count)
+	if err != nil {
+		t.Fatalf("Failed to query user count: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("Expected 1 user, got %d", count)
+	}
+
+	// Create server
+	funcMap := template.FuncMap{
+		"upper":    strings.ToUpper,
+		"safeHTML": func(s string) template.HTML { return template.HTML(s) },
+	}
+	templatePath := getTemplatePath()
+	tmpl := template.Must(template.New("").Funcs(funcMap).ParseFiles(filepath.Join(templatePath, "layout.html")))
+	tmpl = template.Must(tmpl.ParseGlob(filepath.Join(templatePath, "*.html")))
+
+	server := &Server{
+		authManager: authManager,
+		templates:   tmpl,
+	}
+
+	// Test login with valid credentials
+	formData := url.Values{}
+	formData.Set("email", "admin@example.com")
+	formData.Set("password", password)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/login", strings.NewReader(formData.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	server.handleLogin(w, req)
+
+	t.Logf("Response status: %d", w.Code)
+	t.Logf("Response body: %s", w.Body.String())
+
+	if w.Code != http.StatusFound {
+		t.Errorf("Expected status 302 (redirect), got %d", w.Code)
+	}
+
+	// Check that session cookie was set
+	cookies := w.Result().Cookies()
+	var sessionCookie *http.Cookie
+	for _, cookie := range cookies {
+		if cookie.Name == "session_token" {
+			sessionCookie = cookie
+			break
+		}
+	}
+	if sessionCookie == nil {
+		t.Error("Expected session_token cookie to be set")
+	}
+
+	// Check redirect location
+	if w.Header().Get("Location") != "/admin" {
+		t.Errorf("Expected redirect to /admin, got %s", w.Header().Get("Location"))
+	}
+}
+
+// TestHandleLoginPOSTInvalidCredentials tests the POST /login endpoint with invalid credentials.
+func TestHandleLoginPOSTInvalidCredentials(t *testing.T) {
+	// Setup in-memory database
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("Failed to open database: %v", err)
+	}
+	defer db.Close()
+
+	// Initialize schema
+	_, err = db.Exec(`
+		CREATE TABLE users (
+			id TEXT PRIMARY KEY,
+			email TEXT UNIQUE NOT NULL,
+			password_hash TEXT,
+			name TEXT NOT NULL,
+			phone TEXT,
+			address TEXT,
+			is_adult INTEGER DEFAULT 0,
+			accepted_tos INTEGER DEFAULT 0,
+			is_admin INTEGER DEFAULT 0,
+			deletion_requested INTEGER DEFAULT 0,
+			deletion_requested_at TEXT,
+			created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+			updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE TABLE user_sessions (
+			id TEXT PRIMARY KEY,
+			user_id TEXT,
+			is_admin INTEGER,
+			created_at TEXT,
+			expires_at TEXT,
+			last_activity TEXT
+		);
+	`)
+	if err != nil {
+		t.Fatalf("Failed to create schema: %v", err)
+	}
+
+	// Create event store
+	eventStore, err := eventstore.NewSQLiteEventStore(":memory:")
+	if err != nil {
+		t.Fatalf("Failed to create event store: %v", err)
+	}
+	defer eventStore.Close()
+
+	// Create auth manager
+	authManager := auth.NewAuthManager(db, eventStore)
+
+	// Create server
+	funcMap := template.FuncMap{
+		"upper":    strings.ToUpper,
+		"safeHTML": func(s string) template.HTML { return template.HTML(s) },
+	}
+	templatePath := getTemplatePath()
+	tmpl := template.Must(template.New("").Funcs(funcMap).ParseFiles(filepath.Join(templatePath, "layout.html")))
+	tmpl = template.Must(tmpl.ParseGlob(filepath.Join(templatePath, "*.html")))
+
+	server := &Server{
+		authManager: authManager,
+		templates:   tmpl,
+	}
+
+	// Test login with invalid credentials
+	formData := url.Values{}
+	formData.Set("email", "admin@example.com")
+	formData.Set("password", "wrongpassword")
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/login", strings.NewReader(formData.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	server.handleLogin(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("Expected status 401, got %d", w.Code)
 	}
 }

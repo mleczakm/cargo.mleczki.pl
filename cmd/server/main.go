@@ -71,7 +71,7 @@ func main() {
 	}()
 
 	// Create server
-	server := NewServer(eventStore, readModels, productParser)
+	server := NewServer(eventStore, readModels, productParser, authManager)
 
 	// Create chi router
 	r := chi.NewRouter()

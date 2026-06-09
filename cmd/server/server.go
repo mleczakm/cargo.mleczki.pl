@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"cargo.mleczki.pl/internal/auth"
 	"cargo.mleczki.pl/internal/domain"
 	"cargo.mleczki.pl/internal/eventstore"
 	"cargo.mleczki.pl/internal/products"
@@ -27,6 +28,7 @@ type Server struct {
 	eventStore    eventstore.EventStore
 	readModels    *projections.ReadModelsDB
 	productParser *products.Parser
+	authManager   *auth.AuthManager
 	templates     *template.Template
 }
 
@@ -37,7 +39,7 @@ var partialTemplates = map[string]struct{}{
 }
 
 // NewServer creates a new HTTP server.
-func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadModelsDB, productParser *products.Parser) *Server {
+func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadModelsDB, productParser *products.Parser, authManager *auth.AuthManager) *Server {
 	funcMap := template.FuncMap{
 		"upper":    strings.ToUpper,
 		"safeHTML": func(s string) template.HTML { return template.HTML(s) }, // #nosec G203 // Content is from trusted markdown files
@@ -50,6 +52,7 @@ func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadMod
 		eventStore:    eventStore,
 		readModels:    readModels,
 		productParser: productParser,
+		authManager:   authManager,
 		templates:     tmpl,
 	}
 }
@@ -67,6 +70,7 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 	r.Get("/product/{id}", s.handleProduct)
 	r.Get("/product/{id}/calendar", s.handleProductCalendar)
 	r.Get("/login", s.handleLogin)
+	r.Post("/login", s.handleLogin)
 	r.Get("/checkout", s.handleCheckout)
 	r.Get("/payment/{id}", s.handlePayment)
 	r.Get("/success", s.handleSuccess)
@@ -288,11 +292,41 @@ type CalendarDay struct {
 	IsPast     bool
 }
 
-// handleLogin renders the login page.
+// handleLogin renders the login page and handles login submission.
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if r.Method == methodPost {
-		// Handle login (simplified for now)
-		http.Redirect(w, r, "/user", http.StatusFound)
+		email := r.FormValue("email")
+		password := r.FormValue("password")
+
+		if email == "" || password == "" {
+			http.Error(w, "Email and password are required", http.StatusBadRequest)
+			return
+		}
+
+		ctx := r.Context()
+		sessionToken, user, err := s.authManager.Login(ctx, email, password)
+		if err != nil {
+			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
+			return
+		}
+
+		// Set session cookie
+		http.SetCookie(w, &http.Cookie{
+			Name:     "session_token",
+			Value:    sessionToken,
+			Path:     "/",
+			HttpOnly: true,
+			Secure:   true,
+			SameSite: http.SameSiteStrictMode,
+			MaxAge:   30 * 24 * 60 * 60, // 30 days
+		})
+
+		// Redirect based on user role
+		if user.IsAdmin {
+			http.Redirect(w, r, "/admin", http.StatusFound)
+		} else {
+			http.Redirect(w, r, "/user", http.StatusFound)
+		}
 		return
 	}
 
@@ -593,12 +627,21 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 // adminAuthMiddleware checks if user is authenticated as admin.
 func (s *Server) adminAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Check for admin session cookie
-		cookie, err := r.Cookie("admin_session")
-		if err != nil || cookie.Value != "authenticated" {
+		// Check for session cookie
+		cookie, err := r.Cookie("session_token")
+		if err != nil {
 			http.Redirect(w, r, "/login", http.StatusFound)
 			return
 		}
+
+		// Verify session and check if user is admin
+		ctx := r.Context()
+		_, isAdmin, err := s.authManager.VerifySession(ctx, cookie.Value)
+		if err != nil || !isAdmin {
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+
 		next.ServeHTTP(w, r)
 	})
 }
