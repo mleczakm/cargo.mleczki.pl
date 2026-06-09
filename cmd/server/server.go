@@ -40,7 +40,7 @@ var partialTemplates = map[string]struct{}{
 func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadModelsDB, productParser *products.Parser) *Server {
 	funcMap := template.FuncMap{
 		"upper":    strings.ToUpper,
-		"safeHTML": func(s string) template.HTML { return template.HTML(s) },
+		"safeHTML": func(s string) template.HTML { return template.HTML(s) }, // #nosec G203 // Content is from trusted markdown files
 	}
 
 	tmpl := template.Must(template.New("").Funcs(funcMap).ParseFiles("web/templates/layout.html"))

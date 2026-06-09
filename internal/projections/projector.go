@@ -159,12 +159,13 @@ func (p *Projector) handleUserRegistered(event *eventstore.Event) error {
 	}
 
 	query := `
-	INSERT INTO users (id, name, email, phone, address, created_at, updated_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?)
+	INSERT INTO users (id, name, email, phone, address, is_admin, created_at, updated_at)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(email) DO UPDATE SET
 		name = excluded.name,
 		phone = excluded.phone,
 		address = excluded.address,
+		is_admin = excluded.is_admin,
 		updated_at = excluded.updated_at
 	`
 
@@ -174,6 +175,7 @@ func (p *Projector) handleUserRegistered(event *eventstore.Event) error {
 		e.Email,
 		e.Phone,
 		e.Address,
+		0,
 		e.Timestamp.Format("2006-01-02 15:04:05"),
 		e.Timestamp.Format("2006-01-02 15:04:05"),
 	)

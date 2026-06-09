@@ -45,6 +45,7 @@ func (rm *ReadModelsDB) initSchema() error {
 		address TEXT,
 		is_adult INTEGER DEFAULT 0,
 		accepted_tos INTEGER DEFAULT 0,
+		is_admin INTEGER DEFAULT 0,
 		deletion_requested INTEGER DEFAULT 0,
 		deletion_requested_at TEXT,
 		created_at TEXT DEFAULT CURRENT_TIMESTAMP,

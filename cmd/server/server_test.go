@@ -538,7 +538,8 @@ func TestHandleTermsContentType(t *testing.T) {
 
 	// Create a minimal server for testing with templates initialized
 	funcMap := template.FuncMap{
-		"upper": strings.ToUpper,
+		"upper":    strings.ToUpper,
+		"safeHTML": func(s string) template.HTML { return template.HTML(s) },
 	}
 	templatePath := getTemplatePath()
 	tmpl := template.Must(template.New("").Funcs(funcMap).ParseFiles(filepath.Join(templatePath, "layout.html")))
@@ -566,7 +567,8 @@ func TestHandleTermsContent(t *testing.T) {
 
 	// Create a minimal server for testing with templates initialized
 	funcMap := template.FuncMap{
-		"upper": strings.ToUpper,
+		"upper":    strings.ToUpper,
+		"safeHTML": func(s string) template.HTML { return template.HTML(s) },
 	}
 	templatePath := getTemplatePath()
 	tmpl := template.Must(template.New("").Funcs(funcMap).ParseFiles(filepath.Join(templatePath, "layout.html")))

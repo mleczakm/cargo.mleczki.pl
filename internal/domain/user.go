@@ -12,6 +12,7 @@ type User struct {
 	PasswordHash        string
 	IsAdult             bool
 	AcceptedTOS         bool
+	IsAdmin             bool
 	DeletionRequested   bool
 	DeletionRequestedAt *time.Time
 	IsDeleted           bool

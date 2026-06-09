@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"cargo.mleczki.pl/internal/auth"
 	"cargo.mleczki.pl/internal/eventstore"
 	"cargo.mleczki.pl/internal/products"
 	"cargo.mleczki.pl/internal/projections"
@@ -37,14 +38,28 @@ func main() {
 	}
 	defer readModels.Close()
 
+	// Initialize auth manager for admin user creation
+	authManager := auth.NewAuthManager(readModels.GetDB(), eventStore)
+
+	// Ensure admin user exists
+	ctx := context.Background()
+	password, err := authManager.EnsureAdminUser(ctx)
+	if err != nil {
+		log.Printf("Warning: Failed to ensure admin user: %v", err)
+	} else if password != "" {
+		log.Printf("========================================")
+		log.Printf("ADMIN USER CREATED")
+		log.Printf("Email: admin@example.com")
+		log.Printf("Password: %s", password)
+		log.Printf("========================================")
+	}
+
 	// Initialize product parser
 	productParser := products.NewParser("data/products")
 
 	// Initialize projector
 	projector := projections.NewProjector(eventStore, readModels, "main")
 
-	// Start projection runner in background
-	ctx := context.Background()
 	go func() {
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()

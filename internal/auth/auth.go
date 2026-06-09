@@ -48,9 +48,9 @@ func (am *AuthManager) RegisterUser(ctx context.Context, cmd *domain.RegisterUse
 	// Insert user into database
 	now := time.Now().UTC().Format(time.RFC3339)
 	_, err = am.db.ExecContext(ctx, `
-		INSERT INTO users (id, email, password_hash, name, phone, address, is_adult, accepted_tos, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, cmd.UserID, cmd.Email, string(hash), cmd.Name, cmd.Phone, cmd.Address, cmd.IsAdult, cmd.AcceptedTOS, now, now)
+		INSERT INTO users (id, email, password_hash, name, phone, address, is_adult, accepted_tos, is_admin, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, cmd.UserID, cmd.Email, string(hash), cmd.Name, cmd.Phone, cmd.Address, cmd.IsAdult, cmd.AcceptedTOS, 0, now, now)
 	if err != nil {
 		return fmt.Errorf("failed to insert user: %w", err)
 	}
@@ -83,13 +83,14 @@ func (am *AuthManager) RegisterUser(ctx context.Context, cmd *domain.RegisterUse
 func (am *AuthManager) Login(ctx context.Context, email, password string) (string, *domain.User, error) {
 	// Query user by email
 	var user domain.User
+	var isAdmin int
 	err := am.db.QueryRowContext(ctx, `
-		SELECT id, email, password_hash, name, phone, address, is_adult, accepted_tos, 
+		SELECT id, email, password_hash, name, phone, address, is_adult, accepted_tos, is_admin,
 		       deletion_requested, deletion_requested_at, created_at, updated_at
 		FROM users WHERE email = ?
 	`, email).Scan(
 		&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.Phone, &user.Address,
-		&user.IsAdult, &user.AcceptedTOS, &user.DeletionRequested, &user.DeletionRequestedAt,
+		&user.IsAdult, &user.AcceptedTOS, &isAdmin, &user.DeletionRequested, &user.DeletionRequestedAt,
 		&user.CreatedAt, &user.UpdatedAt,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -116,9 +117,6 @@ func (am *AuthManager) Login(ctx context.Context, email, password string) (strin
 	// Insert session into database
 	expiresAt := time.Now().UTC().Add(30 * 24 * time.Hour).Format(time.RFC3339)
 	now := time.Now().UTC().Format(time.RFC3339)
-
-	// Check if user is admin (hardcoded for now, should be from database)
-	isAdmin := false // TODO: Add is_admin field to users table
 
 	_, err = am.db.ExecContext(ctx, `
 		INSERT INTO user_sessions (id, user_id, is_admin, created_at, expires_at, last_activity)
@@ -169,12 +167,12 @@ func (am *AuthManager) VerifySession(ctx context.Context, sessionToken string) (
 	// Query user
 	var user domain.User
 	err = am.db.QueryRowContext(ctx, `
-		SELECT id, email, password_hash, name, phone, address, is_adult, accepted_tos, 
+		SELECT id, email, password_hash, name, phone, address, is_adult, accepted_tos, is_admin,
 		       deletion_requested, deletion_requested_at, created_at, updated_at
 		FROM users WHERE id = ?
 	`, userID).Scan(
 		&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.Phone, &user.Address,
-		&user.IsAdult, &user.AcceptedTOS, &user.DeletionRequested, &user.DeletionRequestedAt,
+		&user.IsAdult, &user.AcceptedTOS, &user.IsAdmin, &user.DeletionRequested, &user.DeletionRequestedAt,
 		&user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
@@ -191,6 +189,54 @@ func (am *AuthManager) Logout(ctx context.Context, sessionToken string) error {
 		return fmt.Errorf("failed to delete session: %w", err)
 	}
 	return nil
+}
+
+// EnsureAdminUser creates an admin user if one doesn't exist.
+// Returns the generated password if a new admin was created, empty string otherwise.
+func (am *AuthManager) EnsureAdminUser(ctx context.Context) (string, error) {
+	// Check if admin user already exists
+	var count int
+	err := am.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM users WHERE is_admin = 1").Scan(&count)
+	if err != nil {
+		return "", fmt.Errorf("failed to check admin users: %w", err)
+	}
+
+	// If admin already exists, do nothing
+	if count > 0 {
+		return "", nil
+	}
+
+	// Generate random password
+	password := generateRandomPassword()
+
+	// Hash password
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", fmt.Errorf("failed to hash password: %w", err)
+	}
+
+	// Insert admin user
+	now := time.Now().UTC().Format(time.RFC3339)
+	userID := fmt.Sprintf("user_%d", time.Now().UnixNano())
+	_, err = am.db.ExecContext(ctx, `
+		INSERT INTO users (id, email, password_hash, name, is_adult, accepted_tos, is_admin, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, userID, "admin@example.com", string(hash), "Admin", 1, 1, 1, now, now)
+	if err != nil {
+		return "", fmt.Errorf("failed to insert admin user: %w", err)
+	}
+
+	return password, nil
+}
+
+// generateRandomPassword generates a random 16-character password.
+func generateRandomPassword() string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
+	b := make([]byte, 16)
+	for i := range b {
+		b[i] = charset[time.Now().UnixNano()%int64(len(charset))]
+	}
+	return string(b)
 }
 
 // generateSessionToken generates a random session token.
