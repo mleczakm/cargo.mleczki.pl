@@ -2,10 +2,11 @@ package auth
 
 import (
 	"context"
+	"crypto/rand"
 	"database/sql"
 	"errors"
 	"fmt"
-	"math/rand"
+	"math/big"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -250,9 +251,9 @@ func (am *AuthManager) EnsureAdminUser(ctx context.Context) (string, error) {
 func generateRandomPassword() string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*"
 	b := make([]byte, 16)
-	rand.Seed(time.Now().UnixNano())
 	for i := range b {
-		b[i] = charset[rand.Intn(len(charset))]
+		n, _ := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
+		b[i] = charset[n.Int64()]
 	}
 	return string(b)
 }

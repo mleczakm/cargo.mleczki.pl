@@ -99,7 +99,12 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 		r.Get("/admin", s.handleAdminPanel)
 		r.Get("/admin/user/{id}", s.handleAdminUserDetail)
 		r.Post("/admin/order/{id}/mark-paid", s.handleAdminOrderMarkPaid)
+		r.Post("/admin/order/{id}/confirm", s.handleAdminOrderConfirm)
 		r.Post("/admin/transfer/{id}/link", s.handleAdminTransferLink)
+		r.Post("/admin/reservation/create", s.handleAdminCreateReservation)
+		r.Post("/admin/product/{id}/block-date", s.handleAdminBlockProductDate)
+		r.Post("/admin/product/{id}/unblock-date", s.handleAdminUnblockProductDate)
+		r.Get("/branding", s.handleBranding)
 	})
 
 	// Health check
@@ -176,8 +181,15 @@ func (s *Server) handleProductCalendar(w http.ResponseWriter, r *http.Request) {
 		year = time.Now().Year()
 	}
 
+	// Fetch global blocked dates
+	globalBlockedDates, err := s.readModels.GetGlobalBlockedDates()
+	if err != nil {
+		log.Printf("Error loading global blocked dates: %v", err)
+		globalBlockedDates = []string{}
+	}
+
 	// Generate calendar grid
-	calendarGrid := s.generateCalendarGrid(year, month, product.BookedDates, startDate, endDate)
+	calendarGrid := s.generateCalendarGrid(year, month, product.BookedDates, globalBlockedDates, startDate, endDate)
 
 	// Calculate rental days
 	rentalDays := 1
@@ -208,20 +220,15 @@ func (s *Server) handleProductCalendar(w http.ResponseWriter, r *http.Request) {
 }
 
 // generateCalendarGrid generates the calendar grid for a given month.
-func (s *Server) generateCalendarGrid(year, month int, bookedDates []string, startDate, endDate string) [][]CalendarDay {
+func (s *Server) generateCalendarGrid(year, month int, bookedDates []string, globalBlockedDates []string, startDate, endDate string) [][]CalendarDay {
 	firstDay := time.Date(year, time.Month(month), 1, 0, 0, 0, 0, time.UTC)
 	lastDay := firstDay.AddDate(0, 1, -1)
 
-	// Get first weekday (Monday = 0)
-	firstWeekday := int(firstDay.Weekday())
-	if firstWeekday == 0 {
-		firstWeekday = 6
-	} else {
-		firstWeekday--
-	}
+	firstWeekday := s.getMondayBasedWeekday(firstDay.Weekday())
+	now := time.Now().Truncate(24 * time.Hour)
 
-	var grid [][]CalendarDay
-	var row []CalendarDay
+	grid := make([][]CalendarDay, 0)
+	row := make([]CalendarDay, 0, firstWeekday)
 
 	// Add empty cells for days before the first of the month
 	for i := 0; i < firstWeekday; i++ {
@@ -229,29 +236,13 @@ func (s *Server) generateCalendarGrid(year, month int, bookedDates []string, sta
 	}
 
 	// Add days of the month
-	now := time.Now().Truncate(24 * time.Hour)
 	for day := 1; day <= lastDay.Day(); day++ {
 		dateStr := fmt.Sprintf("%04d-%02d-%02d", year, month, day)
 		currentDate := time.Date(year, time.Month(month), day, 0, 0, 0, 0, time.UTC)
 
-		isBooked := false
-		for _, bd := range bookedDates {
-			if bd == dateStr {
-				isBooked = true
-				break
-			}
-		}
-
+		isBooked := s.isDateBooked(dateStr, bookedDates, globalBlockedDates)
 		isSelected := dateStr == startDate || dateStr == endDate
-		isBetween := false
-		if startDate != "" && endDate != "" {
-			start, _ := time.Parse("2006-01-02", startDate)
-			end, _ := time.Parse("2006-01-02", endDate)
-			if currentDate.After(start) && currentDate.Before(end) {
-				isBetween = true
-			}
-		}
-
+		isBetween := s.isDateBetween(dateStr, startDate, endDate)
 		isPast := currentDate.Before(now)
 
 		row = append(row, CalendarDay{
@@ -266,7 +257,7 @@ func (s *Server) generateCalendarGrid(year, month int, bookedDates []string, sta
 
 		if len(row) == 7 {
 			grid = append(grid, row)
-			row = []CalendarDay{}
+			row = make([]CalendarDay, 0)
 		}
 	}
 
@@ -279,6 +270,49 @@ func (s *Server) generateCalendarGrid(year, month int, bookedDates []string, sta
 	}
 
 	return grid
+}
+
+// getMondayBasedWeekday converts Sunday=0 to Monday=0 format.
+func (s *Server) getMondayBasedWeekday(weekday time.Weekday) int {
+	if weekday == time.Sunday {
+		return 6
+	}
+	return int(weekday) - 1
+}
+
+// isDateBooked checks if a date is booked (product-specific or global).
+func (s *Server) isDateBooked(dateStr string, bookedDates, globalBlockedDates []string) bool {
+	for _, bd := range bookedDates {
+		if bd == dateStr {
+			return true
+		}
+	}
+	for _, gbd := range globalBlockedDates {
+		if gbd == dateStr {
+			return true
+		}
+	}
+	return false
+}
+
+// isDateBetween checks if a date is between start and end dates.
+func (s *Server) isDateBetween(dateStr, startDate, endDate string) bool {
+	if startDate == "" || endDate == "" {
+		return false
+	}
+	currentDate, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		return false
+	}
+	start, err := time.Parse("2006-01-02", startDate)
+	if err != nil {
+		return false
+	}
+	end, err := time.Parse("2006-01-02", endDate)
+	if err != nil {
+		return false
+	}
+	return currentDate.After(start) && currentDate.Before(end)
 }
 
 // CalendarDay represents a single day in the calendar.
@@ -562,10 +596,44 @@ func (s *Server) handleUserDeleteCancel(w http.ResponseWriter, r *http.Request) 
 
 // handleAdminPanel renders the admin panel.
 func (s *Server) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
+	// Fetch products
+	products, err := s.productParser.LoadAllProducts()
+	if err != nil {
+		log.Printf("Error loading products: %v", err)
+		products = []domain.Product{}
+	}
+
+	// Fetch users from read models
+	users, err := s.readModels.GetAllUsers()
+	if err != nil {
+		log.Printf("Error loading users: %v", err)
+		users = []map[string]interface{}{}
+	}
+
+	// Fetch orders from read models
+	orders, err := s.readModels.GetAllOrders()
+	if err != nil {
+		log.Printf("Error loading orders: %v", err)
+		orders = []map[string]interface{}{}
+	}
+
+	// Fetch transfers from read models (mock for now)
+	transfers := []map[string]interface{}{}
+
+	// Fetch global blocked dates
+	globalBlockedDates, err := s.readModels.GetGlobalBlockedDates()
+	if err != nil {
+		log.Printf("Error loading global blocked dates: %v", err)
+		globalBlockedDates = []string{}
+	}
+
 	data := map[string]interface{}{
-		"Title":     "Panel Administratora",
-		"Orders":    []interface{}{},
-		"Transfers": []interface{}{},
+		"Title":              "Panel Administratora",
+		"Orders":             orders,
+		"Transfers":          transfers,
+		"Users":              users,
+		"Products":           products,
+		"GlobalBlockedDates": globalBlockedDates,
 	}
 
 	data["IsAdmin"] = true
@@ -590,8 +658,41 @@ func (s *Server) handleAdminUserDetail(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAdminOrderMarkPaid(w http.ResponseWriter, r *http.Request) {
 	orderID := chi.URLParam(r, "id")
 
-	// In real implementation, emit OrderPaid event
-	_ = orderID
+	// Update order status to paid in read models
+	now := time.Now().UTC().Format(time.RFC3339)
+	query := `
+	UPDATE orders
+	SET status = 'paid', paid_at = ?, updated_at = ?
+	WHERE id = ?
+	`
+	_, err := s.readModels.GetDB().Exec(query, now, now, orderID)
+	if err != nil {
+		log.Printf("Failed to mark order as paid: %v", err)
+		http.Error(w, "Failed to update order", http.StatusInternalServerError)
+		return
+	}
+
+	// Return updated orders section
+	s.handleAdminPanel(w, r)
+}
+
+// handleAdminOrderConfirm confirms an order manually (HTMX).
+func (s *Server) handleAdminOrderConfirm(w http.ResponseWriter, r *http.Request) {
+	orderID := chi.URLParam(r, "id")
+
+	// Update order status to confirmed in read models
+	now := time.Now().UTC().Format(time.RFC3339)
+	query := `
+	UPDATE orders
+	SET status = 'confirmed', updated_at = ?
+	WHERE id = ?
+	`
+	_, err := s.readModels.GetDB().Exec(query, now, orderID)
+	if err != nil {
+		log.Printf("Failed to confirm order: %v", err)
+		http.Error(w, "Failed to update order", http.StatusInternalServerError)
+		return
+	}
 
 	// Return updated orders section
 	s.handleAdminPanel(w, r)
@@ -616,10 +717,131 @@ func (s *Server) handleAdminTransferLink(w http.ResponseWriter, r *http.Request)
 	s.handleAdminPanel(w, r)
 }
 
+// handleAdminCreateReservation creates a manual reservation (HTMX).
+func (s *Server) handleAdminCreateReservation(w http.ResponseWriter, r *http.Request) {
+	if r.Method != methodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID := r.FormValue("user_id")
+	productID := r.FormValue("product_id")
+	startDate := r.FormValue("start_date")
+	endDate := r.FormValue("end_date")
+	price := r.FormValue("price")
+
+	if userID == "" || productID == "" || startDate == "" || endDate == "" || price == "" {
+		http.Error(w, "Missing required fields", http.StatusBadRequest)
+		return
+	}
+
+	// Generate order ID
+	orderID := fmt.Sprintf("MANUAL-%d", time.Now().UnixNano())
+
+	// Create order in read models
+	now := time.Now().UTC().Format(time.RFC3339)
+	query := `
+	INSERT INTO orders (id, user_id, total_amount, status, payment_method, start_date, end_date, created_at, updated_at)
+	VALUES (?, ?, ?, 'confirmed', 'manual', ?, ?, ?, ?)
+	`
+	_, err := s.readModels.GetDB().Exec(query, orderID, userID, price, startDate, endDate, now, now)
+	if err != nil {
+		log.Printf("Failed to create manual reservation: %v", err)
+		http.Error(w, "Failed to create reservation", http.StatusInternalServerError)
+		return
+	}
+
+	// Block dates in product_bookings table
+	start, _ := time.Parse("2006-01-02", startDate)
+	end, _ := time.Parse("2006-01-02", endDate)
+	for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
+		dateStr := d.Format("2006-01-02")
+		bookingQuery := `
+		INSERT INTO product_bookings (product_id, order_id, booked_date)
+		VALUES (?, ?, ?)
+		`
+		_, err = s.readModels.GetDB().Exec(bookingQuery, productID, orderID, dateStr)
+		if err != nil {
+			log.Printf("Failed to block date %s: %v", dateStr, err)
+		}
+	}
+
+	// Return updated admin panel
+	s.handleAdminPanel(w, r)
+}
+
+// handleAdminBlockProductDate blocks a date for a specific product (HTMX).
+func (s *Server) handleAdminBlockProductDate(w http.ResponseWriter, r *http.Request) {
+	s.handleAdminProductDateAction(w, r, true)
+}
+
+// handleAdminUnblockProductDate unblocks a date for a specific product (HTMX).
+func (s *Server) handleAdminUnblockProductDate(w http.ResponseWriter, r *http.Request) {
+	s.handleAdminProductDateAction(w, r, false)
+}
+
+// handleAdminProductDateAction handles blocking/unblocking dates for products.
+func (s *Server) handleAdminProductDateAction(w http.ResponseWriter, r *http.Request, block bool) {
+	if r.Method != methodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	productID := chi.URLParam(r, "id")
+	date := r.FormValue("date")
+
+	if productID == "" || date == "" {
+		http.Error(w, "Missing required fields", http.StatusBadRequest)
+		return
+	}
+
+	orderID := fmt.Sprintf("ADMIN-BLOCK-%s", productID)
+	var err error
+
+	if block {
+		// Insert into product_bookings with a special order ID for admin blocks
+		query := `
+		INSERT OR IGNORE INTO product_bookings (product_id, order_id, booked_date)
+		VALUES (?, ?, ?)
+		`
+		_, err = s.readModels.GetDB().Exec(query, productID, orderID, date)
+		if err != nil {
+			log.Printf("Failed to block product date: %v", err)
+			http.Error(w, "Failed to block date", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		// Delete from product_bookings for admin blocks
+		query := `
+		DELETE FROM product_bookings
+		WHERE product_id = ? AND order_id = ? AND booked_date = ?
+		`
+		_, err = s.readModels.GetDB().Exec(query, productID, orderID, date)
+		if err != nil {
+			log.Printf("Failed to unblock product date: %v", err)
+			http.Error(w, "Failed to unblock date", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Return updated admin panel
+	s.handleAdminPanel(w, r)
+}
+
 // handleHealth returns health status.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write([]byte("OK"))
+}
+
+// handleBranding renders the branding management page.
+func (s *Server) handleBranding(w http.ResponseWriter, r *http.Request) {
+	data := map[string]interface{}{
+		"Title": "Zarządzanie Brandingiem",
+	}
+
+	data["IsAdmin"] = true
+	s.renderTemplate(w, r, "branding.html", data)
 }
 
 // Helper functions

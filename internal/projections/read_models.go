@@ -166,6 +166,17 @@ func (rm *ReadModelsDB) initSchema() error {
 	);
 	`
 
+	// Global blocked dates table
+	globalBlockedDatesTable := `
+	CREATE TABLE IF NOT EXISTS global_blocked_dates (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		date TEXT NOT NULL UNIQUE,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+		created_by TEXT
+	);
+	CREATE INDEX IF NOT EXISTS idx_global_blocked_dates_date ON global_blocked_dates(date);
+	`
+
 	schemas := []string{
 		usersTable,
 		ordersTable,
@@ -175,6 +186,7 @@ func (rm *ReadModelsDB) initSchema() error {
 		userSessionsTable,
 		shoppingCartsTable,
 		checkpointTable,
+		globalBlockedDatesTable,
 	}
 	for _, schema := range schemas {
 		if _, err := rm.db.Exec(schema); err != nil {
@@ -214,4 +226,126 @@ func (rm *ReadModelsDB) SaveCheckpoint(projectionName string, version int) error
 	`
 	_, err := rm.db.Exec(query, projectionName, version)
 	return err
+}
+
+// GetAllUsers retrieves all users from the database.
+func (rm *ReadModelsDB) GetAllUsers() ([]map[string]interface{}, error) {
+	query := `
+	SELECT id, email, name, phone, address, is_admin, created_at
+	FROM users
+	WHERE deletion_requested = 0
+	ORDER BY created_at DESC
+	`
+	rows, err := rm.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var users []map[string]interface{}
+	for rows.Next() {
+		var id, email, name, phone, address, createdAt string
+		var isAdmin int
+		if err := rows.Scan(&id, &email, &name, &phone, &address, &isAdmin, &createdAt); err != nil {
+			return nil, err
+		}
+		users = append(users, map[string]interface{}{
+			"ID":      id,
+			"Email":   email,
+			"Name":    name,
+			"Phone":   phone,
+			"Address": address,
+			"IsAdmin": isAdmin == 1,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return users, nil
+}
+
+// GetAllOrders retrieves all orders from the database.
+func (rm *ReadModelsDB) GetAllOrders() ([]map[string]interface{}, error) {
+	query := `
+	SELECT o.id, o.user_id, u.name as user_name, o.total_amount, o.status, o.payment_method, o.items_json, o.created_at
+	FROM orders o
+	LEFT JOIN users u ON o.user_id = u.id
+	ORDER BY o.created_at DESC
+	LIMIT 50
+	`
+	rows, err := rm.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var orders []map[string]interface{}
+	for rows.Next() {
+		var id, userID, userName, status, paymentMethod, itemsJSON, createdAt string
+		var totalAmount float64
+		if err := rows.Scan(&id, &userID, &userName, &totalAmount, &status, &paymentMethod, &itemsJSON, &createdAt); err != nil {
+			return nil, err
+		}
+		orders = append(orders, map[string]interface{}{
+			"ID":            id,
+			"UserID":        userID,
+			"UserName":      userName,
+			"TotalAmount":   totalAmount,
+			"Status":        status,
+			"PaymentMethod": paymentMethod,
+			"Items":         itemsJSON,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return orders, nil
+}
+
+// GetGlobalBlockedDates retrieves all globally blocked dates.
+func (rm *ReadModelsDB) GetGlobalBlockedDates() ([]string, error) {
+	query := `SELECT date FROM global_blocked_dates ORDER BY date ASC`
+	rows, err := rm.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var dates []string
+	for rows.Next() {
+		var date string
+		if err := rows.Scan(&date); err != nil {
+			return nil, err
+		}
+		dates = append(dates, date)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return dates, nil
+}
+
+// AddGlobalBlockedDate adds a date to the global blocked dates.
+func (rm *ReadModelsDB) AddGlobalBlockedDate(date string, createdBy string) error {
+	query := `INSERT INTO global_blocked_dates (date, created_by) VALUES (?, ?)`
+	_, err := rm.db.Exec(query, date, createdBy)
+	return err
+}
+
+// RemoveGlobalBlockedDate removes a date from the global blocked dates.
+func (rm *ReadModelsDB) RemoveGlobalBlockedDate(date string) error {
+	query := `DELETE FROM global_blocked_dates WHERE date = ?`
+	_, err := rm.db.Exec(query, date)
+	return err
+}
+
+// IsDateGloballyBlocked checks if a date is globally blocked.
+func (rm *ReadModelsDB) IsDateGloballyBlocked(date string) (bool, error) {
+	var count int
+	query := `SELECT COUNT(*) FROM global_blocked_dates WHERE date = ?`
+	err := rm.db.QueryRow(query, date).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }

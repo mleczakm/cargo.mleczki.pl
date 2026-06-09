@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
@@ -15,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
 	_ "modernc.org/sqlite"
 
 	"cargo.mleczki.pl/internal/auth"
@@ -657,8 +657,10 @@ func TestHandleLoginPOST(t *testing.T) {
 		CREATE TABLE user_sessions (
 			id TEXT PRIMARY KEY,
 			user_id TEXT,
-			is_admin INTEGER,
-			created_at TEXT,
+			ip_address TEXT,
+			user_agent TEXT,
+			is_admin INTEGER DEFAULT 0,
+			created_at TEXT DEFAULT CURRENT_TIMESTAMP,
 			expires_at TEXT,
 			last_activity TEXT
 		);
@@ -677,18 +679,25 @@ func TestHandleLoginPOST(t *testing.T) {
 	// Create auth manager
 	authManager := auth.NewAuthManager(db, eventStore)
 
-	// Create a test user
-	ctx := context.Background()
-	password, err := authManager.EnsureAdminUser(ctx)
+	// Create a test admin user directly in the database
+	ctx := t.Context()
+	password := "testPassword123!"
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		t.Fatalf("Failed to hash password: %v", err)
+	}
+
+	now := time.Now().UTC().Format(time.RFC3339)
+	userID := "test_admin_123"
+	_, err = db.ExecContext(ctx, `
+		INSERT INTO users (id, email, password_hash, name, phone, address, is_adult, accepted_tos, is_admin, deletion_requested, deletion_requested_at, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, userID, "admin@example.com", string(hash), "Test Admin", "", "", 1, 1, 1, 0, "", now, now)
 	if err != nil {
 		t.Fatalf("Failed to create admin user: %v", err)
 	}
-	if password == "" {
-		t.Fatal("Expected password to be returned when creating new admin user")
-	}
-	t.Logf("Generated password: %s", password)
 
-	// Verify user was created in database
+	// Verify user was created
 	var count int
 	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM users WHERE email = ?", "admin@example.com").Scan(&count)
 	if err != nil {
@@ -697,6 +706,14 @@ func TestHandleLoginPOST(t *testing.T) {
 	if count != 1 {
 		t.Fatalf("Expected 1 user, got %d", count)
 	}
+
+	// Verify password hash
+	var storedHash string
+	err = db.QueryRowContext(ctx, "SELECT password_hash FROM users WHERE email = ?", "admin@example.com").Scan(&storedHash)
+	if err != nil {
+		t.Fatalf("Failed to query password hash: %v", err)
+	}
+	t.Logf("User created successfully, hash length: %d", len(storedHash))
 
 	// Create server
 	funcMap := template.FuncMap{
@@ -778,8 +795,10 @@ func TestHandleLoginPOSTInvalidCredentials(t *testing.T) {
 		CREATE TABLE user_sessions (
 			id TEXT PRIMARY KEY,
 			user_id TEXT,
-			is_admin INTEGER,
-			created_at TEXT,
+			ip_address TEXT,
+			user_agent TEXT,
+			is_admin INTEGER DEFAULT 0,
+			created_at TEXT DEFAULT CURRENT_TIMESTAMP,
 			expires_at TEXT,
 			last_activity TEXT
 		);
