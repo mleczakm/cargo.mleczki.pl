@@ -104,18 +104,18 @@
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <h3 class="text-xl font-bold text-gray-900 mb-4">Metoda płatności</h3>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <label class="flex flex-col items-center p-6 border-2 rounded-2xl cursor-pointer transition-all border-emerald-500 bg-emerald-50">
+                <label class="payment-method-label flex flex-col items-center p-6 border-2 rounded-2xl cursor-pointer transition-all border-emerald-500 bg-emerald-50" data-method="blik">
                     <input type="radio" name="payment_method" value="blik" form="checkout-form" class="hidden" checked />
-                    <svg class="w-8 h-8 mb-2 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-8 h-8 mb-2 text-emerald-600 payment-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
                     </svg>
                     <span class="font-bold text-gray-900">Szybki Przelew BLIK</span>
                     <span class="text-xs text-center mt-1 text-gray-500">Bezpiecznie i bez prowizji (autorski system).</span>
                 </label>
 
-                <label class="flex flex-col items-center p-6 border-2 rounded-2xl cursor-pointer transition-all border-gray-200 hover:border-emerald-300">
+                <label class="payment-method-label flex flex-col items-center p-6 border-2 rounded-2xl cursor-pointer transition-all border-gray-200 hover:border-emerald-300" data-method="cash">
                     <input type="radio" name="payment_method" value="cash" form="checkout-form" class="hidden" />
-                    <svg class="w-8 h-8 mb-2 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg class="w-8 h-8 mb-2 text-gray-400 payment-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
                     </svg>
                     <span class="font-bold text-gray-900">Gotówka przy odbiorze</span>
@@ -155,4 +155,40 @@
         </div>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const paymentLabels = document.querySelectorAll('.payment-method-label');
+
+    paymentLabels.forEach(label => {
+        label.addEventListener('click', function() {
+            // Remove selected styling from all labels
+            paymentLabels.forEach(l => {
+                l.classList.remove('border-emerald-500', 'bg-emerald-50');
+                l.classList.add('border-gray-200');
+                const icon = l.querySelector('.payment-icon');
+                if (icon) {
+                    icon.classList.remove('text-emerald-600');
+                    icon.classList.add('text-gray-400');
+                }
+            });
+
+            // Add selected styling to clicked label
+            this.classList.remove('border-gray-200');
+            this.classList.add('border-emerald-500', 'bg-emerald-50');
+            const icon = this.querySelector('.payment-icon');
+            if (icon) {
+                icon.classList.remove('text-gray-400');
+                icon.classList.add('text-emerald-600');
+            }
+
+            // Check the radio button
+            const radio = this.querySelector('input[type="radio"]');
+            if (radio) {
+                radio.checked = true;
+            }
+        });
+    });
+});
+</script>
 {{end}}
