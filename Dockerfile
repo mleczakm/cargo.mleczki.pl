@@ -37,6 +37,9 @@ COPY --from=builder /build/cargo-server .
 # Copy web directory (templates and static files)
 COPY --from=builder /build/web ./web
 
+# Copy data directory
+COPY --from=builder /build/data ./data
+
 # Create data directories
 RUN mkdir -p /app/data /app/db && \
     chown -R appuser:appuser /app
