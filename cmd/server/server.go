@@ -43,9 +43,14 @@ func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadMod
 	funcMap := template.FuncMap{
 		"upper":    strings.ToUpper,
 		"safeHTML": func(s string) template.HTML { return template.HTML(s) }, // #nosec G203 // Content is from trusted markdown files
+		"stripHTML": func(s string) template.HTML {
+			// Strips only outer <p> tags commonly added by markdown parser for short descriptions
+			stripped := strings.ReplaceAll(strings.ReplaceAll(s, "<p>", ""), "</p>", "")
+			return template.HTML(stripped) // #nosec G203 // Content is from trusted markdown files
+		},
 	}
 
-	tmpl := template.Must(template.New("").Funcs(funcMap).ParseFiles("web/templates/layout.html"))
+	tmpl := template.New("main").Funcs(funcMap)
 	tmpl = template.Must(tmpl.ParseGlob("web/templates/*.html"))
 
 	return &Server{
