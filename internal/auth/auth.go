@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"log"
 	"math/big"
 	"time"
 
@@ -97,9 +98,12 @@ func (am *AuthManager) Login(ctx context.Context, email, password string) (strin
 		&createdAtStr, &updatedAtStr,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
+		// Log failed login attempt for non-existent user
+		log.Printf("Failed login attempt: user not found for email %s", email)
 		return "", nil, fmt.Errorf("invalid email or password")
 	}
 	if err != nil {
+		log.Printf("Failed login attempt: database error for email %s: %v", email, err)
 		return "", nil, fmt.Errorf("failed to query user: %w", err)
 	}
 
@@ -117,12 +121,15 @@ func (am *AuthManager) Login(ctx context.Context, email, password string) (strin
 
 	// Check if user requested deletion
 	if user.DeletionRequested {
+		log.Printf("Failed login attempt: account deletion requested for user %s", user.ID)
 		return "", nil, fmt.Errorf("account deletion requested, cannot login")
 	}
 
 	// Compare password hash
 	err = bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(password))
 	if err != nil {
+		// Log failed login attempt due to invalid password
+		log.Printf("Failed login attempt: invalid password for user %s (email: %s)", user.ID, email)
 		return "", nil, fmt.Errorf("invalid email or password")
 	}
 
@@ -141,8 +148,12 @@ func (am *AuthManager) Login(ctx context.Context, email, password string) (strin
 		VALUES (?, ?, ?, ?, ?, ?)
 	`, sessionToken, user.ID, isAdmin, now, expiresAt, now)
 	if err != nil {
+		log.Printf("Failed login attempt: failed to create session for user %s: %v", user.ID, err)
 		return "", nil, fmt.Errorf("failed to create session: %w", err)
 	}
+
+	// Log successful login
+	log.Printf("Successful login for user %s (email: %s, admin: %t)", user.ID, user.Email, user.IsAdmin)
 
 	return sessionToken, &user, nil
 }

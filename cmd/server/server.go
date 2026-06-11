@@ -399,44 +399,46 @@ type CalendarDay struct {
 
 // handleLogin renders the login page and handles login submission.
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	errorMessage := ""
 	if r.Method == methodPost {
 		email := r.FormValue("email")
 		password := r.FormValue("password")
 
 		if email == "" || password == "" {
-			http.Error(w, "Email and password are required", http.StatusBadRequest)
-			return
-		}
-
-		ctx := r.Context()
-		sessionToken, user, err := s.authManager.Login(ctx, email, password)
-		if err != nil {
-			http.Error(w, "Invalid email or password", http.StatusUnauthorized)
-			return
-		}
-
-		// Set session cookie
-		http.SetCookie(w, &http.Cookie{
-			Name:     "session_token",
-			Value:    sessionToken,
-			Path:     "/",
-			HttpOnly: true,
-			Secure:   true,
-			SameSite: http.SameSiteStrictMode,
-			MaxAge:   30 * 24 * 60 * 60, // 30 days
-		})
-
-		// Redirect based on user role
-		if user.IsAdmin {
-			http.Redirect(w, r, "/admin", http.StatusFound)
+			errorMessage = "Email and password are required"
 		} else {
-			http.Redirect(w, r, "/user", http.StatusFound)
+			ctx := r.Context()
+			sessionToken, user, err := s.authManager.Login(ctx, email, password)
+			if err != nil {
+				errorMessage = "Invalid email or password"
+				log.Printf("Login failed for email %s: %v", email, err)
+				w.WriteHeader(http.StatusUnauthorized)
+			} else {
+				// Set session cookie
+				http.SetCookie(w, &http.Cookie{
+					Name:     "session_token",
+					Value:    sessionToken,
+					Path:     "/",
+					HttpOnly: true,
+					Secure:   true,
+					SameSite: http.SameSiteStrictMode,
+					MaxAge:   30 * 24 * 60 * 60, // 30 days
+				})
+
+				// Redirect based on user role
+				if user.IsAdmin {
+					http.Redirect(w, r, "/admin", http.StatusFound)
+				} else {
+					http.Redirect(w, r, "/user", http.StatusFound)
+				}
+				return
+			}
 		}
-		return
 	}
 
 	data := map[string]interface{}{
-		"Title": "Zaloguj się",
+		"Title":        "Zaloguj się",
+		"ErrorMessage": errorMessage,
 	}
 
 	s.renderTemplate(w, r, "login.html", data)
