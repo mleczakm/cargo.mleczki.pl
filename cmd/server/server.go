@@ -141,6 +141,8 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 	r.Get("/product/{id}/calendar", s.handleProductCalendar)
 	r.Get("/login", s.handleLogin)
 	r.Post("/login", s.handleLogin)
+	r.Get("/logout", s.handleLogout)
+	r.Post("/logout", s.handleLogout)
 	r.Get("/checkout", s.handleCheckout)
 	r.Get("/payment/{id}", s.handlePayment)
 	r.Get("/success", s.handleSuccess)
@@ -175,7 +177,6 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 		r.Post("/admin/reservation/create", s.handleAdminCreateReservation)
 		r.Post("/admin/product/{id}/block-date", s.handleAdminBlockProductDate)
 		r.Post("/admin/product/{id}/unblock-date", s.handleAdminUnblockProductDate)
-		r.Get("/branding", s.handleBranding)
 	})
 
 	// Health check
@@ -412,7 +413,6 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				errorMessage = "Invalid email or password"
 				log.Printf("Login failed for email %s: %v", email, err)
-				w.WriteHeader(http.StatusUnauthorized)
 			} else {
 				// Set session cookie
 				http.SetCookie(w, &http.Cookie{
@@ -427,9 +427,9 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 				// Redirect based on user role
 				if user.IsAdmin {
-					http.Redirect(w, r, "/admin", http.StatusFound)
+					w.Header().Set("HX-Redirect", "/admin")
 				} else {
-					http.Redirect(w, r, "/user", http.StatusFound)
+					w.Header().Set("HX-Redirect", "/user")
 				}
 				return
 			}
@@ -441,7 +441,49 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		"ErrorMessage": errorMessage,
 	}
 
+	// If modal request, return just the content
+	if r.URL.Query().Get("modal") == "1" {
+		if err := s.templates.ExecuteTemplate(w, "login-content", data); err != nil {
+			log.Printf("Template error: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+		return
+	}
+
+	// For POST requests with errors, also return just the content for HTMX
+	if r.Method == methodPost && errorMessage != "" {
+		if err := s.templates.ExecuteTemplate(w, "login-content", data); err != nil {
+			log.Printf("Template error: %v", err)
+			http.Error(w, "Internal server error", http.StatusInternalServerError)
+		}
+		return
+	}
+
 	s.renderTemplate(w, r, "login.html", data)
+}
+
+// handleLogout handles user logout.
+func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	cookie, err := r.Cookie("session_token")
+	if err == nil {
+		ctx := r.Context()
+		_ = s.authManager.Logout(ctx, cookie.Value)
+	}
+
+	// Clear session cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:     "session_token",
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteStrictMode,
+		MaxAge:   -1,
+	})
+
+	// Redirect to home
+	w.Header().Set("HX-Redirect", "/")
+	http.Redirect(w, r, "/", http.StatusFound)
 }
 
 // handleCheckout renders the checkout page.
@@ -1187,16 +1229,6 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte("OK"))
 }
 
-// handleBranding renders the branding management page.
-func (s *Server) handleBranding(w http.ResponseWriter, r *http.Request) {
-	data := map[string]interface{}{
-		"Title": "Zarządzanie Brandingiem",
-	}
-
-	data["IsAdmin"] = true
-	s.renderTemplate(w, r, "branding.html", data)
-}
-
 // Helper functions
 
 // adminAuthMiddleware checks if user is authenticated as admin.
@@ -1266,13 +1298,13 @@ func (s *Server) renderTemplate(w http.ResponseWriter, r *http.Request, name str
 }
 
 func isLoggedIn(r *http.Request) bool {
-	cookie, err := r.Cookie("user_session")
+	cookie, err := r.Cookie("session_token")
 	return err == nil && cookie.Value != ""
 }
 
 func isAdmin(r *http.Request) bool {
-	cookie, err := r.Cookie("admin_session")
-	return err == nil && cookie.Value == "authenticated"
+	cookie, err := r.Cookie("session_token")
+	return err == nil && cookie.Value != ""
 }
 
 // Cart types and functions

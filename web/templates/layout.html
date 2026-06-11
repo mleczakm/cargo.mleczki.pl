@@ -75,14 +75,22 @@
             <nav class="hidden md:flex space-x-6 items-center">
                 <a href="/" class="text-gray-600 hover:text-emerald-600 font-medium transition-colors">Oferta</a>
                 {{if .IsLoggedIn}}
-                    <a href="/user" class="text-gray-600 hover:text-emerald-600 font-medium transition-colors flex items-center">
+                    {{if not .IsAdmin}}
+                        <a href="/user" class="text-gray-600 hover:text-emerald-600 font-medium transition-colors flex items-center">
+                            <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                            </svg>
+                            Panel Klienta
+                        </a>
+                    {{end}}
+                    <a href="/logout" class="text-gray-600 hover:text-red-600 font-medium transition-colors flex items-center">
                         <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/>
                         </svg>
-                        Panel Klienta
+                        Wyloguj
                     </a>
                 {{else}}
-                    <a href="/login" class="text-gray-600 hover:text-emerald-600 font-medium transition-colors flex items-center">
+                    <a href="/login" hx-get="/login?modal=1" hx-target="#modal-content" hx-trigger="click" onclick="document.getElementById('modal-container').classList.remove('hidden')" class="text-gray-600 hover:text-emerald-600 font-medium transition-colors flex items-center">
                         <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
                         </svg>
@@ -139,8 +147,9 @@
             <a href="/" class="block w-full text-left px-3 py-3 text-base font-medium text-gray-700 hover:bg-emerald-50 rounded-lg">Oferta</a>
             {{if .IsLoggedIn}}
                 <a href="/user" class="block w-full text-left px-3 py-3 text-base font-medium text-gray-700 hover:bg-emerald-50 rounded-lg">Panel Klienta</a>
+                <a href="/logout" class="block w-full text-left px-3 py-3 text-base font-medium text-red-600 hover:bg-red-50 rounded-lg">Wyloguj</a>
             {{else}}
-                <a href="/login" class="block w-full text-left px-3 py-3 text-base font-medium text-gray-700 hover:bg-emerald-50 rounded-lg">Zaloguj się</a>
+                <a href="/login" hx-get="/login?modal=1" hx-target="#modal-content" hx-trigger="click" onclick="document.getElementById('modal-container').classList.remove('hidden'); document.getElementById('mobile-menu').classList.add('hidden');" class="block w-full text-left px-3 py-3 text-base font-medium text-gray-700 hover:bg-emerald-50 rounded-lg">Zaloguj się</a>
             {{end}}
             {{if .IsAdmin}}
                 <a href="/admin" class="block w-full text-left px-3 py-3 text-base font-medium text-red-600 hover:bg-red-50 rounded-lg">Panel Administratora</a>

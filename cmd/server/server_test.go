@@ -755,8 +755,8 @@ func TestHandleLoginPOST(t *testing.T) {
 	t.Logf("Response status: %d", w.Code)
 	t.Logf("Response body: %s", w.Body.String())
 
-	if w.Code != http.StatusFound {
-		t.Errorf("Expected status 302 (redirect), got %d", w.Code)
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200 (HTMX response), got %d", w.Code)
 	}
 
 	// Check that session cookie was set
@@ -772,9 +772,9 @@ func TestHandleLoginPOST(t *testing.T) {
 		t.Error("Expected session_token cookie to be set")
 	}
 
-	// Check redirect location
-	if w.Header().Get("Location") != "/admin" {
-		t.Errorf("Expected redirect to /admin, got %s", w.Header().Get("Location"))
+	// Check HX-Redirect header
+	if w.Header().Get("HX-Redirect") != "/admin" {
+		t.Errorf("Expected HX-Redirect to /admin, got %s", w.Header().Get("HX-Redirect"))
 	}
 }
 
@@ -857,7 +857,13 @@ func TestHandleLoginPOSTInvalidCredentials(t *testing.T) {
 
 	server.handleLogin(w, req)
 
-	if w.Code != http.StatusUnauthorized {
-		t.Errorf("Expected status 401, got %d", w.Code)
+	if w.Code != http.StatusOK {
+		t.Errorf("Expected status 200 (HTMX response), got %d", w.Code)
+	}
+
+	// Check that error message is in the response body
+	body := w.Body.String()
+	if !strings.Contains(body, "Invalid email or password") {
+		t.Errorf("Expected error message in response body, got: %s", body)
 	}
 }

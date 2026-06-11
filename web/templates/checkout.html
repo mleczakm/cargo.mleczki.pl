@@ -63,19 +63,19 @@
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                     <div class="md:col-span-2">
                         <label class="block text-sm font-medium text-gray-700 mb-1">Imię i nazwisko</label>
-                        <input type="text" name="name" value="{{.UserDetails.Name}}" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="Jan Kowalski" required />
+                        <input type="text" name="name" value="{{.UserDetails.Name}}" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" required />
                     </div>
                     <div class="md:col-span-2">
                         <label class="block text-sm font-medium text-gray-700 mb-1">Adres zamieszkania</label>
-                        <input type="text" name="address" value="{{.UserDetails.Address}}" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="ul. Przykładowa 12/3, 05-250 Radzymin" required />
+                        <input type="text" name="address" value="{{.UserDetails.Address}}" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" required />
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Adres e-mail</label>
-                        <input type="email" name="email" value="{{.UserDetails.Email}}" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="jan@example.com" required />
+                        <input type="email" name="email" value="{{.UserDetails.Email}}" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" required />
                     </div>
                     <div>
                         <label class="block text-sm font-medium text-gray-700 mb-1">Telefon</label>
-                        <input type="tel" name="phone" value="{{.UserDetails.Phone}}" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" placeholder="123 456 789" required />
+                        <input type="tel" name="phone" value="{{.UserDetails.Phone}}" class="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" required />
                     </div>
 
                     {{if not .IsLoggedIn}}
@@ -90,11 +90,11 @@
 
                 <div class="space-y-3 border-t border-gray-100 pt-6">
                     <label class="flex items-start space-x-3 cursor-pointer">
-                        <input type="checkbox" name="is_adult" class="mt-1 w-5 h-5 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500" required />
+                        <input type="checkbox" name="is_adult" class="mt-1 w-6 h-6 shrink-0 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500" required />
                         <span class="text-sm text-gray-700">Potwierdzam, że jestem osobą pełnoletnią i posiadam dokument tożsamości do wglądu przy odbiorze sprzętu.*</span>
                     </label>
                     <label class="flex items-start space-x-3 cursor-pointer">
-                        <input type="checkbox" name="accept_tos" class="mt-1 w-5 h-5 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500" required />
+                        <input type="checkbox" name="accept_tos" class="mt-1 w-6 h-6 shrink-0 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500" required />
                         <span class="text-sm text-gray-700">Akceptuję <a href="/terms" hx-get="/terms" hx-target="#modal-content" hx-trigger="click" onclick="document.getElementById('modal-container').classList.remove('hidden')" class="text-emerald-600 underline">Regulamin i Umowę Najmu</a>. Wyrażam zgodę na przetwarzanie danych osobowych w celu realizacji zamówienia (zgodnie z RODO).*</span>
                     </label>
                 </div>

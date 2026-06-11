@@ -87,7 +87,8 @@ func (am *AuthManager) Login(ctx context.Context, email, password string) (strin
 	// Query user by email
 	var user domain.User
 	var isAdmin int
-	var deletionRequestedAtStr, createdAtStr, updatedAtStr string
+	var deletionRequestedAtStr *string
+	var createdAtStr, updatedAtStr string
 	err := am.db.QueryRowContext(ctx, `
 		SELECT id, email, password_hash, name, phone, address, is_adult, accepted_tos, is_admin,
 		       deletion_requested, deletion_requested_at, created_at, updated_at
@@ -114,8 +115,8 @@ func (am *AuthManager) Login(ctx context.Context, email, password string) (strin
 	if updatedAtStr != "" {
 		user.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAtStr)
 	}
-	if deletionRequestedAtStr != "" {
-		t, _ := time.Parse(time.RFC3339, deletionRequestedAtStr)
+	if deletionRequestedAtStr != nil && *deletionRequestedAtStr != "" {
+		t, _ := time.Parse(time.RFC3339, *deletionRequestedAtStr)
 		user.DeletionRequestedAt = &t
 	}
 
@@ -162,7 +163,7 @@ func (am *AuthManager) Login(ctx context.Context, email, password string) (strin
 func (am *AuthManager) VerifySession(ctx context.Context, sessionToken string) (*domain.User, bool, error) {
 	// Query session
 	var userID string
-	var isAdmin bool
+	var isAdmin int
 	var expiresAt string
 	err := am.db.QueryRowContext(ctx, `
 		SELECT user_id, is_admin, expires_at FROM user_sessions WHERE id = ?
@@ -195,20 +196,37 @@ func (am *AuthManager) VerifySession(ctx context.Context, sessionToken string) (
 
 	// Query user
 	var user domain.User
+	var userIsAdmin int
+	var deletionRequestedAtStr *string
+	var createdAtStr, updatedAtStr string
 	err = am.db.QueryRowContext(ctx, `
 		SELECT id, email, password_hash, name, phone, address, is_adult, accepted_tos, is_admin,
 		       deletion_requested, deletion_requested_at, created_at, updated_at
 		FROM users WHERE id = ?
 	`, userID).Scan(
 		&user.ID, &user.Email, &user.PasswordHash, &user.Name, &user.Phone, &user.Address,
-		&user.IsAdult, &user.AcceptedTOS, &user.IsAdmin, &user.DeletionRequested, &user.DeletionRequestedAt,
-		&user.CreatedAt, &user.UpdatedAt,
+		&user.IsAdult, &user.AcceptedTOS, &userIsAdmin, &user.DeletionRequested, &deletionRequestedAtStr,
+		&createdAtStr, &updatedAtStr,
 	)
 	if err != nil {
 		return nil, false, fmt.Errorf("failed to query user: %w", err)
 	}
 
-	return &user, isAdmin, nil
+	// Parse time fields
+	if createdAtStr != "" {
+		user.CreatedAt, _ = time.Parse(time.RFC3339, createdAtStr)
+	}
+	if updatedAtStr != "" {
+		user.UpdatedAt, _ = time.Parse(time.RFC3339, updatedAtStr)
+	}
+	if deletionRequestedAtStr != nil && *deletionRequestedAtStr != "" {
+		t, _ := time.Parse(time.RFC3339, *deletionRequestedAtStr)
+		user.DeletionRequestedAt = &t
+	}
+
+	user.IsAdmin = userIsAdmin == 1
+
+	return &user, isAdmin == 1, nil
 }
 
 // Logout removes a session.

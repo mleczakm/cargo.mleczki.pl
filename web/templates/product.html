@@ -22,23 +22,33 @@
         </div>
 
         <div class="flex flex-col">
-            <div class="flex items-center space-x-3 mb-4">
-                <div class="p-3 bg-emerald-100 text-emerald-600 rounded-xl">
-                    <svg viewBox="0 0 100 100" class="w-6 h-6" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
-                        <circle cx="18" cy="75" r="14" />
-                        <circle cx="86" cy="79" r="10" />
-                        <circle cx="18" cy="75" r="2" fill="currentColor" />
-                        <circle cx="86" cy="79" r="2" fill="currentColor" />
-                        <path d="M 18 75 L 86 79" />
-                        <path d="M 38 75 L 26 40" />
-                        <path d="M 18 75 L 26 40" />
-                        <path d="M 18 40 L 34 40" stroke-width="6" />
-                        <path d="M 49 76 L 46 32" />
-                        <path d="M 38 32 L 52 32" stroke-width="6" />
-                        <path d="M 47 40 L 76 52 Q 86 56, 79 78 L 49 76 Z" fill="currentColor" fill-opacity="0.1" />
-                    </svg>
+            <div class="flex items-center justify-between mb-4">
+                <div class="flex items-center space-x-3">
+                    <div class="p-3 bg-emerald-100 text-emerald-600 rounded-xl">
+                        <svg viewBox="0 0 100 100" class="w-6 h-6" fill="none" xmlns="http://www.w3.org/2000/svg" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="18" cy="75" r="14" />
+                            <circle cx="86" cy="79" r="10" />
+                            <circle cx="18" cy="75" r="2" fill="currentColor" />
+                            <circle cx="86" cy="79" r="2" fill="currentColor" />
+                            <path d="M 18 75 L 86 79" />
+                            <path d="M 38 75 L 26 40" />
+                            <path d="M 18 75 L 26 40" />
+                            <path d="M 18 40 L 34 40" stroke-width="6" />
+                            <path d="M 49 76 L 46 32" />
+                            <path d="M 38 32 L 52 32" stroke-width="6" />
+                            <path d="M 47 40 L 76 52 Q 86 56, 79 78 L 49 76 Z" fill="currentColor" fill-opacity="0.1" />
+                        </svg>
+                    </div>
+                    <h1 class="text-3xl lg:text-4xl font-black text-gray-900">{{.Product.Name}}</h1>
                 </div>
-                <h1 class="text-3xl lg:text-4xl font-black text-gray-900">{{.Product.Name}}</h1>
+                {{if .IsAdmin}}
+                    <a href="/admin#fleet" class="flex items-center space-x-2 bg-gray-900 hover:bg-gray-800 text-white px-4 py-2 rounded-xl font-semibold shadow text-sm">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/>
+                        </svg>
+                        <span>Zarządzaj Flotą</span>
+                    </a>
+                {{end}}
             </div>
 
             <div class="text-lg text-gray-600 mb-8 leading-relaxed prose prose-emerald max-w-none">
@@ -64,7 +74,7 @@
                     {{range .Product.Addons}}
                     <label class="flex items-center justify-between p-4 rounded-xl cursor-pointer transition-colors border border-gray-200 hover:border-emerald-300 bg-white">
                         <div class="flex items-center space-x-4">
-                            <input type="checkbox" name="addon_{{.ID}}" value="{{.ID}}" class="w-5 h-5 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500" />
+                            <input type="checkbox" name="addon_{{.ID}}" value="{{.ID}}" class="w-6 h-6 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500" />
                             <div class="flex items-center space-x-2">
                                 <span class="text-gray-500">{{.Icon}}</span>
                                 <span class="font-medium text-gray-900">{{.Name}}</span>

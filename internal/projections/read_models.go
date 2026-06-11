@@ -74,11 +74,13 @@ func (rm *ReadModelsDB) initSchema() error {
 		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
 		updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
 		paid_at TEXT,
+		payment_code TEXT,
 		FOREIGN KEY (user_id) REFERENCES users(id)
 	);
 	CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id);
 	CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 	CREATE INDEX IF NOT EXISTS idx_orders_created ON orders(created_at);
+	CREATE INDEX IF NOT EXISTS idx_orders_payment_code ON orders(payment_code);
 	`
 
 	// Order items table
@@ -219,22 +221,6 @@ func (rm *ReadModelsDB) initSchema() error {
 		if _, err := rm.db.Exec(schema); err != nil {
 			log.Printf("Failed to execute schema %d: %v", i, err)
 			return err
-		}
-	}
-
-	// Add payment_code column to orders table if it doesn't exist (migration)
-	// Try to add the column, ignore error if it already exists
-	_, err := rm.db.Exec(`ALTER TABLE orders ADD COLUMN payment_code TEXT`)
-	if err != nil {
-		// Column might already exist, which is fine
-		log.Printf("Note: payment_code column migration: %v", err)
-	} else {
-		log.Println("Added payment_code column to orders table")
-
-		// Create index on payment_code column
-		_, err = rm.db.Exec(`CREATE INDEX IF NOT EXISTS idx_orders_payment_code ON orders(payment_code)`)
-		if err != nil {
-			log.Printf("Failed to create payment_code index: %v", err)
 		}
 	}
 
