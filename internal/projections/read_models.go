@@ -3,6 +3,8 @@ package projections
 import (
 	"database/sql"
 	"fmt"
+	"log"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -177,6 +179,29 @@ func (rm *ReadModelsDB) initSchema() error {
 	CREATE INDEX IF NOT EXISTS idx_global_blocked_dates_date ON global_blocked_dates(date);
 	`
 
+	// Payment codes table
+	paymentCodesTable := `
+	CREATE TABLE IF NOT EXISTS payment_codes (
+		id TEXT PRIMARY KEY,
+		code TEXT NOT NULL UNIQUE,
+		order_id TEXT NOT NULL,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (order_id) REFERENCES orders(id)
+	);
+	CREATE INDEX IF NOT EXISTS idx_payment_codes_code ON payment_codes(code);
+	CREATE INDEX IF NOT EXISTS idx_payment_codes_order ON payment_codes(order_id);
+	`
+
+	// Email import metadata table
+	emailImportTable := `
+	CREATE TABLE IF NOT EXISTS email_import_metadata (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		last_import_at TEXT,
+		last_import_count INTEGER DEFAULT 0,
+		updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+	);
+	`
+
 	schemas := []string{
 		usersTable,
 		ordersTable,
@@ -187,10 +212,29 @@ func (rm *ReadModelsDB) initSchema() error {
 		shoppingCartsTable,
 		checkpointTable,
 		globalBlockedDatesTable,
+		paymentCodesTable,
+		emailImportTable,
 	}
-	for _, schema := range schemas {
+	for i, schema := range schemas {
 		if _, err := rm.db.Exec(schema); err != nil {
+			log.Printf("Failed to execute schema %d: %v", i, err)
 			return err
+		}
+	}
+
+	// Add payment_code column to orders table if it doesn't exist (migration)
+	// Try to add the column, ignore error if it already exists
+	_, err := rm.db.Exec(`ALTER TABLE orders ADD COLUMN payment_code TEXT`)
+	if err != nil {
+		// Column might already exist, which is fine
+		log.Printf("Note: payment_code column migration: %v", err)
+	} else {
+		log.Println("Added payment_code column to orders table")
+
+		// Create index on payment_code column
+		_, err = rm.db.Exec(`CREATE INDEX IF NOT EXISTS idx_orders_payment_code ON orders(payment_code)`)
+		if err != nil {
+			log.Printf("Failed to create payment_code index: %v", err)
 		}
 	}
 
@@ -348,4 +392,86 @@ func (rm *ReadModelsDB) IsDateGloballyBlocked(date string) (bool, error) {
 		return false, err
 	}
 	return count > 0, nil
+}
+
+// CreatePaymentCode creates a new payment code for an order.
+func (rm *ReadModelsDB) CreatePaymentCode(paymentCodeID, code, orderID string) error {
+	query := `INSERT INTO payment_codes (id, code, order_id) VALUES (?, ?, ?)`
+	_, err := rm.db.Exec(query, paymentCodeID, code, orderID)
+	return err
+}
+
+// GetPaymentCodeByOrderID retrieves the payment code for a specific order.
+func (rm *ReadModelsDB) GetPaymentCodeByOrderID(orderID string) (string, error) {
+	var code string
+	query := `SELECT code FROM payment_codes WHERE order_id = ?`
+	err := rm.db.QueryRow(query, orderID).Scan(&code)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	return code, err
+}
+
+// GetOrderByPaymentCode retrieves an order by its payment code.
+func (rm *ReadModelsDB) GetOrderByPaymentCode(code string) (map[string]interface{}, error) {
+	query := `
+	SELECT o.id, o.user_id, o.total_amount, o.status, o.payment_method, o.items_json, o.created_at
+	FROM orders o
+	WHERE o.payment_code = ?
+	`
+	var id, userID, status, paymentMethod, itemsJSON, createdAt string
+	var totalAmount float64
+	err := rm.db.QueryRow(query, code).Scan(&id, &userID, &totalAmount, &status, &paymentMethod, &itemsJSON, &createdAt)
+	if err == sql.ErrNoRows {
+		return nil, sql.ErrNoRows
+	}
+	if err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{
+		"ID":            id,
+		"UserID":        userID,
+		"TotalAmount":   totalAmount,
+		"Status":        status,
+		"PaymentMethod": paymentMethod,
+		"Items":         itemsJSON,
+	}, nil
+}
+
+// GetLastEmailImport retrieves the last email import metadata.
+func (rm *ReadModelsDB) GetLastEmailImport() (map[string]interface{}, error) {
+	query := `
+	SELECT last_import_at, last_import_count, updated_at
+	FROM email_import_metadata
+	WHERE id = 1
+	`
+	var lastImportAt, updatedAt string
+	var lastImportCount int
+	err := rm.db.QueryRow(query).Scan(&lastImportAt, &lastImportCount, &updatedAt)
+	if err == sql.ErrNoRows {
+		return nil, sql.ErrNoRows
+	}
+	if err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{
+		"LastImportAt":    lastImportAt,
+		"LastImportCount": lastImportCount,
+		"UpdatedAt":       updatedAt,
+	}, nil
+}
+
+// UpdateLastEmailImport updates the last email import metadata.
+func (rm *ReadModelsDB) UpdateLastEmailImport(count int) error {
+	now := time.Now().UTC().Format(time.RFC3339)
+	query := `
+	INSERT INTO email_import_metadata (id, last_import_at, last_import_count, updated_at)
+	VALUES (1, ?, ?, ?)
+	ON CONFLICT(id) DO UPDATE SET
+		last_import_at = excluded.last_import_at,
+		last_import_count = excluded.last_import_count,
+		updated_at = excluded.updated_at
+	`
+	_, err := rm.db.Exec(query, now, count, now)
+	return err
 }

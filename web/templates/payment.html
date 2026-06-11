@@ -6,7 +6,7 @@
     </svg>
     <h2 class="text-4xl font-black mb-4">Płatność gotówką</h2>
     <p class="text-lg text-gray-600 mb-8">Wybrałeś płatność gotówką na miejscu. Przygotuj prosimy odliczoną kwotę ({{.FinalTotal}} zł) przy odbiorze sprzętu.</p>
-    <form hx-post="/payment/confirm" hx-target="body">
+    <form hx-post="/payment/confirm?id={{.OrderID}}" hx-target="body">
         <button type="submit" class="bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-4 rounded-xl font-bold text-lg shadow-lg">
             Rozumiem, zakończ rezerwację
         </button>
@@ -34,7 +34,11 @@
                     <li>Odbiorca: <span class="font-black text-gray-900">500 123 456</span></li>
                     <li>Kwota: <span class="font-black text-emerald-700">{{.FinalTotal}} zł</span></li>
                     <li>Tytuł (BARDZO WAŻNE):<br/>
+                        {{if .PaymentCode}}
+                        <span class="inline-block bg-white border border-gray-200 px-6 py-3 mt-2 rounded-lg font-mono text-3xl text-emerald-700 font-black tracking-wider">{{.PaymentCode}}</span>
+                        {{else}}
                         <span class="inline-block bg-white border border-gray-200 px-4 py-2 mt-2 rounded-lg font-mono text-emerald-700 font-bold">CARGO-{{.OrderID}}</span>
+                        {{end}}
                     </li>
                 </ol>
             </div>

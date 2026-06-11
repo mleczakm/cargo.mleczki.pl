@@ -71,7 +71,18 @@
             <div id="transfers-section" class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
                 <h3 class="font-bold text-xl mb-6 border-b pb-2 flex items-center justify-between">
                     <span>Skrzynka wpłat (BLIK)</span>
-                    <span class="text-xs font-normal bg-gray-100 px-2 py-1 rounded-md text-gray-600 border border-gray-200">Sync: Teraz</span>
+                    <div class="flex items-center space-x-2">
+                        <button hx-post="/admin/transfers/import" hx-target="#transfers-section" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-md font-semibold transition-colors">
+                            Importuj z Gmail
+                        </button>
+                        {{if .LastEmailImport}}
+                        <span class="text-xs font-normal bg-emerald-50 px-2 py-1 rounded-md text-emerald-700 border border-emerald-200">
+                            Ostatni import: {{.LastEmailImport.LastImportAt}}
+                        </span>
+                        {{else}}
+                        <span class="text-xs font-normal bg-gray-100 px-2 py-1 rounded-md text-gray-600 border border-gray-200">Brak importów</span>
+                        {{end}}
+                    </div>
                 </h3>
                 <div class="space-y-4">
                     {{if .Transfers}}

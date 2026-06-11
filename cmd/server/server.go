@@ -2,34 +2,41 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"html/template"
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"golang.org/x/crypto/bcrypt"
 
 	"cargo.mleczki.pl/internal/auth"
 	"cargo.mleczki.pl/internal/domain"
+	"cargo.mleczki.pl/internal/email"
 	"cargo.mleczki.pl/internal/eventstore"
 	"cargo.mleczki.pl/internal/products"
 	"cargo.mleczki.pl/internal/projections"
+	"cargo.mleczki.pl/internal/transfers"
 )
 
 const methodPost = "POST"
 
 // Server holds the application state.
 type Server struct {
-	eventStore    eventstore.EventStore
-	readModels    *projections.ReadModelsDB
-	productParser *products.Parser
-	authManager   *auth.AuthManager
-	templates     *template.Template
+	eventStore      eventstore.EventStore
+	readModels      *projections.ReadModelsDB
+	productParser   *products.Parser
+	authManager     *auth.AuthManager
+	templates       *template.Template
+	transferMatcher *transfers.Matcher
+	emailImporter   *email.Importer
 }
 
 // partialTemplates are HTMX fragments rendered without the site layout.
@@ -53,12 +60,70 @@ func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadMod
 	tmpl := template.New("main").Funcs(funcMap)
 	tmpl = template.Must(tmpl.ParseGlob("web/templates/*.html"))
 
-	return &Server{
-		eventStore:    eventStore,
-		readModels:    readModels,
-		productParser: productParser,
-		authManager:   authManager,
-		templates:     tmpl,
+	// Initialize email importer if credentials are provided
+	var emailImporter *email.Importer
+	imapServer := os.Getenv("IMAP_SERVER")
+	imapUsername := os.Getenv("IMAP_USERNAME")
+	imapPassword := os.Getenv("IMAP_PASSWORD")
+	if imapServer != "" && imapUsername != "" && imapPassword != "" {
+		imapClient := email.NewIMAPClient(imapServer, imapUsername, imapPassword, "INBOX")
+		emailParser := email.NewParser()
+		emailImporter = email.NewImporter(imapClient, emailParser, eventStore, readModels.GetDB())
+		log.Println("Email importer initialized")
+	}
+
+	server := &Server{
+		eventStore:      eventStore,
+		readModels:      readModels,
+		productParser:   productParser,
+		authManager:     authManager,
+		templates:       tmpl,
+		transferMatcher: transfers.NewMatcher(),
+		emailImporter:   emailImporter,
+	}
+
+	// Start background email import scheduler if configured
+	if emailImporter != nil {
+		go server.startEmailImportScheduler()
+	}
+
+	return server
+}
+
+// startEmailImportScheduler runs a background scheduler that imports transfers every 30 seconds
+// only if there are pending BLIK payments waiting to be matched.
+func (s *Server) startEmailImportScheduler() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	log.Println("Email import scheduler started (runs every 30s when pending payments exist)")
+
+	for range ticker.C {
+		if s.emailImporter == nil {
+			continue
+		}
+
+		// Check if there are pending payments
+		hasPending, err := s.emailImporter.HasPendingPayments()
+		if err != nil {
+			log.Printf("Failed to check for pending payments: %v", err)
+			continue
+		}
+
+		if !hasPending {
+			continue
+		}
+
+		// Import transfers
+		count, err := s.emailImporter.ImportTransfers(context.Background())
+		if err != nil {
+			log.Printf("Failed to import transfers: %v", err)
+			continue
+		}
+
+		if count > 0 {
+			log.Printf("Scheduled import: imported %d transfers", count)
+		}
 	}
 }
 
@@ -106,6 +171,7 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 		r.Post("/admin/order/{id}/mark-paid", s.handleAdminOrderMarkPaid)
 		r.Post("/admin/order/{id}/confirm", s.handleAdminOrderConfirm)
 		r.Post("/admin/transfer/{id}/link", s.handleAdminTransferLink)
+		r.Post("/admin/transfers/import", s.handleAdminImportTransfers)
 		r.Post("/admin/reservation/create", s.handleAdminCreateReservation)
 		r.Post("/admin/product/{id}/block-date", s.handleAdminBlockProductDate)
 		r.Post("/admin/product/{id}/unblock-date", s.handleAdminUnblockProductDate)
@@ -395,12 +461,39 @@ func (s *Server) handleCheckout(w http.ResponseWriter, r *http.Request) {
 
 // handlePayment renders the payment page.
 func (s *Server) handlePayment(w http.ResponseWriter, r *http.Request) {
-	// Simplified payment handling
+	orderID := r.URL.Query().Get("id")
+	paymentMethod := r.URL.Query().Get("method")
+
+	if orderID == "" {
+		http.Error(w, "Order ID required", http.StatusBadRequest)
+		return
+	}
+
+	// Get order details
+	var totalAmount float64
+	var status, dbPaymentMethod string
+	var paymentCode *string
+	err := s.readModels.GetDB().QueryRow(`
+		SELECT total_amount, status, payment_method, payment_code
+		FROM orders WHERE id = ?
+	`, orderID).Scan(&totalAmount, &status, &dbPaymentMethod, &paymentCode)
+	if err != nil {
+		log.Printf("Failed to get order: %v", err)
+		http.Error(w, "Order not found", http.StatusNotFound)
+		return
+	}
+
+	// Use payment method from query param or database
+	if paymentMethod == "" {
+		paymentMethod = dbPaymentMethod
+	}
+
 	data := map[string]interface{}{
 		"Title":         "Płatność",
-		"PaymentMethod": "blik",
-		"FinalTotal":    150,
-		"OrderID":       "1234",
+		"PaymentMethod": paymentMethod,
+		"FinalTotal":    int(totalAmount),
+		"OrderID":       orderID,
+		"PaymentCode":   paymentCode,
 	}
 
 	s.renderTemplate(w, r, "payment.html", data)
@@ -484,22 +577,122 @@ func (s *Server) handleCartRemove(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleCheckoutSubmit processes the checkout form (HTMX).
+//
+//nolint:gocyclo // Function complexity is acceptable for this handler
 func (s *Server) handleCheckoutSubmit(w http.ResponseWriter, r *http.Request) {
 	if r.Method != methodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// Process order (simplified)
-	// In real implementation, this would:
-	// 1. Validate form data
-	// 2. Create user if needed
-	// 3. Emit OrderPlaced event
-	// 4. Clear cart
-	// 5. Redirect to payment
-
+	// Get form data
 	paymentMethod := r.FormValue("payment_method")
-	redirectURL := fmt.Sprintf("/payment?method=%s", paymentMethod)
+	name := r.FormValue("name")
+	email := r.FormValue("email")
+	phone := r.FormValue("phone")
+	address := r.FormValue("address")
+	isAdult := r.FormValue("is_adult") == "on"
+	acceptTOS := r.FormValue("accept_tos") == "on"
+
+	// Validate required fields
+	if name == "" || email == "" || phone == "" || address == "" || !isAdult || !acceptTOS {
+		http.Error(w, "Missing required fields", http.StatusBadRequest)
+		return
+	}
+
+	// Get cart
+	cart := getCart(r)
+	if len(cart) == 0 {
+		http.Error(w, "Cart is empty", http.StatusBadRequest)
+		return
+	}
+
+	// Calculate total
+	totalAmount := calculateFinalTotal(cart)
+
+	// Generate order ID
+	orderID := fmt.Sprintf("ORD-%d", time.Now().UnixNano())
+
+	// Generate payment code for BLIK payments
+	var paymentCode *string
+	if paymentMethod == "blik" {
+		code := domain.GeneratePaymentCode()
+		paymentCode = &code
+	}
+
+	// Create user (simplified - in real implementation would check if user exists)
+	userID := fmt.Sprintf("user_%d", time.Now().UnixNano())
+	ctx := r.Context()
+
+	// Hash password if provided
+	var passwordHash string
+	if password := r.FormValue("password"); password != "" {
+		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+		if err != nil {
+			http.Error(w, "Failed to process password", http.StatusInternalServerError)
+			return
+		}
+		passwordHash = string(hash)
+	}
+
+	// Insert user
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := s.readModels.GetDB().ExecContext(ctx, `
+		INSERT INTO users (id, email, password_hash, name, phone, address, is_adult, accepted_tos, is_admin, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, userID, email, passwordHash, name, phone, address, 1, 1, 0, now, now)
+	if err != nil {
+		log.Printf("Failed to create user: %v", err)
+		// User might already exist, try to get existing user
+		err = s.readModels.GetDB().QueryRowContext(ctx, "SELECT id FROM users WHERE email = ?", email).Scan(&userID)
+		if err != nil {
+			http.Error(w, "Failed to create/get user", http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Insert order
+	_, err = s.readModels.GetDB().ExecContext(ctx, `
+		INSERT INTO orders (id, user_id, total_amount, status, payment_method, payment_code, items_json, created_at, updated_at)
+		VALUES (?, ?, ?, 'pending_payment', ?, ?, ?, ?, ?)
+	`, orderID, userID, totalAmount, paymentMethod, paymentCode, "", now, now)
+	if err != nil {
+		log.Printf("Failed to create order: %v", err)
+		http.Error(w, "Failed to create order", http.StatusInternalServerError)
+		return
+	}
+
+	// Create payment code record if BLIK
+	if paymentMethod == "blik" && paymentCode != nil {
+		paymentCodeID := fmt.Sprintf("pc_%d", time.Now().UnixNano())
+		err = s.readModels.CreatePaymentCode(paymentCodeID, *paymentCode, orderID)
+		if err != nil {
+			log.Printf("Failed to create payment code: %v", err)
+		}
+	}
+
+	// Block dates in product_bookings table
+	for _, item := range cart {
+		start, _ := time.Parse("2006-01-02", item.StartDate)
+		end, _ := time.Parse("2006-01-02", item.EndDate)
+		for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
+			dateStr := d.Format("2006-01-02")
+			bookingQuery := `
+			INSERT INTO product_bookings (product_id, order_id, booked_date)
+			VALUES (?, ?, ?)
+			`
+			_, err = s.readModels.GetDB().Exec(bookingQuery, item.ProductID, orderID, dateStr)
+			if err != nil {
+				log.Printf("Failed to block date %s: %v", dateStr, err)
+			}
+		}
+	}
+
+	// Clear cart
+	clearCart(w, r)
+
+	// Redirect to payment
+	redirectURL := fmt.Sprintf("/payment?id=%s&method=%s", orderID, paymentMethod)
 	http.Redirect(w, r, redirectURL, http.StatusFound)
 }
 
@@ -507,6 +700,24 @@ func (s *Server) handleCheckoutSubmit(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handlePaymentConfirm(w http.ResponseWriter, r *http.Request) {
 	if r.Method != methodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	orderID := r.URL.Query().Get("id")
+	if orderID == "" {
+		http.Error(w, "Order ID required", http.StatusBadRequest)
+		return
+	}
+
+	// Mark order as confirmed (for cash payments)
+	now := time.Now().UTC().Format(time.RFC3339)
+	_, err := s.readModels.GetDB().Exec(`
+		UPDATE orders SET status = 'confirmed', updated_at = ?
+		WHERE id = ?
+	`, now, orderID)
+	if err != nil {
+		log.Printf("Failed to confirm order: %v", err)
+		http.Error(w, "Failed to confirm order", http.StatusInternalServerError)
 		return
 	}
 
@@ -521,15 +732,35 @@ func (s *Server) handlePaymentConfirm(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handlePaymentStatus(w http.ResponseWriter, r *http.Request) {
 	orderID := chi.URLParam(r, "id")
 
-	// In real implementation, check order status from read models
-	// For now, simulate payment confirmation after a few checks
-	_ = orderID
-
-	// Return success fragment
-	data := map[string]interface{}{
-		"Email": "user@example.com",
+	// Check order status from read models
+	var status string
+	err := s.readModels.GetDB().QueryRow(`
+		SELECT status FROM orders WHERE id = ?
+	`, orderID).Scan(&status)
+	if err != nil {
+		log.Printf("Failed to get order status: %v", err)
+		http.Error(w, "Failed to check status", http.StatusInternalServerError)
+		return
 	}
-	s.renderTemplate(w, r, "payment_success.html", data)
+
+	// If order is paid, return success fragment
+	if status == "paid" {
+		data := map[string]interface{}{
+			"Email": "user@example.com",
+		}
+		s.renderTemplate(w, r, "payment_success.html", data)
+		return
+	}
+
+	// Otherwise, return loading state
+	w.Header().Set("Content-Type", "text/html")
+	fmt.Fprintf(w, `<div class="flex flex-col items-center justify-center py-4">
+		<svg class="w-10 h-10 text-emerald-600 animate-spin mb-4" fill="none" viewBox="0 0 24 24">
+			<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+			<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+		</svg>
+		<p class="font-bold text-gray-900">Nasłuchujemy na przelew z banku...</p>
+	</div>`)
 }
 
 // handleSuccess renders the order success page.
@@ -625,6 +856,13 @@ func (s *Server) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 	// Fetch transfers from read models (mock for now)
 	transfers := []map[string]interface{}{}
 
+	// Fetch last email import metadata
+	lastEmailImport, err := s.readModels.GetLastEmailImport()
+	if err != nil {
+		log.Printf("Error loading last email import: %v", err)
+		lastEmailImport = nil
+	}
+
 	// Fetch global blocked dates
 	globalBlockedDates, err := s.readModels.GetGlobalBlockedDates()
 	if err != nil {
@@ -639,6 +877,7 @@ func (s *Server) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		"Users":              users,
 		"Products":           products,
 		"GlobalBlockedDates": globalBlockedDates,
+		"LastEmailImport":    lastEmailImport,
 	}
 
 	data["IsAdmin"] = true
@@ -711,14 +950,121 @@ func (s *Server) handleAdminTransferLink(w http.ResponseWriter, r *http.Request)
 	}
 
 	transferID := chi.URLParam(r, "id")
-
 	orderID := r.FormValue("value")
 
-	// In real implementation, emit TransferLinked and OrderPaid events
-	_ = transferID
-	_ = orderID
+	// Get transfer details
+	var title string
+	err := s.readModels.GetDB().QueryRow(`
+		SELECT title FROM transfers WHERE id = ?
+	`, transferID).Scan(&title)
+	if err != nil {
+		log.Printf("Failed to get transfer: %v", err)
+		http.Error(w, "Transfer not found", http.StatusNotFound)
+		return
+	}
+
+	// If order ID is provided manually, use it
+	if orderID != "" {
+		// Link transfer to order
+		now := time.Now().UTC().Format(time.RFC3339)
+		_, err = s.readModels.GetDB().Exec(`
+			UPDATE transfers SET order_id = ?, status = 'matched', linked_at = ?
+			WHERE id = ?
+		`, orderID, now, transferID)
+		if err != nil {
+			log.Printf("Failed to link transfer: %v", err)
+			http.Error(w, "Failed to link transfer", http.StatusInternalServerError)
+			return
+		}
+
+		// Mark order as paid
+		_, err = s.readModels.GetDB().Exec(`
+			UPDATE orders SET status = 'paid', paid_at = ?, updated_at = ?
+			WHERE id = ?
+		`, now, now, orderID)
+		if err != nil {
+			log.Printf("Failed to mark order as paid: %v", err)
+		}
+	} else {
+		// Automatic matching by payment code
+		// Get all pending payment codes
+		rows, err := s.readModels.GetDB().Query(`
+			SELECT code FROM payment_codes
+		`)
+		if err != nil {
+			log.Printf("Failed to get payment codes: %v", err)
+		} else {
+			defer rows.Close()
+			var codes []string
+			for rows.Next() {
+				var code string
+				if err := rows.Scan(&code); err != nil {
+					continue
+				}
+				codes = append(codes, code)
+			}
+			if err := rows.Err(); err != nil {
+				log.Printf("Error iterating payment codes: %v", err)
+			}
+
+			// Try to match by payment code
+			matchedCode := s.transferMatcher.MatchByPaymentCode(title, codes)
+			if matchedCode != "" {
+				// Get order ID by payment code
+				var matchedOrderID string
+				err = s.readModels.GetDB().QueryRow(`
+					SELECT order_id FROM payment_codes WHERE code = ?
+				`, matchedCode).Scan(&matchedOrderID)
+				if err == nil {
+					// Link transfer to order
+					now := time.Now().UTC().Format(time.RFC3339)
+					_, err = s.readModels.GetDB().Exec(`
+						UPDATE transfers SET order_id = ?, status = 'matched', linked_at = ?
+						WHERE id = ?
+					`, matchedOrderID, now, transferID)
+					if err != nil {
+						log.Printf("Failed to link transfer: %v", err)
+					}
+
+					// Mark order as paid
+					_, err = s.readModels.GetDB().Exec(`
+						UPDATE orders SET status = 'paid', paid_at = ?, updated_at = ?
+						WHERE id = ?
+					`, now, now, matchedOrderID)
+					if err != nil {
+						log.Printf("Failed to mark order as paid: %v", err)
+					}
+				}
+			}
+		}
+	}
 
 	// Return updated transfers section
+	s.handleAdminPanel(w, r)
+}
+
+// handleAdminImportTransfers triggers manual transfer import from email (HTMX).
+func (s *Server) handleAdminImportTransfers(w http.ResponseWriter, r *http.Request) {
+	if r.Method != methodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.emailImporter == nil {
+		http.Error(w, "Email importer not configured. Set IMAP_SERVER, IMAP_USERNAME, and IMAP_PASSWORD environment variables.", http.StatusInternalServerError)
+		return
+	}
+
+	count, err := s.emailImporter.ImportTransfers(r.Context())
+	if err != nil {
+		log.Printf("Failed to import transfers: %v", err)
+		http.Error(w, fmt.Sprintf("Failed to import transfers: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("Successfully imported %d transfers from email", count)
+
+	// Return updated admin panel
 	s.handleAdminPanel(w, r)
 }
 

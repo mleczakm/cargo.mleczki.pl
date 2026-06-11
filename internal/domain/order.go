@@ -10,8 +10,9 @@ type Order struct {
 	UserID        string
 	Items         []OrderItem
 	TotalAmount   int
-	Status        string // "pending_payment", "paid", "cancelled", "accepted"
-	PaymentMethod string // "blik", "cash"
+	Status        string  // "pending_payment", "paid", "cancelled", "accepted"
+	PaymentMethod string  // "blik", "cash"
+	PaymentCode   *string // 4-character code for BLIK transfers
 	StartDate     string
 	EndDate       string
 	RentalDays    int
@@ -62,6 +63,7 @@ type OrderPlacedEvent struct {
 	Items         []OrderItem `json:"items"`
 	TotalAmount   int         `json:"totalAmount"`
 	PaymentMethod string      `json:"paymentMethod"`
+	PaymentCode   *string     `json:"paymentCode,omitempty"`
 	StartDate     string      `json:"startDate"`
 	EndDate       string      `json:"endDate"`
 	RentalDays    int         `json:"rentalDays"`
