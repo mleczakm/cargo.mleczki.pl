@@ -15,6 +15,10 @@
   command: "docker rm {{ app.name }}"
   ignore_errors: yes
 
+- name: "Create named volume for {{ app.name }}"
+  command: "docker volume create {{ app.name }}-db"
+  ignore_errors: yes
+
 - name: "Read .env.production file"
   slurp:
     src: "{{ env_file_path }}"
@@ -51,6 +55,7 @@
     --restart always
     -p "[{{ app.ipv6 }}]:{{ app.port }}:8080"
     --env-file "/tmp/{{ app.name }}.env"
+    -v "{{ app.name }}-db:/app/db"
     {{ app.image }}
 
 - name: "Remove temporary .env file"
