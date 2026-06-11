@@ -568,7 +568,7 @@ ${userDetails.name || '_________________________'} (Akceptacja elektroniczna prz
                 <input type="radio" name="payment" className="hidden" checked={paymentMethod === 'blik'} onChange={() => setPaymentMethod('blik')} />
                 <CreditCard className={`w-10 h-10 mb-3 ${paymentMethod === 'blik' ? 'text-emerald-600' : 'text-gray-400'}`} />
                 <span className="font-bold text-gray-900">Szybki Przelew BLIK</span>
-                <span className="text-xs text-center mt-1.5 text-gray-500 leading-relaxed">Bezpieczny przelew na telefon (autorski system, brak prowizji).</span>
+                <span className="text-xs text-center mt-1.5 text-gray-500 leading-relaxed">Bezpieczny przelew na telefon.</span>
               </label>
               <label className={`flex flex-col items-center p-6 border-2 rounded-2xl cursor-pointer transition-all ${paymentMethod === 'cash' ? 'border-emerald-500 bg-emerald-50' : 'border-gray-200 hover:border-emerald-300'}`}>
                 <input type="radio" name="payment" className="hidden" checked={paymentMethod === 'cash'} onChange={() => setPaymentMethod('cash')} />
@@ -646,7 +646,7 @@ ${userDetails.name || '_________________________'} (Akceptacja elektroniczna prz
           <div className="bg-gray-900 text-white p-10 flex flex-col items-center">
             <CreditCard className="w-16 h-16 mb-4 text-emerald-400" />
             <h2 className="text-3xl font-black mb-2 leading-tight">Płatność Szybkim Przelewem BLIK</h2>
-            <p className="text-emerald-300 text-sm font-medium">Autorski system bezpośredni, brak prowizji.</p>
+            <p className="text-emerald-300 text-sm font-medium">Brak prowizji dla kupujcego.</p>
           </div>
           <div className="p-10">
             <div className="bg-emerald-50 border-2 border-emerald-100 rounded-3xl p-8 mb-8 text-left shadow-inner">
