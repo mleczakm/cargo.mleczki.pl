@@ -332,6 +332,48 @@ func (rm *ReadModelsDB) GetAllOrders() ([]map[string]interface{}, error) {
 	return orders, nil
 }
 
+// GetOrdersByUserID retrieves orders for a specific user.
+func (rm *ReadModelsDB) GetOrdersByUserID(userID string) ([]map[string]interface{}, error) {
+	query := `
+	SELECT o.id, o.user_id, o.total_amount, o.status, o.payment_method, o.items_json, o.start_date, o.end_date, o.rental_days, o.created_at
+	FROM orders o
+	WHERE o.user_id = ?
+	ORDER BY o.created_at DESC
+	LIMIT 50
+	`
+	rows, err := rm.db.Query(query, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var orders []map[string]interface{}
+	for rows.Next() {
+		var id, userIDRetrieved, status, paymentMethod, itemsJSON, startDate, endDate, createdAt string
+		var totalAmount float64
+		var rentalDays int
+		if err := rows.Scan(&id, &userIDRetrieved, &totalAmount, &status, &paymentMethod, &itemsJSON, &startDate, &endDate, &rentalDays, &createdAt); err != nil {
+			return nil, err
+		}
+		orders = append(orders, map[string]interface{}{
+			"ID":            id,
+			"UserID":        userIDRetrieved,
+			"TotalAmount":   totalAmount,
+			"Status":        status,
+			"PaymentMethod": paymentMethod,
+			"Items":         itemsJSON,
+			"StartDate":     startDate,
+			"EndDate":       endDate,
+			"RentalDays":    rentalDays,
+			"CreatedAt":     createdAt,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return orders, nil
+}
+
 // GetGlobalBlockedDates retrieves all globally blocked dates.
 func (rm *ReadModelsDB) GetGlobalBlockedDates() ([]string, error) {
 	query := `SELECT date FROM global_blocked_dates ORDER BY date ASC`

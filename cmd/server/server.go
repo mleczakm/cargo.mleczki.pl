@@ -21,6 +21,7 @@ import (
 	"cargo.mleczki.pl/internal/domain"
 	"cargo.mleczki.pl/internal/email"
 	"cargo.mleczki.pl/internal/eventstore"
+	"cargo.mleczki.pl/internal/middleware"
 	"cargo.mleczki.pl/internal/products"
 	"cargo.mleczki.pl/internal/projections"
 	"cargo.mleczki.pl/internal/transfers"
@@ -177,6 +178,8 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 		r.Post("/admin/reservation/create", s.handleAdminCreateReservation)
 		r.Post("/admin/product/{id}/block-date", s.handleAdminBlockProductDate)
 		r.Post("/admin/product/{id}/unblock-date", s.handleAdminUnblockProductDate)
+		r.Post("/admin/global-closure/add", s.handleAdminAddGlobalClosure)
+		r.Post("/admin/global-closure/remove", s.handleAdminRemoveGlobalClosure)
 	})
 
 	// Health check
@@ -620,16 +623,8 @@ func (s *Server) handleCartRemove(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/checkout", http.StatusFound)
 }
 
-// handleCheckoutSubmit processes the checkout form (HTMX).
-//
-//nolint:gocyclo // Function complexity is acceptable for this handler
-func (s *Server) handleCheckoutSubmit(w http.ResponseWriter, r *http.Request) {
-	if r.Method != methodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Get form data
+// validateCheckoutForm validates the checkout form data.
+func validateCheckoutForm(r *http.Request) (string, string, string, string, string, error) {
 	paymentMethod := r.FormValue("payment_method")
 	name := r.FormValue("name")
 	email := r.FormValue("email")
@@ -638,8 +633,108 @@ func (s *Server) handleCheckoutSubmit(w http.ResponseWriter, r *http.Request) {
 	isAdult := r.FormValue("is_adult") == "on"
 	acceptTOS := r.FormValue("accept_tos") == "on"
 
-	// Validate required fields
 	if name == "" || email == "" || phone == "" || address == "" || !isAdult || !acceptTOS {
+		return "", "", "", "", "", fmt.Errorf("missing required fields")
+	}
+
+	return paymentMethod, name, email, phone, address, nil
+}
+
+// getOrCreateUser gets existing user or creates a new one.
+func (s *Server) getOrCreateUser(ctx context.Context, email, name, phone, address, passwordHash string) (string, error) {
+	userID := fmt.Sprintf("user_%d", time.Now().UnixNano())
+	now := time.Now().UTC().Format(time.RFC3339)
+
+	_, err := s.readModels.GetDB().ExecContext(ctx, `
+		INSERT INTO users (id, email, password_hash, name, phone, address, is_adult, accepted_tos, is_admin, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, userID, email, passwordHash, name, phone, address, 1, 1, 0, now, now)
+	if err != nil {
+		log.Printf("Failed to create user: %v", err)
+		// User might already exist, try to get existing user
+		err = s.readModels.GetDB().QueryRowContext(ctx, "SELECT id FROM users WHERE email = ?", email).Scan(&userID)
+		if err != nil {
+			return "", fmt.Errorf("failed to create/get user: %w", err)
+		}
+	}
+
+	return userID, nil
+}
+
+// convertCartToOrderItems converts cart items to domain.OrderItem format.
+func (s *Server) convertCartToOrderItems(cart []CartItem) []domain.OrderItem {
+	var orderItems []domain.OrderItem
+	for _, item := range cart {
+		product, err := s.productParser.LoadProductByID(item.ProductID)
+		if err != nil {
+			log.Printf("Failed to load product %s: %v", item.ProductID, err)
+			continue
+		}
+
+		var selectedAddons []domain.Addon
+		for _, addonID := range item.Addons {
+			for _, productAddon := range product.Addons {
+				if productAddon.ID == addonID {
+					selectedAddons = append(selectedAddons, domain.Addon{
+						ID:    productAddon.ID,
+						Name:  productAddon.Name,
+						Price: productAddon.Price,
+					})
+					break
+				}
+			}
+		}
+
+		orderItems = append(orderItems, domain.OrderItem{
+			ProductID:      item.ProductID,
+			ProductName:    item.ProductName,
+			BasePrice:      item.BasePrice,
+			SelectedAddons: selectedAddons,
+			RentalDays:     item.RentalDays,
+		})
+	}
+
+	return orderItems
+}
+
+// blockProductDates blocks product dates in the database.
+func (s *Server) blockProductDates(cart []CartItem, orderID string) {
+	for _, item := range cart {
+		start, err := time.Parse("2006-01-02", item.StartDate)
+		if err != nil {
+			log.Printf("Failed to parse start date: %v", err)
+			continue
+		}
+		end, err := time.Parse("2006-01-02", item.EndDate)
+		if err != nil {
+			log.Printf("Failed to parse end date: %v", err)
+			continue
+		}
+
+		for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
+			dateStr := d.Format("2006-01-02")
+			bookingQuery := `
+			INSERT INTO product_bookings (product_id, order_id, booked_date)
+			VALUES (?, ?, ?)
+			`
+			_, err = s.readModels.GetDB().Exec(bookingQuery, item.ProductID, orderID, dateStr)
+			if err != nil {
+				log.Printf("Failed to block date %s: %v", dateStr, err)
+			}
+		}
+	}
+}
+
+// handleCheckoutSubmit processes the checkout form (HTMX).
+func (s *Server) handleCheckoutSubmit(w http.ResponseWriter, r *http.Request) {
+	if r.Method != methodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Validate form data
+	paymentMethod, name, email, phone, address, err := validateCheckoutForm(r)
+	if err != nil {
 		http.Error(w, "Missing required fields", http.StatusBadRequest)
 		return
 	}
@@ -664,10 +759,6 @@ func (s *Server) handleCheckoutSubmit(w http.ResponseWriter, r *http.Request) {
 		paymentCode = &code
 	}
 
-	// Create user (simplified - in real implementation would check if user exists)
-	userID := fmt.Sprintf("user_%d", time.Now().UnixNano())
-	ctx := r.Context()
-
 	// Hash password if provided
 	var passwordHash string
 	if password := r.FormValue("password"); password != "" {
@@ -679,29 +770,49 @@ func (s *Server) handleCheckoutSubmit(w http.ResponseWriter, r *http.Request) {
 		passwordHash = string(hash)
 	}
 
-	// Insert user
-	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := s.readModels.GetDB().ExecContext(ctx, `
-		INSERT INTO users (id, email, password_hash, name, phone, address, is_adult, accepted_tos, is_admin, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, userID, email, passwordHash, name, phone, address, 1, 1, 0, now, now)
+	// Get or create user
+	ctx := r.Context()
+	userID, err := s.getOrCreateUser(ctx, email, name, phone, address, passwordHash)
 	if err != nil {
-		log.Printf("Failed to create user: %v", err)
-		// User might already exist, try to get existing user
-		err = s.readModels.GetDB().QueryRowContext(ctx, "SELECT id FROM users WHERE email = ?", email).Scan(&userID)
-		if err != nil {
-			http.Error(w, "Failed to create/get user", http.StatusInternalServerError)
-			return
-		}
+		http.Error(w, "Failed to create/get user", http.StatusInternalServerError)
+		return
 	}
 
-	// Insert order
-	_, err = s.readModels.GetDB().ExecContext(ctx, `
-		INSERT INTO orders (id, user_id, total_amount, status, payment_method, payment_code, items_json, created_at, updated_at)
-		VALUES (?, ?, ?, 'pending_payment', ?, ?, ?, ?, ?)
-	`, orderID, userID, totalAmount, paymentMethod, paymentCode, "", now, now)
+	// Convert cart items to domain.OrderItem format
+	orderItems := s.convertCartToOrderItems(cart)
+
+	// Determine rental dates from cart
+	var startDate, endDate string
+	var rentalDays int
+	if len(cart) > 0 {
+		startDate = cart[0].StartDate
+		endDate = cart[0].EndDate
+		rentalDays = cart[0].RentalDays
+	}
+
+	// Emit OrderPlacedEvent
+	orderEvent := &domain.OrderPlacedEvent{
+		OrderID:       orderID,
+		UserID:        userID,
+		Items:         orderItems,
+		TotalAmount:   totalAmount,
+		PaymentMethod: paymentMethod,
+		PaymentCode:   paymentCode,
+		StartDate:     startDate,
+		EndDate:       endDate,
+		RentalDays:    rentalDays,
+		Timestamp:     time.Now().UTC(),
+	}
+
+	eventData, err := eventstore.ToEvent(orderID, "order", orderEvent, 1)
 	if err != nil {
-		log.Printf("Failed to create order: %v", err)
+		log.Printf("Failed to create OrderPlacedEvent: %v", err)
+		http.Error(w, "Failed to create order", http.StatusInternalServerError)
+		return
+	}
+
+	if err := s.eventStore.Save(ctx, eventData); err != nil {
+		log.Printf("Failed to emit OrderPlacedEvent: %v", err)
 		http.Error(w, "Failed to create order", http.StatusInternalServerError)
 		return
 	}
@@ -716,21 +827,7 @@ func (s *Server) handleCheckoutSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Block dates in product_bookings table
-	for _, item := range cart {
-		start, _ := time.Parse("2006-01-02", item.StartDate)
-		end, _ := time.Parse("2006-01-02", item.EndDate)
-		for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
-			dateStr := d.Format("2006-01-02")
-			bookingQuery := `
-			INSERT INTO product_bookings (product_id, order_id, booked_date)
-			VALUES (?, ?, ?)
-			`
-			_, err = s.readModels.GetDB().Exec(bookingQuery, item.ProductID, orderID, dateStr)
-			if err != nil {
-				log.Printf("Failed to block date %s: %v", dateStr, err)
-			}
-		}
-	}
+	s.blockProductDates(cart, orderID)
 
 	// Clear cart
 	clearCart(w, r)
@@ -753,14 +850,23 @@ func (s *Server) handlePaymentConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Mark order as confirmed (for cash payments)
-	now := time.Now().UTC().Format(time.RFC3339)
-	_, err := s.readModels.GetDB().Exec(`
-		UPDATE orders SET status = 'confirmed', updated_at = ?
-		WHERE id = ?
-	`, now, orderID)
+	// Emit OrderPaidEvent for cash payment confirmation
+	event := &domain.OrderPaidEvent{
+		OrderID:   orderID,
+		Method:    "cash",
+		Timestamp: time.Now().UTC(),
+	}
+
+	eventData, err := eventstore.ToEvent(orderID, "order", event, 0)
 	if err != nil {
-		log.Printf("Failed to confirm order: %v", err)
+		log.Printf("Failed to create OrderPaidEvent: %v", err)
+		http.Error(w, "Failed to confirm order", http.StatusInternalServerError)
+		return
+	}
+
+	ctx := r.Context()
+	if err := s.eventStore.Save(ctx, eventData); err != nil {
+		log.Printf("Failed to emit OrderPaidEvent: %v", err)
 		http.Error(w, "Failed to confirm order", http.StatusInternalServerError)
 		return
 	}
@@ -828,10 +934,30 @@ func (s *Server) handleTerms(w http.ResponseWriter, r *http.Request) {
 
 // handleUserPanel renders the user panel.
 func (s *Server) handleUserPanel(w http.ResponseWriter, r *http.Request) {
+	// Get user from context
+	user := middleware.GetUser(r)
+	if user == nil {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	authenticatedUser, ok := user.(*domain.User)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	// Fetch user's orders from read models
+	orders, err := s.readModels.GetOrdersByUserID(authenticatedUser.ID)
+	if err != nil {
+		log.Printf("Failed to fetch user orders: %v", err)
+		orders = []map[string]interface{}{}
+	}
+
 	data := map[string]interface{}{
 		"Title":       "Panel Klienta",
-		"User":        map[string]interface{}{"Name": "Jan Kowalski", "Email": "jan@example.com", "Phone": "500 111 222", "Address": "Warszawska 1, Radzymin"},
-		"Orders":      []interface{}{},
+		"User":        authenticatedUser,
+		"Orders":      orders,
 		"DeleteState": "idle",
 	}
 
@@ -942,47 +1068,40 @@ func (s *Server) handleAdminUserDetail(w http.ResponseWriter, r *http.Request) {
 	s.renderTemplate(w, r, "admin_user_detail.html", data)
 }
 
-// handleAdminOrderMarkPaid marks an order as paid (HTMX).
-func (s *Server) handleAdminOrderMarkPaid(w http.ResponseWriter, r *http.Request) {
-	orderID := chi.URLParam(r, "id")
+// emitOrderPaidEvent is a helper function to emit OrderPaidEvent.
+func (s *Server) emitOrderPaidEvent(w http.ResponseWriter, r *http.Request, orderID, method string) {
+	event := &domain.OrderPaidEvent{
+		OrderID:   orderID,
+		Method:    method,
+		Timestamp: time.Now().UTC(),
+	}
 
-	// Update order status to paid in read models
-	now := time.Now().UTC().Format(time.RFC3339)
-	query := `
-	UPDATE orders
-	SET status = 'paid', paid_at = ?, updated_at = ?
-	WHERE id = ?
-	`
-	_, err := s.readModels.GetDB().Exec(query, now, now, orderID)
+	eventData, err := eventstore.ToEvent(orderID, "order", event, 0)
 	if err != nil {
-		log.Printf("Failed to mark order as paid: %v", err)
+		log.Printf("Failed to create OrderPaidEvent: %v", err)
 		http.Error(w, "Failed to update order", http.StatusInternalServerError)
 		return
 	}
 
-	// Return updated orders section
+	ctx := r.Context()
+	if err := s.eventStore.Save(ctx, eventData); err != nil {
+		log.Printf("Failed to emit OrderPaidEvent: %v", err)
+		http.Error(w, "Failed to update order", http.StatusInternalServerError)
+		return
+	}
+}
+
+// handleAdminOrderMarkPaid marks an order as paid (HTMX).
+func (s *Server) handleAdminOrderMarkPaid(w http.ResponseWriter, r *http.Request) {
+	orderID := chi.URLParam(r, "id")
+	s.emitOrderPaidEvent(w, r, orderID, "admin_manual")
 	s.handleAdminPanel(w, r)
 }
 
 // handleAdminOrderConfirm confirms an order manually (HTMX).
 func (s *Server) handleAdminOrderConfirm(w http.ResponseWriter, r *http.Request) {
 	orderID := chi.URLParam(r, "id")
-
-	// Update order status to confirmed in read models
-	now := time.Now().UTC().Format(time.RFC3339)
-	query := `
-	UPDATE orders
-	SET status = 'confirmed', updated_at = ?
-	WHERE id = ?
-	`
-	_, err := s.readModels.GetDB().Exec(query, now, orderID)
-	if err != nil {
-		log.Printf("Failed to confirm order: %v", err)
-		http.Error(w, "Failed to update order", http.StatusInternalServerError)
-		return
-	}
-
-	// Return updated orders section
+	s.emitOrderPaidEvent(w, r, orderID, "admin_manual")
 	s.handleAdminPanel(w, r)
 }
 
@@ -1007,31 +1126,14 @@ func (s *Server) handleAdminTransferLink(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
+	ctx := r.Context()
+	var matchedOrderID string
+
 	// If order ID is provided manually, use it
 	if orderID != "" {
-		// Link transfer to order
-		now := time.Now().UTC().Format(time.RFC3339)
-		_, err = s.readModels.GetDB().Exec(`
-			UPDATE transfers SET order_id = ?, status = 'matched', linked_at = ?
-			WHERE id = ?
-		`, orderID, now, transferID)
-		if err != nil {
-			log.Printf("Failed to link transfer: %v", err)
-			http.Error(w, "Failed to link transfer", http.StatusInternalServerError)
-			return
-		}
-
-		// Mark order as paid
-		_, err = s.readModels.GetDB().Exec(`
-			UPDATE orders SET status = 'paid', paid_at = ?, updated_at = ?
-			WHERE id = ?
-		`, now, now, orderID)
-		if err != nil {
-			log.Printf("Failed to mark order as paid: %v", err)
-		}
+		matchedOrderID = orderID
 	} else {
 		// Automatic matching by payment code
-		// Get all pending payment codes
 		rows, err := s.readModels.GetDB().Query(`
 			SELECT code FROM payment_codes
 		`)
@@ -1055,30 +1157,47 @@ func (s *Server) handleAdminTransferLink(w http.ResponseWriter, r *http.Request)
 			matchedCode := s.transferMatcher.MatchByPaymentCode(title, codes)
 			if matchedCode != "" {
 				// Get order ID by payment code
-				var matchedOrderID string
 				err = s.readModels.GetDB().QueryRow(`
 					SELECT order_id FROM payment_codes WHERE code = ?
 				`, matchedCode).Scan(&matchedOrderID)
-				if err == nil {
-					// Link transfer to order
-					now := time.Now().UTC().Format(time.RFC3339)
-					_, err = s.readModels.GetDB().Exec(`
-						UPDATE transfers SET order_id = ?, status = 'matched', linked_at = ?
-						WHERE id = ?
-					`, matchedOrderID, now, transferID)
-					if err != nil {
-						log.Printf("Failed to link transfer: %v", err)
-					}
-
-					// Mark order as paid
-					_, err = s.readModels.GetDB().Exec(`
-						UPDATE orders SET status = 'paid', paid_at = ?, updated_at = ?
-						WHERE id = ?
-					`, now, now, matchedOrderID)
-					if err != nil {
-						log.Printf("Failed to mark order as paid: %v", err)
-					}
+				if err != nil {
+					log.Printf("Failed to get order by payment code: %v", err)
 				}
+			}
+		}
+	}
+
+	// If we found a matching order, emit events
+	if matchedOrderID != "" {
+		// Emit TransferLinkedEvent
+		transferEvent := &domain.TransferLinkedEvent{
+			TransferID: transferID,
+			OrderID:    matchedOrderID,
+			Timestamp:  time.Now().UTC(),
+		}
+
+		transferEventData, err := eventstore.ToEvent(transferID, "transfer", transferEvent, 0)
+		if err != nil {
+			log.Printf("Failed to create TransferLinkedEvent: %v", err)
+		} else {
+			if err := s.eventStore.Save(ctx, transferEventData); err != nil {
+				log.Printf("Failed to emit TransferLinkedEvent: %v", err)
+			}
+		}
+
+		// Emit OrderPaidEvent
+		orderEvent := &domain.OrderPaidEvent{
+			OrderID:   matchedOrderID,
+			Method:    "transfer",
+			Timestamp: time.Now().UTC(),
+		}
+
+		orderEventData, err := eventstore.ToEvent(matchedOrderID, "order", orderEvent, 0)
+		if err != nil {
+			log.Printf("Failed to create OrderPaidEvent: %v", err)
+		} else {
+			if err := s.eventStore.Save(ctx, orderEventData); err != nil {
+				log.Printf("Failed to emit OrderPaidEvent: %v", err)
 			}
 		}
 	}
@@ -1217,6 +1336,62 @@ func (s *Server) handleAdminProductDateAction(w http.ResponseWriter, r *http.Req
 			http.Error(w, "Failed to unblock date", http.StatusInternalServerError)
 			return
 		}
+	}
+
+	// Return updated admin panel
+	s.handleAdminPanel(w, r)
+}
+
+// handleAdminAddGlobalClosure adds a global store closure date (HTMX).
+func (s *Server) handleAdminAddGlobalClosure(w http.ResponseWriter, r *http.Request) {
+	if r.Method != methodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	date := r.FormValue("date")
+	if date == "" {
+		http.Error(w, "Missing required field: date", http.StatusBadRequest)
+		return
+	}
+
+	// Get current user ID for audit trail
+	userID := ""
+	if user := middleware.GetUser(r); user != nil {
+		if u, ok := user.(*domain.User); ok {
+			userID = u.ID
+		}
+	}
+
+	err := s.readModels.AddGlobalBlockedDate(date, userID)
+	if err != nil {
+		log.Printf("Failed to add global closure date: %v", err)
+		http.Error(w, "Failed to add closure date", http.StatusInternalServerError)
+		return
+	}
+
+	// Return updated admin panel
+	s.handleAdminPanel(w, r)
+}
+
+// handleAdminRemoveGlobalClosure removes a global store closure date (HTMX).
+func (s *Server) handleAdminRemoveGlobalClosure(w http.ResponseWriter, r *http.Request) {
+	if r.Method != methodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	date := r.FormValue("date")
+	if date == "" {
+		http.Error(w, "Missing required field: date", http.StatusBadRequest)
+		return
+	}
+
+	err := s.readModels.RemoveGlobalBlockedDate(date)
+	if err != nil {
+		log.Printf("Failed to remove global closure date: %v", err)
+		http.Error(w, "Failed to remove closure date", http.StatusInternalServerError)
+		return
 	}
 
 	// Return updated admin panel

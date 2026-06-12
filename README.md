@@ -40,13 +40,12 @@ Aplikacja wykorzystuje architekturę Event-Sourcing do przechowywania wszystkich
 - ✅ Przepływ rezerwacji i checkout
 - ✅ Sesje koszyka (cookies)
 - ✅ Podstawowe szablony paneli (User, Admin)
-
-### Do zaimplementowania (zgodnie z planem)
-- ⏳ IMAP worker dla automatycznego parsowania płatności BLIK
-- ⏳ Pełna implementacja uwierzytelniania i sesji
-- ⏳ RBAC (Role-Based Access Control)
-- ⏳ GDPR - prawo do zapomnienia
-- ⏳ Pełna integracja z Event-Sourcing dla zamówień
+- ✅ IMAP worker dla automatycznego parsowania płatności BLIK
+- ✅ Pełna implementacja uwierzytelniania i sesji
+- ✅ RBAC (Role-Based Access Control)
+- ✅ Pełna integracja z Event-Sourcing dla zamówień
+- ✅ Globalne zamknięcia sklepu (admin panel)
+- ✅ Pobieranie rzeczywistych danych w panelu użytkownika
 
 ## Szybki start
 
