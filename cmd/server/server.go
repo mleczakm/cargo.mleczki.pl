@@ -63,10 +63,10 @@ func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadMod
 	// Initialize email importer if credentials are provided
 	var emailImporter *email.Importer
 	imapServer := os.Getenv("IMAP_SERVER")
-	imapUsername := os.Getenv("IMAP_USERNAME")
-	imapPassword := os.Getenv("IMAP_PASSWORD")
-	if imapServer != "" && imapUsername != "" && imapPassword != "" {
-		imapClient := email.NewIMAPClient(imapServer, imapUsername, imapPassword, "INBOX")
+	mailboxUsername := os.Getenv("MAILBOX_USERNAME")
+	mailboxPassword := os.Getenv("MAILBOX_PASSWORD")
+	if imapServer != "" && mailboxUsername != "" && mailboxPassword != "" {
+		imapClient := email.NewIMAPClient(imapServer, mailboxUsername, mailboxPassword, "INBOX")
 		emailParser := email.NewParser()
 		emailImporter = email.NewImporter(imapClient, emailParser, eventStore, readModels.GetDB())
 		log.Println("Email importer initialized")
