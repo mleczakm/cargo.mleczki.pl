@@ -204,6 +204,23 @@ func (rm *ReadModelsDB) initSchema() error {
 	);
 	`
 
+	// Password reset tokens table
+	// #nosec G101 - This is SQL schema, not hardcoded credentials
+	passwordResetTokensTable := `
+	CREATE TABLE IF NOT EXISTS password_reset_tokens (
+		id TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL,
+		token TEXT NOT NULL UNIQUE,
+		expires_at TEXT NOT NULL,
+		used INTEGER DEFAULT 0,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+		FOREIGN KEY (user_id) REFERENCES users(id)
+	);
+	CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_token ON password_reset_tokens(token);
+	CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user ON password_reset_tokens(user_id);
+	CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_expires ON password_reset_tokens(expires_at);
+	`
+
 	schemas := []string{
 		usersTable,
 		ordersTable,
@@ -216,6 +233,7 @@ func (rm *ReadModelsDB) initSchema() error {
 		globalBlockedDatesTable,
 		paymentCodesTable,
 		emailImportTable,
+		passwordResetTokensTable,
 	}
 	for i, schema := range schemas {
 		if _, err := rm.db.Exec(schema); err != nil {

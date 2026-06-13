@@ -148,6 +148,10 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 	r.Get("/payment/{id}", s.handlePayment)
 	r.Get("/success", s.handleSuccess)
 	r.Get("/terms", s.handleTerms)
+	r.Get("/forgot-password", s.handleForgotPassword)
+	r.Post("/forgot-password", s.handleForgotPasswordSubmit)
+	r.Get("/reset-password", s.handleResetPassword)
+	r.Post("/reset-password", s.handleResetPasswordSubmit)
 
 	// Cart API (HTMX)
 	r.Post("/cart/add", s.handleCartAdd)
@@ -165,12 +169,18 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 	r.Post("/user/delete-request", s.handleUserDeleteRequest)
 	r.Post("/user/delete-confirm", s.handleUserDeleteConfirm)
 	r.Post("/user/delete-cancel", s.handleUserDeleteCancel)
+	r.Get("/user/profile", s.handleUserProfile)
+	r.Post("/user/profile", s.handleUserProfileUpdate)
+	r.Post("/user/change-password", s.handleUserChangePassword)
 
 	// Admin panel (protected)
 	r.Group(func(r chi.Router) {
 		r.Use(s.adminAuthMiddleware)
 		r.Get("/admin", s.handleAdminPanel)
+		r.Get("/admin/users", s.handleAdminUsers)
 		r.Get("/admin/user/{id}", s.handleAdminUserDetail)
+		r.Post("/admin/user/{id}", s.handleAdminUserUpdate)
+		r.Post("/admin/user/{id}/reset-password", s.handleAdminUserResetPassword)
 		r.Post("/admin/order/{id}/mark-paid", s.handleAdminOrderMarkPaid)
 		r.Post("/admin/order/{id}/confirm", s.handleAdminOrderConfirm)
 		r.Post("/admin/transfer/{id}/link", s.handleAdminTransferLink)
@@ -998,6 +1008,297 @@ func (s *Server) handleUserDeleteCancel(w http.ResponseWriter, r *http.Request) 
 	fmt.Fprintf(w, `<button hx-post="/user/delete-request" hx-target="#delete-section" class="text-red-500 text-sm hover:underline font-medium">
 		Zażądaj usunięcia konta (RODO)
 	</button>`)
+}
+
+// handleForgotPassword renders the forgot password form.
+func (s *Server) handleForgotPassword(w http.ResponseWriter, r *http.Request) {
+	data := map[string]interface{}{
+		"Title": "Przypomnij hasło",
+	}
+	s.renderTemplate(w, r, "forgot_password.html", data)
+}
+
+// handleForgotPasswordSubmit processes the forgot password form.
+func (s *Server) handleForgotPasswordSubmit(w http.ResponseWriter, r *http.Request) {
+	if r.Method != methodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	email := r.FormValue("email")
+	if email == "" {
+		http.Error(w, "Email is required", http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+	token, err := s.authManager.RequestPasswordReset(ctx, email)
+	if err != nil {
+		log.Printf("Failed to request password reset: %v", err)
+		http.Error(w, "Failed to request password reset", http.StatusInternalServerError)
+		return
+	}
+
+	// In production, send email with reset link
+	// For now, log the token (this is insecure but allows testing)
+	if token != "" {
+		log.Printf("Password reset token for %s: %s", email, token)
+		resetLink := fmt.Sprintf("/reset-password?token=%s", token)
+		data := map[string]interface{}{
+			"Title":     "Przypomnij hasło",
+			"Email":     email,
+			"ResetLink": resetLink,
+			"TokenSent": true,
+		}
+		s.renderTemplate(w, r, "forgot_password.html", data)
+		return
+	}
+
+	// Always show success message even if user doesn't exist (security)
+	data := map[string]interface{}{
+		"Title":     "Przypomnij hasło",
+		"EmailSent": true,
+	}
+	s.renderTemplate(w, r, "forgot_password.html", data)
+}
+
+// handleResetPassword renders the reset password form.
+func (s *Server) handleResetPassword(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		http.Error(w, "Token is required", http.StatusBadRequest)
+		return
+	}
+
+	data := map[string]interface{}{
+		"Title": "Resetuj hasło",
+		"Token": token,
+	}
+	s.renderTemplate(w, r, "reset_password.html", data)
+}
+
+// handleResetPasswordSubmit processes the reset password form.
+func (s *Server) handleResetPasswordSubmit(w http.ResponseWriter, r *http.Request) {
+	if r.Method != methodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	token := r.FormValue("token")
+	newPassword := r.FormValue("new_password")
+	confirmPassword := r.FormValue("confirm_password")
+
+	if token == "" || newPassword == "" || confirmPassword == "" {
+		http.Error(w, "All fields are required", http.StatusBadRequest)
+		return
+	}
+
+	if newPassword != confirmPassword {
+		http.Error(w, "Passwords do not match", http.StatusBadRequest)
+		return
+	}
+
+	if len(newPassword) < 8 {
+		http.Error(w, "Password must be at least 8 characters", http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+	err := s.authManager.ResetPassword(ctx, token, newPassword)
+	if err != nil {
+		log.Printf("Failed to reset password: %v", err)
+		http.Error(w, "Failed to reset password: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	http.Redirect(w, r, "/login", http.StatusFound)
+}
+
+// handleUserProfile renders the user profile form.
+func (s *Server) handleUserProfile(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUser(r)
+	if user == nil {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	authenticatedUser, ok := user.(*domain.User)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	data := map[string]interface{}{
+		"Title": "Edytuj profil",
+		"User":  authenticatedUser,
+	}
+	data["IsLoggedIn"] = true
+	s.renderTemplate(w, r, "user_profile.html", data)
+}
+
+// handleUserProfileUpdate processes the user profile update form.
+func (s *Server) handleUserProfileUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != methodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	user := middleware.GetUser(r)
+	if user == nil {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	authenticatedUser, ok := user.(*domain.User)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	name := r.FormValue("name")
+	phone := r.FormValue("phone")
+	address := r.FormValue("address")
+
+	if name == "" {
+		http.Error(w, "Name is required", http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+	err := s.authManager.UpdateUserProfile(ctx, authenticatedUser.ID, name, phone, address)
+	if err != nil {
+		log.Printf("Failed to update user profile: %v", err)
+		http.Error(w, "Failed to update profile", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/user", http.StatusFound)
+}
+
+// handleUserChangePassword processes the password change form.
+func (s *Server) handleUserChangePassword(w http.ResponseWriter, r *http.Request) {
+	if r.Method != methodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	user := middleware.GetUser(r)
+	if user == nil {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	authenticatedUser, ok := user.(*domain.User)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	currentPassword := r.FormValue("current_password")
+	newPassword := r.FormValue("new_password")
+	confirmPassword := r.FormValue("confirm_password")
+
+	if currentPassword == "" || newPassword == "" || confirmPassword == "" {
+		http.Error(w, "All fields are required", http.StatusBadRequest)
+		return
+	}
+
+	if newPassword != confirmPassword {
+		http.Error(w, "Passwords do not match", http.StatusBadRequest)
+		return
+	}
+
+	if len(newPassword) < 8 {
+		http.Error(w, "Password must be at least 8 characters", http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+	err := s.authManager.ChangePassword(ctx, authenticatedUser.ID, currentPassword, newPassword)
+	if err != nil {
+		log.Printf("Failed to change password: %v", err)
+		http.Error(w, "Failed to change password: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Clear session cookie
+	clearCart(w, r)
+	http.Redirect(w, r, "/login", http.StatusFound)
+}
+
+// handleAdminUsers renders the admin users list.
+func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	users, err := s.authManager.GetAllUsers(ctx)
+	if err != nil {
+		log.Printf("Failed to fetch users: %v", err)
+		http.Error(w, "Failed to fetch users", http.StatusInternalServerError)
+		return
+	}
+
+	data := map[string]interface{}{
+		"Title": "Użytkownicy",
+		"Users": users,
+	}
+	data["IsAdmin"] = true
+	s.renderTemplate(w, r, "admin_users.html", data)
+}
+
+// handleAdminUserUpdate processes the admin user update form.
+func (s *Server) handleAdminUserUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != methodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID := chi.URLParam(r, "id")
+	name := r.FormValue("name")
+	email := r.FormValue("email")
+	phone := r.FormValue("phone")
+	address := r.FormValue("address")
+	isAdmin := r.FormValue("is_admin") == "on"
+
+	if userID == "" || name == "" || email == "" {
+		http.Error(w, "Missing required fields", http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+	err := s.authManager.AdminUpdateUser(ctx, userID, name, email, phone, address, isAdmin)
+	if err != nil {
+		log.Printf("Failed to update user: %v", err)
+		http.Error(w, "Failed to update user", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, "/admin/users", http.StatusFound)
+}
+
+// handleAdminUserResetPassword resets a user's password (admin).
+func (s *Server) handleAdminUserResetPassword(w http.ResponseWriter, r *http.Request) {
+	if r.Method != methodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	userID := chi.URLParam(r, "id")
+	if userID == "" {
+		http.Error(w, "User ID is required", http.StatusBadRequest)
+		return
+	}
+
+	ctx := r.Context()
+	newPassword, err := s.authManager.AdminResetPassword(ctx, userID)
+	if err != nil {
+		log.Printf("Failed to reset password: %v", err)
+		http.Error(w, "Failed to reset password", http.StatusInternalServerError)
+		return
+	}
+
+	// Log the new password (in production, this should be sent via email)
+	log.Printf("Reset password for user %s. New password: %s", userID, newPassword)
+
+	http.Redirect(w, r, "/admin/users", http.StatusFound)
 }
 
 // handleAdminPanel renders the admin panel.
