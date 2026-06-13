@@ -2,12 +2,14 @@
 id: car-rack
 name: Bagażnik samochodowy na 2 rowery
 basePrice: 35
-image: https://images.unsplash.com/photo-1542362567-b07e54358753?auto=format&fit=crop&q=80&w=800
+image: pol_pl_Bagaznik-rowerowy-na-hak-holowniczy-Amos-GIRO-2-rowery-skladany-i-odchylany-13-pin-79467_2.jpg
 images:
-  - https://images.unsplash.com/photo-1542362567-b07e54358753?auto=format&fit=crop&q=80&w=800
+  - pol_pl_Bagaznik-rowerowy-na-hak-holowniczy-Amos-GIRO-2-rowery-skladany-i-odchylany-13-pin-79467_2.jpg
+  - pol_pl_Bagaznik-rowerowy-na-hak-holowniczy-Amos-GIRO-2-rowery-skladany-i-odchylany-13-pin-79467_14.jpg
 icon: 🚗
 bookedDates: []
 addons: []
 ---
 
-Montowany na hak holowniczy. Łatwy w obsłudze i bezpieczny.
+Montowany na hak holowniczy. Łatwy w obsłudze i bezpieczny. W zestawie przejściówka na wtyczkę 7-13 pin. 
+UWAGA wskazane jest posiadanie trzeciej, dodatkowej tablicy rejestracyjnej.

@@ -162,7 +162,7 @@
                     {{range .Products}}
                     <div class="border border-gray-200 rounded-2xl overflow-hidden cursor-pointer hover:shadow-xl transition-shadow hover:border-emerald-400 group">
                         <div class="h-36 overflow-hidden">
-                            <img src="{{.Image}}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" alt="{{.Name}}">
+                            <img src="{{.Image}}" class="w-full h-full object-contain object-bottom object-cover group-hover:scale-105 transition-transform duration-500" alt="{{.Name}}">
                         </div>
                         <div class="p-5">
                             <h4 class="font-bold text-gray-900 mb-2 line-clamp-1">{{.Name}}</h4>

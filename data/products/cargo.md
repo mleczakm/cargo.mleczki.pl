@@ -2,13 +2,11 @@
 id: cargo
 name: Elektryczny Rower Cargo (Longjohn)
 basePrice: 150
-image: https://images.unsplash.com/photo-1616972041269-e580e224e75d?auto=format&fit=crop&q=80&w=800
+image: UA_Family_Black_Front_Ketting.png
+images:
+  - UA_Family_Black_Front_Ketting.png
+  - UA_Family_Black_Back_Ketting.png
 icon: 🚲
-bookedDates:
- - "2026-06-10"
- - "2026-06-11"
- - "2026-06-12"
- - "2026-06-20"
 addons:
 
   - id: daszek
@@ -42,8 +40,8 @@ Wspomaganie: Mocny centralny silnik elektryczny
 
 Zasięg baterii: Do 80 km na jednym ładowaniu
 
-Pojemność: Do 4 miejsc siedzących dla dzieci (w tym dodatkowa ławeczka z przodu)
+Pojemność: Do 4 miejsc siedzących dla dzieci (dodatkowa ławeczka z przodu)
 
 Bezpieczeństwo: Pasy bezpieczeństwa dla każdego pasażera, solidna pianka EPP chroniąca skrzynię
 
-Komfort: Możliwość dokupienia dedykowanego daszka przeciwdeszczowego
+Komfort: Możliwość założenia dedykowanego daszka przeciwdeszczowego

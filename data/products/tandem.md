@@ -2,7 +2,10 @@
 id: tandem
 name: Rower Tandem
 basePrice: 80
-image: https://images.unsplash.com/photo-1517406692737-142f132e4823?auto=format&fit=crop&q=80&w=800
+image: Schowek02.jpg
+images:
+  - Schowek02.jpg
+  - 20250710_170352.jpg
 icon: 👥
 bookedDates:
  - "2026-06-05"
