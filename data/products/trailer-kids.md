@@ -9,7 +9,13 @@ images:
   - p8200-przyczepka-hamax-avenida-twin-niebieska3.jpg
 icon: 👶
 bookedDates: []
-addons: []
+addons:
+
+  - id: wkladka
+    name: Wkładka dla niemowlaków
+    price: 15
+    icon: 🛌
+
 ---
 
 Bezpieczna i wygodna amortyzowana przyczepka z pasami. Standardowy uchwyt w zestawie, zapewniamy pomoc przy montażu.

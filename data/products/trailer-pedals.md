@@ -16,4 +16,5 @@ bookedDates: []
 addons: []
 ---
 
-Dla starszego dziecka, które chce aktywnie uczestniczyć w pedałowaniu.
+Dla starszego dziecka, które chce aktywnie uczestniczyć w podróżowaniu. Adaptery do każdej praktycznie sztycy rowerowej,
+montaż wymaga wysunięcia siodełka.

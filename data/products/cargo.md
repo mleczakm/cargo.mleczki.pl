@@ -36,7 +36,7 @@ Idealny wybór na całodniową wycieczkę nad wodę, piknik w lesie lub po prost
 
 Model: Urban Arrow Family (kolor czarny)
 
-Wspomaganie: Mocny centralny silnik elektryczny
+Wspomaganie: Mocny centralny silnik elektryczny Bosch
 
 Zasięg baterii: Do 80 km na jednym ładowaniu
 

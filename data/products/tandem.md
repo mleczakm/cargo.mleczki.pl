@@ -8,8 +8,6 @@ images:
   - 20250710_170352.jpg
 icon: 👥
 bookedDates:
- - "2026-06-05"
- - "2026-06-06"
 addons: []
 ---
 
