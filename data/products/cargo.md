@@ -6,6 +6,9 @@ image: UA_Family_Black_Front_Ketting.png
 images:
   - UA_Family_Black_Front_Ketting.png
   - UA_Family_Black_Back_Ketting.png
+  - 20250828_183209.jpg
+  - 0.webp
+  - 1.webp
 icon: 🚲
 addons:
 
