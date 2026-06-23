@@ -5,27 +5,26 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"os"
 
 	"cargo.mleczki.pl/internal/email"
 )
 
 // AdminNotifier handles sending notifications to administrators.
 type AdminNotifier struct {
-	brevoClient *email.BrevoClient
-	db          *sql.DB
+	mailer *email.Sender
+	db     *sql.DB
 }
 
 // NewAdminNotifier creates a new admin notifier.
 func NewAdminNotifier(db *sql.DB) (*AdminNotifier, error) {
-	brevoClient, err := email.NewBrevoClient()
+	mailer, err := email.NewMailer()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create Brevo client: %w", err)
+		return nil, fmt.Errorf("failed to create mailer: %w", err)
 	}
 
 	return &AdminNotifier{
-		brevoClient: brevoClient,
-		db:          db,
+		mailer: mailer,
+		db:     db,
 	}, nil
 }
 
@@ -83,7 +82,7 @@ func (n *AdminNotifier) NotifyOrderRequiringConfirmation(ctx context.Context, or
 
 	sender := &email.EmailSender{
 		Name:  "Cargo Mleczki",
-		Email: os.Getenv("BREVO_SENDER_EMAIL"),
+		Email: email.DefaultSenderEmail(),
 	}
 
 	recipients := make([]email.EmailRecipient, 0, len(adminEmails))
@@ -94,7 +93,12 @@ func (n *AdminNotifier) NotifyOrderRequiringConfirmation(ctx context.Context, or
 		})
 	}
 
-	err = n.brevoClient.SendEmail(ctx, sender, recipients, subject, htmlContent)
+	if n.mailer == nil || !n.mailer.Configured() {
+		log.Printf("Mailer not configured, skipping admin notification for order %s", orderID)
+		return nil
+	}
+
+	err = n.mailer.SendEmail(ctx, sender, recipients, subject, htmlContent)
 	if err != nil {
 		return fmt.Errorf("failed to send admin notification email: %w", err)
 	}

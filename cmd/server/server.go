@@ -47,7 +47,7 @@ type Server struct {
 	emailImporter   *email.Importer
 	adminNotifier   *notifications.AdminNotifier
 	webPushNotifier *notifications.WebPushNotifier
-	brevoClient     *email.BrevoClient
+	mailer          *email.Sender
 }
 
 // partialTemplates are HTMX fragments rendered without the site layout.
@@ -101,13 +101,13 @@ func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadMod
 		log.Println("Web push notifier initialized")
 	}
 
-	// Initialize Brevo client for password reset emails
-	brevoClient, err := email.NewBrevoClient()
+	// Initialize transactional email (Mailpit SMTP locally, Brevo in production)
+	mailer, err := email.NewMailer()
 	if err != nil {
-		log.Printf("Failed to initialize Brevo client: %v", err)
-		brevoClient = nil
-	} else {
-		log.Println("Brevo client initialized")
+		log.Printf("Failed to initialize mailer: %v", err)
+		mailer = nil
+	} else if !mailer.Configured() {
+		log.Println("Transactional email disabled (set SMTP_HOST or BREVO_API_KEY to enable)")
 	}
 
 	server := &Server{
@@ -122,7 +122,7 @@ func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadMod
 		emailImporter:   emailImporter,
 		adminNotifier:   adminNotifier,
 		webPushNotifier: webPushNotifier,
-		brevoClient:     brevoClient,
+		mailer:          mailer,
 	}
 
 	// Start background email import scheduler if configured
@@ -1623,8 +1623,8 @@ func (s *Server) handleForgotPasswordSubmit(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	// Send email with reset link if Brevo is configured
-	if token != "" && s.brevoClient != nil {
+	// Send email with reset link if mailer is configured
+	if token != "" && s.mailer != nil && s.mailer.Configured() {
 		resetLink := fmt.Sprintf("%s/reset-password?token=%s", getBaseURL(r), token)
 
 		htmlContent := fmt.Sprintf(`
@@ -1639,26 +1639,18 @@ func (s *Server) handleForgotPasswordSubmit(w http.ResponseWriter, r *http.Reque
 			<p>If you did not request this password reset, please ignore this email.</p>
 		`, resetLink, resetLink)
 
-		sender := &email.EmailSender{Name: "Cargo Mleczki", Email: "noreply@cargo.mleczki.pl"}
+		sender := &email.EmailSender{Name: "Cargo Mleczki", Email: email.DefaultSenderEmail()}
 		to := []email.EmailRecipient{{Email: userEmail}}
-		err = s.brevoClient.SendEmail(ctx, sender, to, "Reset your password", htmlContent)
+		err = s.mailer.SendEmail(ctx, sender, to, "Reset your password", htmlContent)
 
 		if err != nil {
 			log.Printf("Failed to send password reset email: %v", err)
 			// Fall through to show success message anyway (security)
 		}
 	} else if token != "" {
-		// Log the token for testing if Brevo is not configured
-		log.Printf("Password reset token for %s: %s", userEmail, token)
-		resetLink := fmt.Sprintf("/reset-password?token=%s", token)
-		data := map[string]interface{}{
-			"Title":     "Przypomnij hasło",
-			"Email":     userEmail,
-			"ResetLink": resetLink,
-			"TokenSent": true,
-		}
-		s.renderForgotPassword(w, data)
-		return
+		// Dev fallback: log token server-side only — never expose in the UI
+		resetLink := fmt.Sprintf("%s/reset-password?token=%s", getBaseURL(r), token)
+		log.Printf("Password reset email not sent (mailer not configured). Reset link for %s: %s", userEmail, resetLink)
 	}
 
 	// Always show success message even if user doesn't exist (security)

@@ -69,6 +69,32 @@ go run ./cmd/server
 
 Serwer będzie dostępny na `http://localhost:8080`
 
+#### Lokalne testowanie e-maili (Mailpit)
+
+Aplikacja może wysyłać maile przez SMTP do [Mailpit](https://github.com/axllent/mailpit) zamiast Brevo — przydatne przy resetowaniu hasła i powiadomieniach admina.
+
+```bash
+# Uruchom Mailpit (SMTP :1025, UI :8025)
+make mailpit
+
+# Uruchom aplikację z routingiem SMTP do Mailpit
+make dev-mailpit
+```
+
+Otwórz skrzynkę w przeglądarce: `http://localhost:8025`
+
+Możesz też ustawić zmienne środowiskowe ręcznie (patrz `.env.example`):
+
+```bash
+export MAILPIT=1
+# lub jawnie:
+export SMTP_HOST=localhost
+export SMTP_PORT=1025
+export SMTP_FROM=noreply@cargo.mleczki.pl
+```
+
+Gdy `SMTP_HOST` lub `MAILPIT=1` jest ustawione, aplikacja używa SMTP. W produkcji (bez tych zmiennych) nadal używany jest Brevo (`BREVO_API_KEY`).
+
 #### Przy użyciu Makefile
 ```bash
 # Wyświetl dostępne komendy

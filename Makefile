@@ -1,10 +1,12 @@
-.PHONY: build run test test-coverage docker-build docker-run clean deps fmt lint vet security qa dev help
+.PHONY: build run test test-coverage docker-build docker-run clean deps fmt lint vet security qa dev dev-mailpit mailpit help
 
 help:
 	@echo "Available targets:"
 	@echo "  make build              - Build the application"
 	@echo "  make run                - Run the application locally"
 	@echo "  make dev                - Run with hot reload (requires air)"
+	@echo "  make mailpit            - Start Mailpit for local email capture"
+	@echo "  make dev-mailpit        - Start Mailpit and run app with SMTP enabled"
 	@echo "  make test               - Run unit tests"
 	@echo "  make test-coverage      - Run tests with coverage report"
 	@echo "  make vet                - Run go vet analysis"
@@ -29,6 +31,14 @@ run:
 # Run with hot reload (requires air - install with: go install github.com/air-verse/air@latest)
 dev:
 	~/go/bin/air
+
+# Start Mailpit (SMTP on :1025, web UI on :8025)
+mailpit:
+	docker compose up -d mailpit
+
+# Run app with Mailpit SMTP routing enabled
+dev-mailpit: mailpit
+	MAILPIT=1 SMTP_HOST=localhost SMTP_PORT=1025 ~/go/bin/air
 
 # Run unit tests
 test:

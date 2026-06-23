@@ -53,13 +53,3 @@ func (b *BrevoClient) SendEmail(ctx context.Context, sender *EmailSender, to []E
 
 	return nil
 }
-
-type EmailSender struct {
-	Name  string
-	Email string
-}
-
-type EmailRecipient struct {
-	Name  string
-	Email string
-}
