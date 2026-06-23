@@ -1,6 +1,6 @@
 {{define "user_panel-content"}}
 <div class="max-w-5xl mx-auto px-4 py-12">
-    <h2 class="text-3xl font-black text-gray-900 mb-8">Panel Klienta</h2>
+    <h2 class="text-3xl font-black text-gray-900 mb-8">Moje zamówienia</h2>
     <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div class="lg:col-span-1">
             <div class="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
@@ -15,32 +15,6 @@
                     <p><strong>Tel:</strong> {{.User.Phone}}</p>
                     <p><strong>Adres:</strong> {{.User.Address}}</p>
                 </div>
-
-                <div class="border-t border-gray-100 pt-4 mt-4" id="delete-section">
-                    {{if eq .DeleteState "idle"}}
-                        <button hx-post="/user/delete-request" hx-target="#delete-section" class="text-red-500 text-sm hover:underline font-medium">
-                            Zażądaj usunięcia konta (RODO)
-                        </button>
-                    {{else if eq .DeleteState "confirming"}}
-                        <div class="bg-red-50 p-4 rounded-xl border border-red-100">
-                            <h4 class="font-bold text-red-900 mb-1">Czy na pewno?</h4>
-                            <p class="text-xs text-red-700 mb-3 leading-relaxed">
-                                Wysyłasz żądanie usunięcia wszystkich swoich danych osobowych oraz historii zamówień z naszego systemu. Tej operacji nie można cofnąć.
-                            </p>
-                            <div class="flex space-x-2">
-                                <button hx-post="/user/delete-confirm" hx-target="#delete-section" class="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-red-700 transition-colors">Tak, usuń konto</button>
-                                <button hx-post="/user/delete-cancel" hx-target="#delete-section" class="bg-white border border-red-200 text-red-800 px-4 py-2 rounded-lg text-sm font-bold hover:bg-red-50 transition-colors">Anuluj</button>
-                            </div>
-                        </div>
-                    {{else if eq .DeleteState "requested"}}
-                        <div class="bg-emerald-50 text-emerald-800 p-4 rounded-xl text-sm flex items-center font-medium border border-emerald-100">
-                            <svg class="w-5 h-5 mr-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
-                            </svg>
-                            Wysłano prośbę o usunięcie. Administrator przetworzy ją w ciągu 14 dni.
-                        </div>
-                    {{end}}
-                </div>
             </div>
         </div>
         <div class="lg:col-span-2 space-y-4">
@@ -52,17 +26,36 @@
             </h3>
             {{if .Orders}}
                 {{range .Orders}}
-                <div class="bg-white rounded-2xl border {{if eq .Status "paid"}}border-emerald-200{{else}}border-gray-100{{end}} p-6 shadow-sm">
-                    <div class="flex justify-between items-start mb-4">
-                        <div>
-                            <span class="{{if eq .Status "paid"}}bg-emerald-100 text-emerald-800{{else}}bg-yellow-100 text-yellow-800{{end}} text-xs font-bold px-2 py-1 rounded">{{if eq .Status "paid"}}Aktywna{{else if eq .Status "pending_payment"}}Oczekuje na płatność{{else}}{{.Status}}{{end}}</span>
-                            <h4 class="font-bold text-lg mt-2">{{.ID}}</h4>
-                            <p class="text-sm text-gray-500">Najbliższy wynajem</p>
+                <div class="bg-white rounded-2xl border {{if eq .Status "confirmed"}}border-emerald-200{{else if .NeedsPayment}}border-yellow-200{{else if .AwaitingConfirmation}}border-amber-200{{else}}border-gray-100{{end}} p-6 shadow-sm">
+                    <div class="flex justify-between items-start gap-4 mb-4">
+                        <div class="min-w-0">
+                            <span class="{{.StatusBadgeClass}} text-xs font-bold px-2 py-1 rounded">{{.StatusLabel}}</span>
+                            <h4 class="font-bold text-lg mt-2 truncate">{{.ID}}</h4>
+                            {{if .PrimaryItemName}}
+                            <p class="text-sm text-gray-700 mt-1">{{.PrimaryItemName}}{{if gt .ItemCount 1}} i {{sub .ItemCount 1}} więcej{{end}}</p>
+                            {{end}}
+                            {{if and .StartDate .EndDate}}
+                            <p class="text-sm text-gray-500 mt-1">{{.StartDate}} – {{.EndDate}} ({{.RentalDays}} dni)</p>
+                            {{end}}
                         </div>
-                        <div class="text-right">
+                        <div class="text-right flex-shrink-0">
                             <p class="font-bold text-gray-900">{{.TotalAmount}} zł</p>
-                            <p class="text-xs text-gray-500">{{if eq .PaymentMethod "blik"}}Opłacone (BLIK){{else}}Do zapłaty gotówką{{end}}</p>
+                            <p class="text-xs text-gray-500 mt-1">{{.PaymentMethodLabel}}</p>
                         </div>
+                    </div>
+                    <div class="flex flex-wrap gap-2">
+                        <a href="/user/order/{{.ID}}" class="inline-flex items-center text-sm font-semibold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100 px-4 py-2 rounded-lg transition-colors">
+                            Zobacz szczegóły
+                        </a>
+                        {{if .NeedsPayment}}
+                        <a href="/user/order/{{.ID}}#payment" class="inline-flex items-center text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 px-4 py-2 rounded-lg transition-colors">
+                            Zapłać
+                        </a>
+                        {{else if .CanCancel}}
+                        <a href="/user/order/{{.ID}}" class="inline-flex items-center text-sm font-semibold text-red-700 hover:text-red-800 bg-red-50 hover:bg-red-100 px-4 py-2 rounded-lg transition-colors">
+                            Anuluj
+                        </a>
+                        {{end}}
                     </div>
                 </div>
                 {{end}}
