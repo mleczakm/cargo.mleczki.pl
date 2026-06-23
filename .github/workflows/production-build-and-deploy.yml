@@ -78,6 +78,9 @@ jobs:
       - name: Create .env file
         run: |
           echo "${{ secrets.DOTENV }}" > .env.production
+          echo "VAPID_PRIVATE_KEY=${{ secrets.VAPID_PRIVATE_KEY }}" >> .env.production
+          echo "VAPID_PUBLIC_KEY=${{ secrets.VAPID_PUBLIC_KEY }}" >> .env.production
+          echo "VAPID_SUBJECT=mailto:admin@cargo.mleczki.pl" >> .env.production
           echo "ENV_FILE_PATH=$(pwd)/.env.production" >> $GITHUB_ENV
 
       - name: Deploy to Mikrus
