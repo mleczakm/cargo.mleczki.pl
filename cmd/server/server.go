@@ -65,7 +65,6 @@ func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadMod
 			stripped := strings.ReplaceAll(strings.ReplaceAll(s, "<p>", ""), "</p>", "")
 			return template.HTML(stripped) // #nosec G203 // Content is from trusted markdown files
 		},
-		"sub": func(a, b int) int { return a - b },
 	}
 
 	tmpl := template.New("main").Funcs(funcMap)
@@ -1433,6 +1432,9 @@ func enrichOrderSummary(order map[string]interface{}) map[string]interface{} {
 		enriched["PrimaryItemName"] = items[0].ProductName
 	}
 	enriched["ItemCount"] = len(items)
+	if len(items) > 1 {
+		enriched["ExtraItemCount"] = len(items) - 1
+	}
 
 	status, _ := order["Status"].(string)
 	paymentMethod, _ := order["PaymentMethod"].(string)

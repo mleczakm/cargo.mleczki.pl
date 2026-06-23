@@ -32,7 +32,7 @@
                             <span class="{{.StatusBadgeClass}} text-xs font-bold px-2 py-1 rounded">{{.StatusLabel}}</span>
                             <h4 class="font-bold text-lg mt-2 truncate">{{.ID}}</h4>
                             {{if .PrimaryItemName}}
-                            <p class="text-sm text-gray-700 mt-1">{{.PrimaryItemName}}{{if gt .ItemCount 1}} i {{sub .ItemCount 1}} więcej{{end}}</p>
+                            <p class="text-sm text-gray-700 mt-1">{{.PrimaryItemName}}{{if gt .ItemCount 1}} i {{.ExtraItemCount}} więcej{{end}}</p>
                             {{end}}
                             {{if and .StartDate .EndDate}}
                             <p class="text-sm text-gray-500 mt-1">{{.StartDate}} – {{.EndDate}} ({{.RentalDays}} dni)</p>
