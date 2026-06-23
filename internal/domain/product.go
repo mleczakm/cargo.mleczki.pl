@@ -4,10 +4,10 @@ package domain
 type Visibility string
 
 const (
-	VisibilityPublic      Visibility = "public"       // Visible to everyone
-	VisibilityLoggedIn    Visibility = "logged-in"    // Visible only to logged-in users
-	VisibilityAdmin       Visibility = "admin"        // Visible only to admins
-	VisibilityHidden      Visibility = "hidden"       // Not visible to anyone
+	VisibilityPublic   Visibility = "public"    // Visible to everyone
+	VisibilityLoggedIn Visibility = "logged-in" // Visible only to logged-in users
+	VisibilityAdmin    Visibility = "admin"     // Visible only to admins
+	VisibilityHidden   Visibility = "hidden"    // Not visible to anyone
 )
 
 // Product represents a rental item.

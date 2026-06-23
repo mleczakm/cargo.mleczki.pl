@@ -9,7 +9,7 @@ type OrderStatus string
 
 const (
 	StatusPending         OrderStatus = "pending"          // Order created, not yet submitted
-	StatusAwaitingPayment OrderStatus = "awaiting_payment"  // Order submitted, waiting for payment
+	StatusAwaitingPayment OrderStatus = "awaiting_payment" // Order submitted, waiting for payment
 	StatusPaid            OrderStatus = "paid"             // Payment received
 	StatusConfirmed       OrderStatus = "confirmed"        // Order confirmed (ready for rental)
 	StatusRealized        OrderStatus = "realized"         // Rental completed (final state)
@@ -23,12 +23,12 @@ type Order struct {
 	Items         []OrderItem
 	TotalAmount   int
 	Status        OrderStatus
-	PaymentMethod string // "blik", "cash_pickup"
+	PaymentMethod string  // "blik", "cash_pickup"
 	PaymentCode   *string // 4-character code for BLIK transfers
 	StartDate     string
 	EndDate       string
 	RentalDays    int
-	IsFirstOrder  bool   // true if this is the client's first order
+	IsFirstOrder  bool // true if this is the client's first order
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 	Version       int

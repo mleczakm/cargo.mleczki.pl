@@ -42,17 +42,17 @@ func NewParser(productsDir string) *Parser {
 
 // ProductFrontmatter represents the YAML frontmatter in product files.
 type ProductFrontmatter struct {
-	ID          string                `yaml:"id"`
-	Name        string                `yaml:"name"`
-	BasePrice   int                   `yaml:"basePrice"`
-	Image       string                `yaml:"image"`
-	Images      []string              `yaml:"images"`
-	Icon        string                `yaml:"icon"`
-	BookedDates []string              `yaml:"bookedDates"`
-	Addons      []AddonFrontmatter     `yaml:"addons"`
-	Articles    []ArticleFrontmatter  `yaml:"articles"`
-	Visibility  string                `yaml:"visibility"`
-	Priority    int                   `yaml:"priority"`
+	ID          string               `yaml:"id"`
+	Name        string               `yaml:"name"`
+	BasePrice   int                  `yaml:"basePrice"`
+	Image       string               `yaml:"image"`
+	Images      []string             `yaml:"images"`
+	Icon        string               `yaml:"icon"`
+	BookedDates []string             `yaml:"bookedDates"`
+	Addons      []AddonFrontmatter   `yaml:"addons"`
+	Articles    []ArticleFrontmatter `yaml:"articles"`
+	Visibility  string               `yaml:"visibility"`
+	Priority    int                  `yaml:"priority"`
 }
 
 type AddonFrontmatter struct {

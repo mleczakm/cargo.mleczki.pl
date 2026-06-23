@@ -81,10 +81,10 @@ func (n *WebPushNotifier) NotifyOrderRequiringConfirmation(ctx context.Context, 
 		"title": "Nowe zamówienie wymaga potwierdzenia",
 		"body":  fmt.Sprintf("Zamówienie %s od %s (%.2f zł) wymaga ręcznego potwierdzenia", orderID, userName, totalAmount),
 		"data": map[string]string{
-			"orderID":        orderID,
-			"paymentMethod":  paymentMethod,
-			"action":         "confirm_order",
-			"url":            fmt.Sprintf("/admin?highlight=%s", orderID),
+			"orderID":       orderID,
+			"paymentMethod": paymentMethod,
+			"action":        "confirm_order",
+			"url":           fmt.Sprintf("/admin?highlight=%s", orderID),
 		},
 	}
 

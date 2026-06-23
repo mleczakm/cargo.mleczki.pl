@@ -6,8 +6,8 @@ import "time"
 type ArticleCategory string
 
 const (
-	CategoryPorady   ArticleCategory = "porady"   // Tips/advice
-	CategoryRecenzje ArticleCategory = "recenzje" // Reviews
+	CategoryPorady     ArticleCategory = "porady"     // Tips/advice
+	CategoryRecenzje   ArticleCategory = "recenzje"   // Reviews
 	CategoryPrzewodnik ArticleCategory = "przewodnik" // Guides
 )
 

@@ -36,22 +36,22 @@ const methodPost = "POST"
 
 // Server holds the application state.
 type Server struct {
-	eventStore        eventstore.EventStore
-	readModels        *projections.ReadModelsDB
-	projector         *projections.Projector
-	productParser     *products.Parser
-	articleParser     *articles.Parser
-	authManager       *auth.AuthManager
-	templates         *template.Template
-	transferMatcher   *transfers.Matcher
-	emailImporter     *email.Importer
-	adminNotifier     *notifications.AdminNotifier
-	webPushNotifier   *notifications.WebPushNotifier
+	eventStore      eventstore.EventStore
+	readModels      *projections.ReadModelsDB
+	projector       *projections.Projector
+	productParser   *products.Parser
+	articleParser   *articles.Parser
+	authManager     *auth.AuthManager
+	templates       *template.Template
+	transferMatcher *transfers.Matcher
+	emailImporter   *email.Importer
+	adminNotifier   *notifications.AdminNotifier
+	webPushNotifier *notifications.WebPushNotifier
 }
 
 // partialTemplates are HTMX fragments rendered without the site layout.
 var partialTemplates = map[string]struct{}{
-	"calendar.html":             {},
+	"calendar.html":            {},
 	"payment-success-fragment": {},
 }
 
@@ -102,17 +102,17 @@ func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadMod
 	}
 
 	server := &Server{
-		eventStore:       eventStore,
-		readModels:       readModels,
-		projector:        projector,
-		productParser:    productParser,
-		articleParser:    articleParser,
-		authManager:      authManager,
-		templates:        tmpl,
-		transferMatcher:  transfers.NewMatcher(),
-		emailImporter:    emailImporter,
-		adminNotifier:    adminNotifier,
-		webPushNotifier:  webPushNotifier,
+		eventStore:      eventStore,
+		readModels:      readModels,
+		projector:       projector,
+		productParser:   productParser,
+		articleParser:   articleParser,
+		authManager:     authManager,
+		templates:       tmpl,
+		transferMatcher: transfers.NewMatcher(),
+		emailImporter:   emailImporter,
+		adminNotifier:   adminNotifier,
+		webPushNotifier: webPushNotifier,
 	}
 
 	// Start background email import scheduler if configured
@@ -295,7 +295,7 @@ func (s *Server) handleProduct(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
 		"Title":           product.Name,
 		"Product":         product,
-		"RelatedArticles":  relatedArticles,
+		"RelatedArticles": relatedArticles,
 		"CurrentMonth":    int(now.Month()),
 		"CurrentYear":     now.Year(),
 		"CartCount":       getCartCount(r),
@@ -687,11 +687,11 @@ func (s *Server) handlePayment(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]interface{}{
-		"Title":         "Płatność",
-		"PaymentMethod": paymentMethod,
-		"FinalTotal":    int(totalAmount),
-		"OrderID":       orderID,
-		"PaymentCode":   paymentCode,
+		"Title":             "Płatność",
+		"PaymentMethod":     paymentMethod,
+		"FinalTotal":        int(totalAmount),
+		"OrderID":           orderID,
+		"PaymentCode":       paymentCode,
 		"ShowConfirmButton": false,
 		"ShowPolling":       paymentMethod == "blik" && status == "awaiting_payment",
 	}
@@ -1029,17 +1029,17 @@ func (s *Server) handleCheckoutSubmit(w http.ResponseWriter, r *http.Request) {
 
 	// Emit OrderPlacedEvent
 	orderEvent := &domain.OrderPlacedEvent{
-		OrderID:               orderID,
-		UserID:                userID,
-		Items:                 orderItems,
-		TotalAmount:           totalAmount,
-		PaymentMethod:         paymentMethod,
-		PaymentCode:           paymentCode,
-		StartDate:             startDate,
-		EndDate:      endDate,
-		RentalDays:   rentalDays,
-		IsFirstOrder: isFirstOrder,
-		Timestamp:    time.Now().UTC(),
+		OrderID:       orderID,
+		UserID:        userID,
+		Items:         orderItems,
+		TotalAmount:   totalAmount,
+		PaymentMethod: paymentMethod,
+		PaymentCode:   paymentCode,
+		StartDate:     startDate,
+		EndDate:       endDate,
+		RentalDays:    rentalDays,
+		IsFirstOrder:  isFirstOrder,
+		Timestamp:     time.Now().UTC(),
 	}
 
 	eventData, err := eventstore.ToEvent(orderID, "order", orderEvent, 1)
@@ -1906,14 +1906,14 @@ func (s *Server) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]interface{}{
-		"Title":                       "Panel Administratora",
-		"Orders":                      orders,
+		"Title":                      "Panel Administratora",
+		"Orders":                     orders,
 		"OrdersAwaitingConfirmation": ordersAwaitingConfirmation,
-		"Transfers":                   transfers,
-		"Users":                       users,
-		"Products":                    products,
-		"GlobalBlockedDates":          globalBlockedDates,
-		"LastEmailImport":             lastEmailImport,
+		"Transfers":                  transfers,
+		"Users":                      users,
+		"Products":                   products,
+		"GlobalBlockedDates":         globalBlockedDates,
+		"LastEmailImport":            lastEmailImport,
 	}
 
 	data["IsAdmin"] = true

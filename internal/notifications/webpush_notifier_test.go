@@ -41,7 +41,7 @@ func TestWebPushNotifier_AddSubscription(t *testing.T) {
 	sub := webpush.Subscription{
 		Endpoint: "https://example.com/push",
 		Keys: webpush.Keys{
-			Auth:  "test-auth",
+			Auth:   "test-auth",
 			P256dh: "test-p256dh",
 		},
 	}
