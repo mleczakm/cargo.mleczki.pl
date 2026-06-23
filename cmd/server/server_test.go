@@ -863,7 +863,7 @@ func TestHandleLoginPOSTInvalidCredentials(t *testing.T) {
 
 	// Check that error message is in the response body
 	body := w.Body.String()
-	if !strings.Contains(body, "Invalid email or password") {
+	if !strings.Contains(body, "Nieprawidłowy adres e-mail lub hasło") {
 		t.Errorf("Expected error message in response body, got: %s", body)
 	}
 }

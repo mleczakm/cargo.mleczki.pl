@@ -120,4 +120,5 @@ linters-settings:
     ignore-words:
       - Nowe
       - Nowa
-
+      - adres
+      - Adres

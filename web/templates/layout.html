@@ -35,7 +35,7 @@
             <div class="fixed inset-0 bg-gray-900 bg-opacity-75 transition-opacity" aria-hidden="true" onclick="closeModal()"></div>
             <span class="hidden sm:inline-block sm:align-middle sm:h-screen" aria-hidden="true">&#8203;</span>
             <div class="inline-block align-bottom bg-white rounded-2xl text-left overflow-hidden shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-2xl sm:w-full">
-                <div id="modal-content"></div>
+                <div id="modal-content" class="relative"></div>
             </div>
         </div>
     </div>
@@ -44,6 +44,23 @@
         function closeModal() {
             document.getElementById('modal-container').classList.add('hidden');
         }
+
+        function openAuthModal(url) {
+            document.getElementById('modal-container').classList.remove('hidden');
+            htmx.ajax('GET', url, {target: '#modal-content', swap: 'innerHTML'});
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const params = new URLSearchParams(window.location.search);
+            const auth = params.get('auth');
+            if (auth === 'forgot-password') {
+                openAuthModal('/forgot-password?modal=1');
+                history.replaceState({}, '', window.location.pathname);
+            } else if (auth === 'login') {
+                openAuthModal('/login?modal=1');
+                history.replaceState({}, '', window.location.pathname);
+            }
+        });
     </script>
 </body>
 </html>

@@ -503,12 +503,12 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		password := r.FormValue("password")
 
 		if email == "" || password == "" {
-			errorMessage = "Email and password are required"
+			errorMessage = "Adres e-mail i hasło są wymagane"
 		} else {
 			ctx := r.Context()
 			sessionToken, user, err := s.authManager.Login(ctx, email, password)
 			if err != nil {
-				errorMessage = "Invalid email or password"
+				errorMessage = "Nieprawidłowy adres e-mail lub hasło"
 				log.Printf("Login failed for email %s: %v", email, err)
 			} else {
 				// Set session cookie
@@ -1588,10 +1588,18 @@ func (s *Server) handleUserDeleteCancel(w http.ResponseWriter, r *http.Request) 
 
 // handleForgotPassword renders the forgot password form.
 func (s *Server) handleForgotPassword(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Query().Get("modal") != "1" {
+		http.Redirect(w, r, "/?auth=forgot-password", http.StatusSeeOther)
+		return
+	}
+
 	data := map[string]interface{}{
 		"Title": "Przypomnij hasło",
 	}
-	s.renderTemplate(w, r, "forgot_password.html", data)
+	if err := s.templates.ExecuteTemplate(w, "forgot_password-content", data); err != nil {
+		log.Printf("Template error: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
 }
 
 // handleForgotPasswordSubmit processes the forgot password form.
@@ -1649,7 +1657,7 @@ func (s *Server) handleForgotPasswordSubmit(w http.ResponseWriter, r *http.Reque
 			"ResetLink": resetLink,
 			"TokenSent": true,
 		}
-		s.renderTemplate(w, r, "forgot_password.html", data)
+		s.renderForgotPassword(w, data)
 		return
 	}
 
@@ -1658,7 +1666,14 @@ func (s *Server) handleForgotPasswordSubmit(w http.ResponseWriter, r *http.Reque
 		"Title":     "Przypomnij hasło",
 		"EmailSent": true,
 	}
-	s.renderTemplate(w, r, "forgot_password.html", data)
+	s.renderForgotPassword(w, data)
+}
+
+func (s *Server) renderForgotPassword(w http.ResponseWriter, data map[string]interface{}) {
+	if err := s.templates.ExecuteTemplate(w, "forgot_password-content", data); err != nil {
+		log.Printf("Template error: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
 }
 
 // handleResetPassword renders the reset password form.
