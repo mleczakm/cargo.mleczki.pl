@@ -680,7 +680,7 @@ func (s *Server) handlePayment(w http.ResponseWriter, r *http.Request) {
 		paymentMethod = dbPaymentMethod
 	}
 
-	if paymentMethod == "cash_pickup" || paymentMethod == "blik_pickup" {
+	if paymentMethod == domain.PaymentMethodCashPickup || paymentMethod == domain.PaymentMethodBlikPickup {
 		http.Redirect(w, r, fmt.Sprintf("/user/order/%s", orderID), http.StatusFound)
 		return
 	}
@@ -692,7 +692,7 @@ func (s *Server) handlePayment(w http.ResponseWriter, r *http.Request) {
 		"OrderID":           orderID,
 		"PaymentCode":       paymentCode,
 		"ShowConfirmButton": false,
-		"ShowPolling":       paymentMethod == "blik" && status == "awaiting_payment",
+		"ShowPolling":       paymentMethod == domain.PaymentMethodBlik && status == string(domain.StatusAwaitingPayment),
 	}
 
 	s.renderTemplate(w, r, "payment.html", data)
@@ -918,31 +918,105 @@ func (s *Server) validateCartAvailability(cart []CartItem) error {
 	return nil
 }
 
-// blockProductDates blocks product dates in the database.
-func (s *Server) blockProductDates(cart []CartItem, orderID string) {
-	for _, item := range cart {
-		start, err := time.Parse("2006-01-02", item.StartDate)
-		if err != nil {
-			log.Printf("Failed to parse start date: %v", err)
-			continue
-		}
-		end, err := time.Parse("2006-01-02", item.EndDate)
-		if err != nil {
-			log.Printf("Failed to parse end date: %v", err)
-			continue
-		}
+func hashOptionalPassword(r *http.Request) (string, error) {
+	password := r.FormValue("password")
+	if password == "" {
+		return "", nil
+	}
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", err
+	}
+	return string(hash), nil
+}
 
-		for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
-			dateStr := d.Format("2006-01-02")
-			bookingQuery := `
-			INSERT INTO product_bookings (product_id, order_id, booked_date)
-			VALUES (?, ?, ?)
-			`
-			_, err = s.readModels.GetDB().Exec(bookingQuery, item.ProductID, orderID, dateStr)
-			if err != nil {
-				log.Printf("Failed to block date %s: %v", dateStr, err)
+func (s *Server) buildOrderPlacedEvent(
+	orderID, userID string,
+	cart []CartItem,
+	totalAmount int,
+	paymentMethod string,
+	paymentCode *string,
+	isFirstOrder bool,
+) *domain.OrderPlacedEvent {
+	var startDate, endDate string
+	var rentalDays int
+	if len(cart) > 0 {
+		startDate = cart[0].StartDate
+		endDate = cart[0].EndDate
+		rentalDays = cart[0].RentalDays
+	}
+
+	return &domain.OrderPlacedEvent{
+		OrderID:       orderID,
+		UserID:        userID,
+		Items:         s.convertCartToOrderItems(cart),
+		TotalAmount:   totalAmount,
+		PaymentMethod: paymentMethod,
+		PaymentCode:   paymentCode,
+		StartDate:     startDate,
+		EndDate:       endDate,
+		RentalDays:    rentalDays,
+		IsFirstOrder:  isFirstOrder,
+		Timestamp:     time.Now().UTC(),
+	}
+}
+
+func (s *Server) persistPlacedOrder(ctx context.Context, orderID string, orderEvent *domain.OrderPlacedEvent) error {
+	eventData, err := eventstore.ToEvent(orderID, "order", orderEvent, 1)
+	if err != nil {
+		return fmt.Errorf("create event: %w", err)
+	}
+	if err := s.eventStore.Save(ctx, eventData); err != nil {
+		return fmt.Errorf("save event: %w", err)
+	}
+	if err := s.projector.Run(ctx); err != nil {
+		return fmt.Errorf("project event: %w", err)
+	}
+	exists, err := s.readModels.OrderExists(orderID)
+	if err != nil {
+		return fmt.Errorf("check order exists: %w", err)
+	}
+	if !exists {
+		return fmt.Errorf("order %s missing after projection", orderID)
+	}
+	return nil
+}
+
+func (s *Server) saveBLIKPaymentCode(orderID string, paymentCode *string) {
+	if paymentCode == nil {
+		return
+	}
+	paymentCodeID := fmt.Sprintf("pc_%d", time.Now().UnixNano())
+	if err := s.readModels.CreatePaymentCode(paymentCodeID, *paymentCode, orderID); err != nil {
+		log.Printf("Failed to create payment code: %v", err)
+	}
+}
+
+func (s *Server) notifyPickupOrderAdminsAsync(parent context.Context, orderID, name, email, paymentMethod string, totalAmount int) {
+	if !isPickupPaymentMethod(paymentMethod) {
+		return
+	}
+
+	notifyCtx := context.WithoutCancel(parent)
+	if s.adminNotifier != nil {
+		go func(ctx context.Context) {
+			if err := s.adminNotifier.NotifyOrderRequiringConfirmation(ctx, orderID, name, email, paymentMethod, float64(totalAmount)); err != nil {
+				log.Printf("Failed to send admin email notification for order %s: %v", orderID, err)
 			}
-		}
+		}(notifyCtx)
+	}
+	if s.webPushNotifier != nil {
+		go func(ctx context.Context) {
+			if err := s.webPushNotifier.NotifyOrderRequiringConfirmation(ctx, orderID, name, paymentMethod, float64(totalAmount)); err != nil {
+				log.Printf("Failed to send admin web push notification for order %s: %v", orderID, err)
+			}
+		}(notifyCtx)
+	}
+}
+
+func writeJSON(w http.ResponseWriter, payload any) {
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		log.Printf("Failed to write JSON response: %v", err)
 	}
 }
 
@@ -980,20 +1054,15 @@ func (s *Server) handleCheckoutSubmit(w http.ResponseWriter, r *http.Request) {
 
 	// Generate payment code for BLIK payments
 	var paymentCode *string
-	if paymentMethod == "blik" {
+	if paymentMethod == domain.PaymentMethodBlik {
 		code := domain.GeneratePaymentCode()
 		paymentCode = &code
 	}
 
-	// Hash password if provided
-	var passwordHash string
-	if password := r.FormValue("password"); password != "" {
-		hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-		if err != nil {
-			http.Error(w, "Failed to process password", http.StatusInternalServerError)
-			return
-		}
-		passwordHash = string(hash)
+	passwordHash, err := hashOptionalPassword(r)
+	if err != nil {
+		http.Error(w, "Failed to process password", http.StatusInternalServerError)
+		return
 	}
 
 	// Get or create user
@@ -1011,99 +1080,23 @@ func (s *Server) handleCheckoutSubmit(w http.ResponseWriter, r *http.Request) {
 		isFirstOrder = true // Default to requiring confirmation on error
 	}
 
-	// Note: Manual confirmation is now handled via status-based state machine
-	// Pickup payments stay in 'paid' state awaiting manual confirmation
-
-	// Convert cart items to domain.OrderItem format
-	orderItems := s.convertCartToOrderItems(cart)
-
-	// Determine rental dates from cart
-	var startDate, endDate string
-	var rentalDays int
-	if len(cart) > 0 {
-		startDate = cart[0].StartDate
-		endDate = cart[0].EndDate
-		rentalDays = cart[0].RentalDays
-	}
-
-	// Emit OrderPlacedEvent
-	orderEvent := &domain.OrderPlacedEvent{
-		OrderID:       orderID,
-		UserID:        userID,
-		Items:         orderItems,
-		TotalAmount:   totalAmount,
-		PaymentMethod: paymentMethod,
-		PaymentCode:   paymentCode,
-		StartDate:     startDate,
-		EndDate:       endDate,
-		RentalDays:    rentalDays,
-		IsFirstOrder:  isFirstOrder,
-		Timestamp:     time.Now().UTC(),
-	}
-
-	eventData, err := eventstore.ToEvent(orderID, "order", orderEvent, 1)
-	if err != nil {
-		log.Printf("Failed to create OrderPlacedEvent: %v", err)
+	orderEvent := s.buildOrderPlacedEvent(orderID, userID, cart, totalAmount, paymentMethod, paymentCode, isFirstOrder)
+	if err := s.persistPlacedOrder(ctx, orderID, orderEvent); err != nil {
+		log.Printf("Failed to create order: %v", err)
 		http.Error(w, "Failed to create order", http.StatusInternalServerError)
 		return
 	}
 
-	if err := s.eventStore.Save(ctx, eventData); err != nil {
-		log.Printf("Failed to emit OrderPlacedEvent: %v", err)
-		http.Error(w, "Failed to create order", http.StatusInternalServerError)
-		return
+	if paymentMethod == domain.PaymentMethodBlik {
+		s.saveBLIKPaymentCode(orderID, paymentCode)
 	}
 
-	if err := s.projector.Run(ctx); err != nil {
-		log.Printf("Failed to project order event: %v", err)
-		http.Error(w, "Failed to create order", http.StatusInternalServerError)
-		return
-	}
-
-	exists, err := s.readModels.OrderExists(orderID)
-	if err != nil || !exists {
-		log.Printf("Order %s missing after projection", orderID)
-		http.Error(w, "Failed to create order", http.StatusInternalServerError)
-		return
-	}
-
-	// Create payment code record if BLIK
-	if paymentMethod == "blik" && paymentCode != nil {
-		paymentCodeID := fmt.Sprintf("pc_%d", time.Now().UnixNano())
-		err = s.readModels.CreatePaymentCode(paymentCodeID, *paymentCode, orderID)
-		if err != nil {
-			log.Printf("Failed to create payment code: %v", err)
-		}
-	}
-
-	// Send admin notification for pickup payments that will require manual confirmation
-	if paymentMethod == "cash_pickup" || paymentMethod == "blik_pickup" {
-		// Send email notification
-		if s.adminNotifier != nil {
-			go func() {
-				ctx := context.Background()
-				err := s.adminNotifier.NotifyOrderRequiringConfirmation(ctx, orderID, name, email, paymentMethod, float64(totalAmount))
-				if err != nil {
-					log.Printf("Failed to send admin email notification for order %s: %v", orderID, err)
-				}
-			}()
-		}
-		// Send web push notification
-		if s.webPushNotifier != nil {
-			go func() {
-				ctx := context.Background()
-				err := s.webPushNotifier.NotifyOrderRequiringConfirmation(ctx, orderID, name, paymentMethod, float64(totalAmount))
-				if err != nil {
-					log.Printf("Failed to send admin web push notification for order %s: %v", orderID, err)
-				}
-			}()
-		}
-	}
+	s.notifyPickupOrderAdminsAsync(ctx, orderID, name, email, paymentMethod, totalAmount)
 
 	// Clear cart
 	clearCart(w, r)
 
-	if paymentMethod == "cash_pickup" || paymentMethod == "blik_pickup" {
+	if isPickupPaymentMethod(paymentMethod) {
 		http.Redirect(w, r, fmt.Sprintf("/user/order/%s", orderID), http.StatusFound)
 		return
 	}
@@ -1132,7 +1125,7 @@ func (s *Server) handlePaymentConfirm(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Order not found", http.StatusNotFound)
 		return
 	}
-	if paymentMethod == "cash_pickup" || paymentMethod == "blik_pickup" {
+	if paymentMethod == domain.PaymentMethodCashPickup || paymentMethod == domain.PaymentMethodBlikPickup {
 		http.Error(w, "Pickup orders are confirmed by the shop", http.StatusBadRequest)
 		return
 	}
@@ -1184,7 +1177,7 @@ func (s *Server) handlePaymentStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// If order is confirmed, return success fragment for HTMX polling.
-	if status == "confirmed" {
+	if status == string(domain.StatusConfirmed) {
 		s.renderPartialTemplate(w, "payment-success-fragment", map[string]interface{}{
 			"Email": "user@example.com",
 		})
@@ -1393,14 +1386,14 @@ func buildOrderDetailView(order map[string]interface{}) orderDetailView {
 
 	itemsJSON, _ := enriched["Items"].(string)
 
-	needsPayment := status == "awaiting_payment"
-	awaitingConfirmation := status == "paid" && isPickupPaymentMethod(paymentMethod)
+	needsPayment := status == string(domain.StatusAwaitingPayment)
+	awaitingConfirmation := status == string(domain.StatusPaid) && isPickupPaymentMethod(paymentMethod)
 	canCancel := canUserCancelOrder(status, paymentMethod)
 	paymentView := map[string]interface{}{
 		"OrderID":           orderID,
 		"FinalTotal":        int(totalAmount),
 		"ShowConfirmButton": false,
-		"ShowPolling":       needsPayment && paymentMethod == "blik",
+		"ShowPolling":       needsPayment && paymentMethod == domain.PaymentMethodBlik,
 	}
 	if paymentCode != "" {
 		paymentView["PaymentCode"] = paymentCode
@@ -1409,9 +1402,9 @@ func buildOrderDetailView(order map[string]interface{}) orderDetailView {
 	return orderDetailView{
 		Order:                enriched,
 		ParsedItems:          parseOrderItems(itemsJSON),
-		StatusLabel:          enriched["StatusLabel"].(string),
-		StatusBadgeClass:     enriched["StatusBadgeClass"].(string),
-		PaymentMethodLabel:   enriched["PaymentMethodLabel"].(string),
+		StatusLabel:          orderStatusLabel(status, paymentMethod),
+		StatusBadgeClass:     orderStatusBadgeClass(status, paymentMethod),
+		PaymentMethodLabel:   paymentMethodLabel(paymentMethod, status),
 		NeedsPayment:         needsPayment,
 		AwaitingConfirmation: awaitingConfirmation,
 		CanCancel:            canCancel,
@@ -1441,24 +1434,24 @@ func enrichOrderSummary(order map[string]interface{}) map[string]interface{} {
 	enriched["StatusLabel"] = orderStatusLabel(status, paymentMethod)
 	enriched["StatusBadgeClass"] = orderStatusBadgeClass(status, paymentMethod)
 	enriched["PaymentMethodLabel"] = paymentMethodLabel(paymentMethod, status)
-	enriched["NeedsPayment"] = status == "awaiting_payment"
-	enriched["AwaitingConfirmation"] = status == "paid" && isPickupPaymentMethod(paymentMethod)
+	enriched["NeedsPayment"] = status == string(domain.StatusAwaitingPayment)
+	enriched["AwaitingConfirmation"] = status == string(domain.StatusPaid) && isPickupPaymentMethod(paymentMethod)
 	enriched["CanCancel"] = canUserCancelOrder(status, paymentMethod)
 
 	return enriched
 }
 
 func isPickupPaymentMethod(method string) bool {
-	return method == "cash_pickup" || method == "blik_pickup"
+	return method == domain.PaymentMethodCashPickup || method == domain.PaymentMethodBlikPickup
 }
 
 func canUserCancelOrder(status, paymentMethod string) bool {
 	switch status {
-	case "cancelled", "confirmed", "realized":
+	case string(domain.StatusCancelled), string(domain.StatusConfirmed), string(domain.StatusRealized):
 		return false
-	case "awaiting_payment":
+	case string(domain.StatusAwaitingPayment):
 		return true
-	case "paid":
+	case string(domain.StatusPaid):
 		return isPickupPaymentMethod(paymentMethod)
 	default:
 		return false
@@ -1479,18 +1472,18 @@ func parseOrderItems(itemsJSON string) []domain.OrderItem {
 
 func orderStatusLabel(status, paymentMethod string) string {
 	switch status {
-	case "awaiting_payment":
+	case string(domain.StatusAwaitingPayment):
 		return "Oczekuje na płatność"
-	case "paid":
+	case string(domain.StatusPaid):
 		if isPickupPaymentMethod(paymentMethod) {
 			return "Oczekuje na potwierdzenie"
 		}
 		return "Opłacone"
-	case "confirmed":
+	case string(domain.StatusConfirmed):
 		return "Potwierdzone"
-	case "cancelled":
+	case string(domain.StatusCancelled):
 		return "Anulowane"
-	case "realized":
+	case string(domain.StatusRealized):
 		return "Zrealizowane"
 	default:
 		return status
@@ -1499,16 +1492,16 @@ func orderStatusLabel(status, paymentMethod string) string {
 
 func orderStatusBadgeClass(status, paymentMethod string) string {
 	switch status {
-	case "awaiting_payment":
+	case string(domain.StatusAwaitingPayment):
 		return "bg-yellow-100 text-yellow-800"
-	case "paid":
+	case string(domain.StatusPaid):
 		if isPickupPaymentMethod(paymentMethod) {
 			return "bg-amber-100 text-amber-800"
 		}
 		return "bg-emerald-100 text-emerald-800"
-	case "confirmed", "realized":
+	case string(domain.StatusConfirmed), string(domain.StatusRealized):
 		return "bg-emerald-100 text-emerald-800"
-	case "cancelled":
+	case string(domain.StatusCancelled):
 		return "bg-red-100 text-red-800"
 	default:
 		return "bg-gray-100 text-gray-800"
@@ -1517,17 +1510,17 @@ func orderStatusBadgeClass(status, paymentMethod string) string {
 
 func paymentMethodLabel(method, status string) string {
 	switch method {
-	case "blik":
-		if status == "awaiting_payment" {
+	case domain.PaymentMethodBlik:
+		if status == string(domain.StatusAwaitingPayment) {
 			return "BLIK na telefon"
 		}
 		return "Opłacone (BLIK)"
-	case "cash_pickup":
-		if status == "awaiting_payment" {
+	case domain.PaymentMethodCashPickup:
+		if status == string(domain.StatusAwaitingPayment) {
 			return "Gotówka przy odbiorze"
 		}
 		return "Gotówka przy odbiorze"
-	case "blik_pickup":
+	case domain.PaymentMethodBlikPickup:
 		return "BLIK przy odbiorze"
 	default:
 		return method
@@ -2001,7 +1994,7 @@ func (s *Server) handleWebPushVAPIDKey(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
+	writeJSON(w, map[string]string{
 		"publicKey": s.webPushNotifier.GetVAPIDPublicKey(),
 	})
 }
@@ -2030,7 +2023,7 @@ func (s *Server) handleWebPushSubscribe(w http.ResponseWriter, r *http.Request) 
 	s.webPushNotifier.AddSubscription(userID, sub)
 
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{
+	writeJSON(w, map[string]string{
 		"status": "subscribed",
 	})
 }
@@ -2053,7 +2046,7 @@ func (s *Server) handleWebPushUnsubscribe(w http.ResponseWriter, r *http.Request
 	s.webPushNotifier.RemoveSubscription(userID)
 
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{
+	writeJSON(w, map[string]string{
 		"status": "unsubscribed",
 	})
 }
@@ -2543,7 +2536,7 @@ func calculateCartTotal(cart []CartItem) int {
 	return total
 }
 
-// isItemVisible checks if an item (product or article) is visible based on its visibility setting
+// isItemVisible checks if an item (product or article) is visible based on its visibility setting.
 func isItemVisible(visibility domain.Visibility, r *http.Request) bool {
 	switch visibility {
 	case domain.VisibilityPublic:
@@ -2559,7 +2552,7 @@ func isItemVisible(visibility domain.Visibility, r *http.Request) bool {
 	}
 }
 
-// filterArticlesByVisibility filters articles based on visibility settings
+// filterArticlesByVisibility filters articles based on visibility settings.
 func filterArticlesByVisibility(articles []domain.Article, r *http.Request) []domain.Article {
 	var filtered []domain.Article
 	for _, article := range articles {
@@ -2570,7 +2563,7 @@ func filterArticlesByVisibility(articles []domain.Article, r *http.Request) []do
 	return filtered
 }
 
-// filterProductsByVisibility filters products based on visibility settings
+// filterProductsByVisibility filters products based on visibility settings.
 func filterProductsByVisibility(products []domain.Product, r *http.Request) []domain.Product {
 	var filtered []domain.Product
 	for _, product := range products {

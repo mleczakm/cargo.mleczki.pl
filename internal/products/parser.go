@@ -130,29 +130,12 @@ func (p *Parser) LoadProduct(filename string) (*domain.Product, error) {
 	}
 
 	// Ensure images have correct paths
-	if frontmatter.Image != "" && !strings.HasPrefix(frontmatter.Image, "http") && !strings.HasPrefix(frontmatter.Image, "/") {
-		frontmatter.Image = "/data/images/products/" + frontmatter.Image
-	}
-	for i, img := range frontmatter.Images {
-		if img != "" && !strings.HasPrefix(img, "http") && !strings.HasPrefix(img, "/") {
-			frontmatter.Images[i] = "/data/images/products/" + img
-		}
-	}
+	normalizeProductFrontmatterImages(&frontmatter)
 
 	// Convert addons
 	addons := make([]domain.ProductAddon, len(frontmatter.Addons))
 	for i, addon := range frontmatter.Addons {
-		addonImage := addon.Image
-		if addonImage != "" && !strings.HasPrefix(addonImage, "http") && !strings.HasPrefix(addonImage, "/") {
-			addonImage = "/data/images/addons/" + addonImage
-		}
-		addons[i] = domain.ProductAddon{
-			ID:    addon.ID,
-			Name:  addon.Name,
-			Price: addon.Price,
-			Icon:  addon.Icon,
-			Image: addonImage,
-		}
+		addons[i] = convertAddonFrontmatter(addon)
 	}
 
 	// Convert articles
@@ -210,4 +193,28 @@ func (p *Parser) LoadProductByID(id string) (*domain.Product, error) {
 	}
 
 	return nil, fmt.Errorf("product not found: %s", id)
+}
+
+func normalizeImagePath(path, prefix string) string {
+	if path == "" || strings.HasPrefix(path, "http") || strings.HasPrefix(path, "/") {
+		return path
+	}
+	return prefix + path
+}
+
+func normalizeProductFrontmatterImages(fm *ProductFrontmatter) {
+	fm.Image = normalizeImagePath(fm.Image, "/data/images/products/")
+	for i, img := range fm.Images {
+		fm.Images[i] = normalizeImagePath(img, "/data/images/products/")
+	}
+}
+
+func convertAddonFrontmatter(addon AddonFrontmatter) domain.ProductAddon {
+	return domain.ProductAddon{
+		ID:    addon.ID,
+		Name:  addon.Name,
+		Price: addon.Price,
+		Icon:  addon.Icon,
+		Image: normalizeImagePath(addon.Image, "/data/images/addons/"),
+	}
 }

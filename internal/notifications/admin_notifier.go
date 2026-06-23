@@ -29,8 +29,8 @@ func NewAdminNotifier(db *sql.DB) (*AdminNotifier, error) {
 	}, nil
 }
 
-// getAdminEmails retrieves all admin email addresses from the database.
-func (n *AdminNotifier) getAdminEmails() ([]string, error) {
+// GetAdminEmails retrieves all admin email addresses from the database.
+func (n *AdminNotifier) GetAdminEmails() ([]string, error) {
 	query := `SELECT email FROM users WHERE is_admin = 1`
 	rows, err := n.db.Query(query)
 	if err != nil {
@@ -59,7 +59,7 @@ func (n *AdminNotifier) getAdminEmails() ([]string, error) {
 
 // NotifyOrderRequiringConfirmation sends an email notification to admin about an order requiring manual confirmation.
 func (n *AdminNotifier) NotifyOrderRequiringConfirmation(ctx context.Context, orderID, userName, userEmail, paymentMethod string, totalAmount float64) error {
-	adminEmails, err := n.getAdminEmails()
+	adminEmails, err := n.GetAdminEmails()
 	if err != nil {
 		return fmt.Errorf("failed to get admin emails: %w", err)
 	}

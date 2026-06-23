@@ -1,17 +1,19 @@
-package domain
+package domain_test
 
 import (
 	"testing"
 	"time"
+
+	"cargo.mleczki.pl/internal/domain"
 )
 
 func TestOrderPlacedEvent_EventType(t *testing.T) {
-	event := &OrderPlacedEvent{
+	event := &domain.OrderPlacedEvent{
 		OrderID:       "ORD-123",
 		UserID:        "user-123",
-		Items:         []OrderItem{},
+		Items:         []domain.OrderItem{},
 		TotalAmount:   100,
-		PaymentMethod: "cash_pickup",
+		PaymentMethod: domain.PaymentMethodCashPickup,
 		PaymentCode:   nil,
 		StartDate:     "2024-01-01",
 		EndDate:       "2024-01-02",
@@ -27,7 +29,7 @@ func TestOrderPlacedEvent_EventType(t *testing.T) {
 }
 
 func TestOrderPaidEvent_EventType(t *testing.T) {
-	event := &OrderPaidEvent{
+	event := &domain.OrderPaidEvent{
 		OrderID:   "ORD-123",
 		Method:    "admin_manual",
 		Timestamp: time.Now().UTC(),
@@ -40,7 +42,7 @@ func TestOrderPaidEvent_EventType(t *testing.T) {
 }
 
 func TestOrderCancelledEvent_EventType(t *testing.T) {
-	event := &OrderCancelledEvent{
+	event := &domain.OrderCancelledEvent{
 		OrderID:   "ORD-123",
 		Timestamp: time.Now().UTC(),
 	}
@@ -52,7 +54,7 @@ func TestOrderCancelledEvent_EventType(t *testing.T) {
 }
 
 func TestOrderConfirmedEvent_EventType(t *testing.T) {
-	event := &OrderConfirmedEvent{
+	event := &domain.OrderConfirmedEvent{
 		OrderID:   "ORD-123",
 		Timestamp: time.Now().UTC(),
 	}
@@ -65,15 +67,15 @@ func TestOrderConfirmedEvent_EventType(t *testing.T) {
 
 func TestOrderStatusConstants(t *testing.T) {
 	tests := []struct {
-		status   OrderStatus
+		status   domain.OrderStatus
 		expected string
 	}{
-		{StatusPending, "pending"},
-		{StatusAwaitingPayment, "awaiting_payment"},
-		{StatusPaid, "paid"},
-		{StatusConfirmed, "confirmed"},
-		{StatusRealized, "realized"},
-		{StatusCancelled, "cancelled"},
+		{domain.StatusPending, "pending"},
+		{domain.StatusAwaitingPayment, "awaiting_payment"},
+		{domain.StatusPaid, "paid"},
+		{domain.StatusConfirmed, "confirmed"},
+		{domain.StatusRealized, "realized"},
+		{domain.StatusCancelled, "cancelled"},
 	}
 
 	for _, tt := range tests {

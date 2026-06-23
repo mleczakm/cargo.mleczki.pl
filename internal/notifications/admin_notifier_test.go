@@ -1,9 +1,10 @@
-package notifications
+package notifications_test
 
 import (
-	"context"
 	"database/sql"
 	"testing"
+
+	"cargo.mleczki.pl/internal/notifications"
 
 	"github.com/DATA-DOG/go-sqlmock"
 )
@@ -15,12 +16,8 @@ func TestGetAdminEmails(t *testing.T) {
 	}
 	defer db.Close()
 
-	notifier := &AdminNotifier{
-		brevoClient: nil,
-		db:          db,
-	}
+	notifier := notifications.NewAdminNotifierForTest(db)
 
-	// Test with admin emails
 	rows := sqlmock.NewRows([]string{"email"}).
 		AddRow("admin1@example.com").
 		AddRow("admin2@example.com")
@@ -28,7 +25,7 @@ func TestGetAdminEmails(t *testing.T) {
 	mock.ExpectQuery("SELECT email FROM users WHERE is_admin = 1").
 		WillReturnRows(rows)
 
-	emails, err := notifier.getAdminEmails()
+	emails, err := notifier.GetAdminEmails()
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -53,18 +50,14 @@ func TestGetAdminEmails_NoAdmins(t *testing.T) {
 	}
 	defer db.Close()
 
-	notifier := &AdminNotifier{
-		brevoClient: nil,
-		db:          db,
-	}
+	notifier := notifications.NewAdminNotifierForTest(db)
 
-	// Test with no admin emails
 	rows := sqlmock.NewRows([]string{"email"})
 
 	mock.ExpectQuery("SELECT email FROM users WHERE is_admin = 1").
 		WillReturnRows(rows)
 
-	emails, err := notifier.getAdminEmails()
+	emails, err := notifier.GetAdminEmails()
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -85,16 +78,12 @@ func TestGetAdminEmails_QueryError(t *testing.T) {
 	}
 	defer db.Close()
 
-	notifier := &AdminNotifier{
-		brevoClient: nil,
-		db:          db,
-	}
+	notifier := notifications.NewAdminNotifierForTest(db)
 
-	// Test with query error
 	mock.ExpectQuery("SELECT email FROM users WHERE is_admin = 1").
 		WillReturnError(sql.ErrConnDone)
 
-	_, err = notifier.getAdminEmails()
+	_, err = notifier.GetAdminEmails()
 	if err == nil {
 		t.Fatal("Expected error, got nil")
 	}
@@ -111,19 +100,21 @@ func TestNotifyOrderRequiringConfirmation_NoAdmins(t *testing.T) {
 	}
 	defer db.Close()
 
-	notifier := &AdminNotifier{
-		brevoClient: nil,
-		db:          db,
-	}
+	notifier := notifications.NewAdminNotifierForTest(db)
 
-	// Test with no admin emails
 	rows := sqlmock.NewRows([]string{"email"})
 
 	mock.ExpectQuery("SELECT email FROM users WHERE is_admin = 1").
 		WillReturnRows(rows)
 
-	ctx := context.Background()
-	err = notifier.NotifyOrderRequiringConfirmation(ctx, "ORD-123", "John Doe", "john@example.com", "cash_pickup", 100.0)
+	err = notifier.NotifyOrderRequiringConfirmation(
+		t.Context(),
+		"ORD-123",
+		"John Doe",
+		"john@example.com",
+		"cash_pickup",
+		100.0,
+	)
 	if err != nil {
 		t.Fatalf("Expected no error when no admins, got %v", err)
 	}

@@ -1,9 +1,11 @@
-package projections
+package projections_test
 
 import (
 	"database/sql"
 	"path/filepath"
 	"testing"
+
+	"cargo.mleczki.pl/internal/projections"
 
 	_ "modernc.org/sqlite"
 )
@@ -40,7 +42,7 @@ func TestRunMigrationsAddsIsFirstOrderColumn(t *testing.T) {
 		t.Fatalf("close legacy db: %v", err)
 	}
 
-	rm, err := NewReadModelsDB(dbPath)
+	rm, err := projections.NewReadModelsDB(dbPath)
 	if err != nil {
 		t.Fatalf("NewReadModelsDB: %v", err)
 	}

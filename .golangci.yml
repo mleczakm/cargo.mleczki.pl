@@ -116,4 +116,8 @@ linters-settings:
     min-name-length: 2
     ignore-names: ["w", "r", "i", "e"]
     ignore-decls: []
+  misspell:
+    ignore-words:
+      - Nowe
+      - Nowa
 

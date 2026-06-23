@@ -16,6 +16,12 @@ const (
 	StatusCancelled       OrderStatus = "cancelled"        // Order cancelled
 )
 
+const (
+	PaymentMethodBlik       = "blik"
+	PaymentMethodCashPickup = "cash_pickup"
+	PaymentMethodBlikPickup = "blik_pickup"
+)
+
 // Order Aggregate.
 type Order struct {
 	ID            string
