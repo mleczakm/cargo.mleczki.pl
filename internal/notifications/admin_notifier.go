@@ -81,14 +81,14 @@ func (n *AdminNotifier) NotifyOrderRequiringConfirmation(ctx context.Context, or
 		<p><a href="https://cargo.mleczki.pl/admin">Przejdź do panelu administratora</a></p>
 	`, orderID, userName, userEmail, paymentMethod, totalAmount)
 
-	sender := &email.SendSmtpEmailSender{
+	sender := &email.EmailSender{
 		Name:  "Cargo Mleczki",
 		Email: os.Getenv("BREVO_SENDER_EMAIL"),
 	}
 
-	recipients := make([]email.SendSmtpEmailTo, 0, len(adminEmails))
+	recipients := make([]email.EmailRecipient, 0, len(adminEmails))
 	for _, adminEmail := range adminEmails {
-		recipients = append(recipients, email.SendSmtpEmailTo{
+		recipients = append(recipients, email.EmailRecipient{
 			Name:  "Administrator",
 			Email: adminEmail,
 		})

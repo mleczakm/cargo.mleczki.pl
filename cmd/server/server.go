@@ -47,6 +47,7 @@ type Server struct {
 	emailImporter   *email.Importer
 	adminNotifier   *notifications.AdminNotifier
 	webPushNotifier *notifications.WebPushNotifier
+	brevoClient     *email.BrevoClient
 }
 
 // partialTemplates are HTMX fragments rendered without the site layout.
@@ -100,6 +101,15 @@ func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadMod
 		log.Println("Web push notifier initialized")
 	}
 
+	// Initialize Brevo client for password reset emails
+	brevoClient, err := email.NewBrevoClient()
+	if err != nil {
+		log.Printf("Failed to initialize Brevo client: %v", err)
+		brevoClient = nil
+	} else {
+		log.Println("Brevo client initialized")
+	}
+
 	server := &Server{
 		eventStore:      eventStore,
 		readModels:      readModels,
@@ -112,6 +122,7 @@ func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadMod
 		emailImporter:   emailImporter,
 		adminNotifier:   adminNotifier,
 		webPushNotifier: webPushNotifier,
+		brevoClient:     brevoClient,
 	}
 
 	// Start background email import scheduler if configured
@@ -605,6 +616,19 @@ func safeRedirectPath(path string) string {
 	}
 
 	return path
+}
+
+// getBaseURL returns the base URL of the current request (scheme + host).
+func getBaseURL(r *http.Request) string {
+	scheme := "http"
+	if r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https" {
+		scheme = "https"
+	}
+	host := r.Host
+	if forwardedHost := r.Header.Get("X-Forwarded-Host"); forwardedHost != "" {
+		host = forwardedHost
+	}
+	return fmt.Sprintf("%s://%s", scheme, host)
 }
 
 // handleLogout handles user logout.
@@ -1577,28 +1601,51 @@ func (s *Server) handleForgotPasswordSubmit(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	email := r.FormValue("email")
-	if email == "" {
+	userEmail := r.FormValue("email")
+	if userEmail == "" {
 		http.Error(w, "Email is required", http.StatusBadRequest)
 		return
 	}
 
 	ctx := r.Context()
-	token, err := s.authManager.RequestPasswordReset(ctx, email)
+	token, err := s.authManager.RequestPasswordReset(ctx, userEmail)
 	if err != nil {
 		log.Printf("Failed to request password reset: %v", err)
 		http.Error(w, "Failed to request password reset", http.StatusInternalServerError)
 		return
 	}
 
-	// In production, send email with reset link
-	// For now, log the token (this is insecure but allows testing)
-	if token != "" {
-		log.Printf("Password reset token for %s: %s", email, token)
+	// Send email with reset link if Brevo is configured
+	if token != "" && s.brevoClient != nil {
+		resetLink := fmt.Sprintf("%s/reset-password?token=%s", getBaseURL(r), token)
+
+		htmlContent := fmt.Sprintf(`
+			<h2>Reset your password</h2>
+			<p>Hello,</p>
+			<p>We received a request to reset your password for your account at cargo.mleczki.pl.</p>
+			<p>Click the link below to reset your password:</p>
+			<p><a href="%s" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Reset Password</a></p>
+			<p>Or copy and paste this link into your browser:</p>
+			<p>%s</p>
+			<p>This link will expire in 1 hour.</p>
+			<p>If you did not request this password reset, please ignore this email.</p>
+		`, resetLink, resetLink)
+
+		sender := &email.EmailSender{Name: "Cargo Mleczki", Email: "noreply@cargo.mleczki.pl"}
+		to := []email.EmailRecipient{{Email: userEmail}}
+		err = s.brevoClient.SendEmail(ctx, sender, to, "Reset your password", htmlContent)
+
+		if err != nil {
+			log.Printf("Failed to send password reset email: %v", err)
+			// Fall through to show success message anyway (security)
+		}
+	} else if token != "" {
+		// Log the token for testing if Brevo is not configured
+		log.Printf("Password reset token for %s: %s", userEmail, token)
 		resetLink := fmt.Sprintf("/reset-password?token=%s", token)
 		data := map[string]interface{}{
 			"Title":     "Przypomnij hasło",
-			"Email":     email,
+			"Email":     userEmail,
 			"ResetLink": resetLink,
 			"TokenSent": true,
 		}
@@ -1641,17 +1688,32 @@ func (s *Server) handleResetPasswordSubmit(w http.ResponseWriter, r *http.Reques
 	confirmPassword := r.FormValue("confirm_password")
 
 	if token == "" || newPassword == "" || confirmPassword == "" {
-		http.Error(w, "All fields are required", http.StatusBadRequest)
+		data := map[string]interface{}{
+			"Title":        "Resetuj hasło",
+			"Token":        token,
+			"ErrorMessage": "Wszystkie pola są wymagane",
+		}
+		s.renderTemplate(w, r, "reset_password.html", data)
 		return
 	}
 
 	if newPassword != confirmPassword {
-		http.Error(w, "Passwords do not match", http.StatusBadRequest)
+		data := map[string]interface{}{
+			"Title":        "Resetuj hasło",
+			"Token":        token,
+			"ErrorMessage": "Hasła nie są zgodne",
+		}
+		s.renderTemplate(w, r, "reset_password.html", data)
 		return
 	}
 
 	if len(newPassword) < 8 {
-		http.Error(w, "Password must be at least 8 characters", http.StatusBadRequest)
+		data := map[string]interface{}{
+			"Title":        "Resetuj hasło",
+			"Token":        token,
+			"ErrorMessage": "Hasło musi mieć minimum 8 znaków",
+		}
+		s.renderTemplate(w, r, "reset_password.html", data)
 		return
 	}
 
@@ -1659,11 +1721,21 @@ func (s *Server) handleResetPasswordSubmit(w http.ResponseWriter, r *http.Reques
 	err := s.authManager.ResetPassword(ctx, token, newPassword)
 	if err != nil {
 		log.Printf("Failed to reset password: %v", err)
-		http.Error(w, "Failed to reset password: "+err.Error(), http.StatusBadRequest)
+		data := map[string]interface{}{
+			"Title":        "Resetuj hasło",
+			"Token":        token,
+			"ErrorMessage": err.Error(),
+		}
+		s.renderTemplate(w, r, "reset_password.html", data)
 		return
 	}
 
-	http.Redirect(w, r, "/login", http.StatusFound)
+	// Show success page
+	data := map[string]interface{}{
+		"Title":   "Resetuj hasło",
+		"Success": true,
+	}
+	s.renderTemplate(w, r, "reset_password.html", data)
 }
 
 // handleUserProfile renders the user profile form.

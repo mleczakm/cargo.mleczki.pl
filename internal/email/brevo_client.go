@@ -25,7 +25,7 @@ func NewBrevoClient() (*BrevoClient, error) {
 	return &BrevoClient{client: client}, nil
 }
 
-func (b *BrevoClient) SendEmail(ctx context.Context, sender *SendSmtpEmailSender, to []SendSmtpEmailTo, subject string, htmlContent string) error {
+func (b *BrevoClient) SendEmail(ctx context.Context, sender *EmailSender, to []EmailRecipient, subject string, htmlContent string) error {
 	senderEmail := lib.SendSmtpEmailSender{
 		Name:  sender.Name,
 		Email: sender.Email,
@@ -54,12 +54,12 @@ func (b *BrevoClient) SendEmail(ctx context.Context, sender *SendSmtpEmailSender
 	return nil
 }
 
-type SendSmtpEmailSender struct {
+type EmailSender struct {
 	Name  string
 	Email string
 }
 
-type SendSmtpEmailTo struct {
+type EmailRecipient struct {
 	Name  string
 	Email string
 }

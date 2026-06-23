@@ -8,6 +8,7 @@ require (
 	github.com/emersion/go-imap v1.2.1
 	github.com/getbrevo/brevo-go v1.1.3
 	github.com/go-chi/chi/v5 v5.3.0
+	github.com/mattn/go-sqlite3 v1.14.47
 	github.com/yuin/goldmark v1.8.2
 	golang.org/x/crypto v0.52.0
 	gopkg.in/yaml.v3 v3.0.1
