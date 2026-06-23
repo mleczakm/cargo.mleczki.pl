@@ -24,7 +24,7 @@ func (i *Importer) HasPendingPayments() (bool, error) {
 	var count int
 	query := `
 	SELECT COUNT(*) FROM orders
-	WHERE status = 'pending_payment' AND payment_method = 'blik'
+	WHERE status = 'awaiting_payment' AND payment_method = 'blik'
 	`
 	err := i.db.QueryRow(query).Scan(&count)
 	if err != nil {

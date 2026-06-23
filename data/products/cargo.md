@@ -1,6 +1,7 @@
 ---
 id: cargo
 name: Elektryczny Rower Cargo (Longjohn)
+priority: 100
 basePrice: 150
 image: UA_Family_Black_Front_Ketting.png
 images:

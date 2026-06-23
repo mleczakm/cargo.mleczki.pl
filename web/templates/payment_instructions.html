@@ -1,0 +1,51 @@
+{{define "payment-cash-pickup"}}
+<div class="max-w-2xl mx-auto px-4 py-8 text-center">
+    <svg class="w-16 h-16 text-amber-500 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+    <h3 class="text-2xl font-black mb-3">Rezerwacja złożona</h3>
+    <p class="text-gray-600 mb-4">Twoje zamówienie oczekuje na potwierdzenie przez wypożyczalnię.</p>
+    <p class="text-gray-600 mb-6">Przy odbiorze w Radzyminie zapłacisz <span class="font-bold text-gray-900">{{.FinalTotal}} zł</span> gotówką lub BLIK-iem.</p>
+    {{if .OrderID}}
+    <a href="/user/order/{{.OrderID}}" class="inline-flex items-center bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 rounded-xl font-bold shadow-lg transition-colors">
+        Zobacz status rezerwacji
+    </a>
+    {{end}}
+</div>
+{{end}}
+
+{{define "payment-blik"}}
+<div>
+    <div class="bg-emerald-50 border-2 border-emerald-100 rounded-2xl p-6 mb-6 text-left">
+        <h3 class="font-bold text-gray-900 mb-4 flex items-center">
+            <svg class="w-5 h-5 mr-2 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+            Instrukcja płatności BLIK
+        </h3>
+        <ol class="list-decimal list-inside space-y-4 text-gray-700">
+            <li>Zaloguj się do aplikacji banku i wybierz "Przelew BLIK na telefon".</li>
+            <li>Odbiorca: <span class="font-black text-gray-900">732 575 375</span></li>
+            <li>Kwota: <span class="font-black text-emerald-700">{{.FinalTotal}} zł</span></li>
+            <li>Tytuł (BARDZO WAŻNE):<br/>
+                {{if .PaymentCode}}
+                <span class="inline-block bg-white border border-gray-200 px-6 py-3 mt-2 rounded-lg font-mono text-3xl text-emerald-700 font-black tracking-wider">{{.PaymentCode}}</span>
+                {{else}}
+                <span class="inline-block bg-white border border-gray-200 px-4 py-2 mt-2 rounded-lg font-mono text-emerald-700 font-bold">CARGO-{{.OrderID}}</span>
+                {{end}}
+            </li>
+        </ol>
+    </div>
+    {{if .ShowPolling}}
+    <div id="payment-status" hx-get="/payment/status/{{.OrderID}}" hx-trigger="load, every 3s" hx-target="#payment-status" hx-swap="outerHTML">
+        <div class="flex flex-col items-center justify-center py-4">
+            <svg class="w-10 h-10 text-emerald-600 animate-spin mb-4" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p class="font-bold text-gray-900">Nasłuchujemy na przelew z banku...</p>
+        </div>
+    </div>
+    {{end}}
+</div>
+{{end}}

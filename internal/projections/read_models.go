@@ -75,6 +75,7 @@ func (rm *ReadModelsDB) initSchema() error {
 		updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
 		paid_at TEXT,
 		payment_code TEXT,
+		is_first_order INTEGER DEFAULT 0,
 		FOREIGN KEY (user_id) REFERENCES users(id)
 	);
 	CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id);
@@ -242,7 +243,57 @@ func (rm *ReadModelsDB) initSchema() error {
 		}
 	}
 
+	if err := rm.runMigrations(); err != nil {
+		return err
+	}
+
 	return nil
+}
+
+// runMigrations applies incremental schema changes to existing databases.
+func (rm *ReadModelsDB) runMigrations() error {
+	migrations := []struct {
+		table  string
+		column string
+		def    string
+	}{
+		{"orders", "is_first_order", "INTEGER DEFAULT 0"},
+	}
+
+	for _, m := range migrations {
+		if err := rm.ensureColumn(m.table, m.column, m.def); err != nil {
+			return fmt.Errorf("migration %s.%s: %w", m.table, m.column, err)
+		}
+	}
+
+	return nil
+}
+
+func (rm *ReadModelsDB) ensureColumn(table, column, definition string) error {
+	rows, err := rm.db.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var cid int
+		var name, colType string
+		var notNull, pk int
+		var dfltValue sql.NullString
+		if err := rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk); err != nil {
+			return err
+		}
+		if name == column {
+			return nil
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
+	_, err = rm.db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, column, definition))
+	return err
 }
 
 // GetDB returns the underlying database connection.
@@ -392,6 +443,56 @@ func (rm *ReadModelsDB) GetOrdersByUserID(userID string) ([]map[string]interface
 	return orders, nil
 }
 
+// GetOrderByIDAndUserID retrieves a single order for a user.
+func (rm *ReadModelsDB) GetOrderByIDAndUserID(orderID, userID string) (map[string]interface{}, error) {
+	query := `
+	SELECT id, user_id, total_amount, status, payment_method, items_json, start_date, end_date, rental_days, created_at, payment_code
+	FROM orders
+	WHERE id = ? AND user_id = ?
+	`
+	var id, userIDRetrieved, status, paymentMethod, itemsJSON, startDate, endDate, createdAt string
+	var paymentCode sql.NullString
+	var totalAmount float64
+	var rentalDays int
+	err := rm.db.QueryRow(query, orderID, userID).Scan(
+		&id, &userIDRetrieved, &totalAmount, &status, &paymentMethod, &itemsJSON,
+		&startDate, &endDate, &rentalDays, &createdAt, &paymentCode,
+	)
+	if err == sql.ErrNoRows {
+		return nil, sql.ErrNoRows
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	code := ""
+	if paymentCode.Valid {
+		code = paymentCode.String
+	}
+	if code == "" {
+		if fallback, err := rm.GetPaymentCodeByOrderID(orderID); err == nil {
+			code = fallback
+		}
+	}
+
+	order := map[string]interface{}{
+		"ID":            id,
+		"UserID":        userIDRetrieved,
+		"TotalAmount":   totalAmount,
+		"Status":        status,
+		"PaymentMethod": paymentMethod,
+		"Items":         itemsJSON,
+		"StartDate":     startDate,
+		"EndDate":       endDate,
+		"RentalDays":    rentalDays,
+		"CreatedAt":     createdAt,
+	}
+	if code != "" {
+		order["PaymentCode"] = code
+	}
+	return order, nil
+}
+
 // GetGlobalBlockedDates retrieves all globally blocked dates.
 func (rm *ReadModelsDB) GetGlobalBlockedDates() ([]string, error) {
 	query := `SELECT date FROM global_blocked_dates ORDER BY date ASC`
@@ -413,6 +514,52 @@ func (rm *ReadModelsDB) GetGlobalBlockedDates() ([]string, error) {
 		return nil, err
 	}
 	return dates, nil
+}
+
+// GetBookedDatesForProduct returns dates already booked for a product.
+func (rm *ReadModelsDB) GetBookedDatesForProduct(productID string) ([]string, error) {
+	query := `SELECT booked_date FROM product_bookings WHERE product_id = ? ORDER BY booked_date ASC`
+	rows, err := rm.db.Query(query, productID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var dates []string
+	for rows.Next() {
+		var date string
+		if err := rows.Scan(&date); err != nil {
+			return nil, err
+		}
+		dates = append(dates, date)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return dates, nil
+}
+
+// IsProductDateBooked checks if a product is already booked on a given date.
+func (rm *ReadModelsDB) IsProductDateBooked(productID, date string) (bool, error) {
+	var count int
+	err := rm.db.QueryRow(
+		`SELECT COUNT(*) FROM product_bookings WHERE product_id = ? AND booked_date = ?`,
+		productID, date,
+	).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// OrderExists checks whether an order exists in the read model.
+func (rm *ReadModelsDB) OrderExists(orderID string) (bool, error) {
+	var count int
+	err := rm.db.QueryRow(`SELECT COUNT(*) FROM orders WHERE id = ?`, orderID).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }
 
 // AddGlobalBlockedDate adds a date to the global blocked dates.
@@ -520,4 +667,55 @@ func (rm *ReadModelsDB) UpdateLastEmailImport(count int) error {
 	`
 	_, err := rm.db.Exec(query, now, count, now)
 	return err
+}
+
+// IsFirstOrder checks if this is the user's first order.
+func (rm *ReadModelsDB) IsFirstOrder(userID string) (bool, error) {
+	var count int
+	query := `SELECT COUNT(*) FROM orders WHERE user_id = ?`
+	err := rm.db.QueryRow(query, userID).Scan(&count)
+	if err != nil {
+		return false, err
+	}
+	return count == 0, nil
+}
+
+// GetOrdersAwaitingConfirmation retrieves orders that are paid but not yet confirmed (pickup payments).
+func (rm *ReadModelsDB) GetOrdersAwaitingConfirmation() ([]map[string]interface{}, error) {
+	query := `
+	SELECT o.id, o.user_id, u.name as user_name, u.email as user_email, o.total_amount, o.status, o.payment_method, o.items_json, o.created_at
+	FROM orders o
+	LEFT JOIN users u ON o.user_id = u.id
+	WHERE o.status = 'paid' AND (o.payment_method = 'cash_pickup' OR o.payment_method = 'blik_pickup')
+	ORDER BY o.created_at DESC
+	`
+	rows, err := rm.db.Query(query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var orders []map[string]interface{}
+	for rows.Next() {
+		var id, userID, userName, userEmail, status, paymentMethod, itemsJSON, createdAt string
+		var totalAmount float64
+		if err := rows.Scan(&id, &userID, &userName, &totalAmount, &status, &paymentMethod, &itemsJSON, &createdAt, &userEmail); err != nil {
+			return nil, err
+		}
+		orders = append(orders, map[string]interface{}{
+			"ID":            id,
+			"UserID":        userID,
+			"UserName":      userName,
+			"UserEmail":     userEmail,
+			"TotalAmount":   totalAmount,
+			"Status":        status,
+			"PaymentMethod": paymentMethod,
+			"Items":         itemsJSON,
+			"CreatedAt":     createdAt,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return orders, nil
 }

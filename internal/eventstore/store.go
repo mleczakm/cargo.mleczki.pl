@@ -18,6 +18,6 @@ type EventStore interface {
 	// GetAllEvents retrieves all events from the store (for projections)
 	GetAllEvents(ctx context.Context) ([]*Event, error)
 
-	// GetEventsSince retrieves all events after a specific version (for replay)
-	GetEventsSince(ctx context.Context, version int) ([]*Event, error)
+	// GetEventsSince retrieves all events after a specific stream position (SQLite rowid).
+	GetEventsSince(ctx context.Context, position int) ([]*Event, error)
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"time"
 
 	"cargo.mleczki.pl/internal/domain"
 	"cargo.mleczki.pl/internal/eventstore"
@@ -41,9 +42,12 @@ func (p *Projector) Run(ctx context.Context) error {
 	for _, event := range events {
 		if err := p.processEvent(event); err != nil {
 			log.Printf("Error processing event %s: %v", event.ID, err)
-			continue
+			if saveErr := p.readModels.SaveCheckpoint(p.projectionName, lastVersion); saveErr != nil {
+				return fmt.Errorf("failed to save checkpoint: %w", saveErr)
+			}
+			return fmt.Errorf("failed to process event %s: %w", event.ID, err)
 		}
-		lastVersion = event.Version
+		lastVersion = int(event.StreamPosition)
 	}
 
 	return p.readModels.SaveCheckpoint(p.projectionName, lastVersion)
@@ -58,6 +62,8 @@ func (p *Projector) processEvent(event *eventstore.Event) error {
 		return p.handleOrderPaid(event)
 	case "OrderCancelled":
 		return p.handleOrderCancelled(event)
+	case "OrderConfirmed":
+		return p.handleOrderConfirmed(event)
 	case "UserRegistered":
 		return p.handleUserRegistered(event)
 	case "UserDetailsUpdated":
@@ -86,9 +92,20 @@ func (p *Projector) handleOrderPlaced(event *eventstore.Event) error {
 		return err
 	}
 
+	isFirstOrderInt := 0
+	if eventData.IsFirstOrder {
+		isFirstOrderInt = 1
+	}
+
+	// Order starts awaiting payment; pickup orders skip online payment and wait for admin.
+	status := "awaiting_payment"
+	if eventData.PaymentMethod == "cash_pickup" || eventData.PaymentMethod == "blik_pickup" {
+		status = "paid"
+	}
+
 	query := `
-	INSERT INTO orders (id, user_id, items_json, total_amount, status, payment_method, start_date, end_date, rental_days, created_at, updated_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	INSERT INTO orders (id, user_id, items_json, total_amount, status, payment_method, start_date, end_date, rental_days, created_at, updated_at, is_first_order, payment_code)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(id) DO UPDATE SET
 		items_json = excluded.items_json,
 		total_amount = excluded.total_amount,
@@ -97,40 +114,97 @@ func (p *Projector) handleOrderPlaced(event *eventstore.Event) error {
 		start_date = excluded.start_date,
 		end_date = excluded.end_date,
 		rental_days = excluded.rental_days,
-		updated_at = excluded.updated_at
+		updated_at = excluded.updated_at,
+		is_first_order = excluded.is_first_order,
+		payment_code = excluded.payment_code
 	`
+
+	var paymentCodePtr *string
+	if eventData.PaymentCode != nil {
+		paymentCodePtr = eventData.PaymentCode
+	}
 
 	_, err = p.readModels.GetDB().Exec(query,
 		eventData.OrderID,
 		eventData.UserID,
 		itemsJSON,
 		eventData.TotalAmount,
-		"pending_payment",
+		status,
 		eventData.PaymentMethod,
 		eventData.StartDate,
 		eventData.EndDate,
 		eventData.RentalDays,
 		eventData.Timestamp.Format("2006-01-02 15:04:05"),
 		eventData.Timestamp.Format("2006-01-02 15:04:05"),
+		isFirstOrderInt,
+		paymentCodePtr,
 	)
+	if err != nil {
+		return err
+	}
 
-	return err
+	return p.blockOrderProductDates(eventData)
 }
 
-// handleOrderPaid updates the order status to paid.
+func (p *Projector) blockOrderProductDates(eventData domain.OrderPlacedEvent) error {
+	if eventData.StartDate == "" || eventData.EndDate == "" || len(eventData.Items) == 0 {
+		return nil
+	}
+
+	start, err := time.Parse("2006-01-02", eventData.StartDate)
+	if err != nil {
+		return fmt.Errorf("invalid start date: %w", err)
+	}
+	end, err := time.Parse("2006-01-02", eventData.EndDate)
+	if err != nil {
+		return fmt.Errorf("invalid end date: %w", err)
+	}
+
+	db := p.readModels.GetDB()
+	for _, item := range eventData.Items {
+		for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
+			dateStr := d.Format("2006-01-02")
+			_, err = db.Exec(`
+				INSERT INTO product_bookings (product_id, order_id, booked_date)
+				VALUES (?, ?, ?)
+			`, item.ProductID, eventData.OrderID, dateStr)
+			if err != nil {
+				return fmt.Errorf("product %s on %s: %w", item.ProductID, dateStr, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// handleOrderPaid updates the order status to paid, and auto-confirms for non-pickup payments.
 func (p *Projector) handleOrderPaid(event *eventstore.Event) error {
 	var e domain.OrderPaidEvent
 	if err := json.Unmarshal(event.Payload, &e); err != nil {
 		return err
 	}
 
+	// Get payment method to determine if auto-confirmation is needed
+	var paymentMethod string
+	err := p.readModels.GetDB().QueryRow("SELECT payment_method FROM orders WHERE id = ?", e.OrderID).Scan(&paymentMethod)
+	if err != nil {
+		return err
+	}
+
+	// Auto-confirm for BLIK payments only
+	// Pickup payments (cash_pickup) stay in 'paid' state awaiting manual confirmation
+	newStatus := "paid"
+	if paymentMethod == "blik" {
+		newStatus = "confirmed"
+	}
+
 	query := `
 	UPDATE orders
-	SET status = 'paid', updated_at = ?
+	SET status = ?, paid_at = ?, updated_at = ?
 	WHERE id = ?
 	`
 
-	_, err := p.readModels.GetDB().Exec(query, e.Timestamp.Format("2006-01-02 15:04:05"), e.OrderID)
+	_, err = p.readModels.GetDB().Exec(query, newStatus, e.Timestamp.Format("2006-01-02 15:04:05"), e.Timestamp.Format("2006-01-02 15:04:05"), e.OrderID)
 	return err
 }
 
@@ -144,6 +218,28 @@ func (p *Projector) handleOrderCancelled(event *eventstore.Event) error {
 	query := `
 	UPDATE orders
 	SET status = 'cancelled', updated_at = ?
+	WHERE id = ?
+	`
+
+	_, err := p.readModels.GetDB().Exec(query, e.Timestamp.Format("2006-01-02 15:04:05"), e.OrderID)
+	if err != nil {
+		return err
+	}
+
+	_, err = p.readModels.GetDB().Exec(`DELETE FROM product_bookings WHERE order_id = ?`, e.OrderID)
+	return err
+}
+
+// handleOrderConfirmed updates the order status to confirmed.
+func (p *Projector) handleOrderConfirmed(event *eventstore.Event) error {
+	var e domain.OrderConfirmedEvent
+	if err := json.Unmarshal(event.Payload, &e); err != nil {
+		return err
+	}
+
+	query := `
+	UPDATE orders
+	SET status = 'confirmed', updated_at = ?
 	WHERE id = ?
 	`
 

@@ -1,16 +1,20 @@
 package eventstore
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // Event represents a domain event in the event store.
 type Event struct {
-	ID            string          `json:"id"`
-	AggregateID   string          `json:"aggregateId"`
-	AggregateType string          `json:"aggregateType"`
-	EventType     string          `json:"eventType"`
-	Payload       json.RawMessage `json:"payload"`
-	Version       int             `json:"version"`
-	CreatedAt     string          `json:"createdAt"`
+	ID             string          `json:"id"`
+	AggregateID    string          `json:"aggregateId"`
+	AggregateType  string          `json:"aggregateType"`
+	EventType      string          `json:"eventType"`
+	Payload        json.RawMessage `json:"payload"`
+	Version        int             `json:"version"`
+	StreamPosition int64           `json:"-"`
+	CreatedAt      string          `json:"createdAt"`
 }
 
 // EventData is the interface that all domain events must implement.
@@ -26,6 +30,7 @@ func ToEvent(aggregateID, aggregateType string, data EventData, version int) (*E
 	}
 
 	return &Event{
+		ID:            fmt.Sprintf("%s-%s-v%d", aggregateID, data.EventType(), version),
 		AggregateID:   aggregateID,
 		AggregateType: aggregateType,
 		EventType:     data.EventType(),

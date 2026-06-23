@@ -2,6 +2,7 @@
 id: trailer-pedals
 name: Przyczepka z pedałami (doczepka)
 basePrice: 40
+priority: 70
 image: Turbo_profil-kq7znxtq.png
 images:
   - Turbo_profil-kq7znxtq.png

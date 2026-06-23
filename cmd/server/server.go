@@ -3,7 +3,9 @@ package main
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"log"
@@ -14,14 +16,17 @@ import (
 	"strings"
 	"time"
 
+	"github.com/SherClockHolmes/webpush-go"
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/crypto/bcrypt"
 
+	"cargo.mleczki.pl/internal/articles"
 	"cargo.mleczki.pl/internal/auth"
 	"cargo.mleczki.pl/internal/domain"
 	"cargo.mleczki.pl/internal/email"
 	"cargo.mleczki.pl/internal/eventstore"
 	"cargo.mleczki.pl/internal/middleware"
+	"cargo.mleczki.pl/internal/notifications"
 	"cargo.mleczki.pl/internal/products"
 	"cargo.mleczki.pl/internal/projections"
 	"cargo.mleczki.pl/internal/transfers"
@@ -31,23 +36,27 @@ const methodPost = "POST"
 
 // Server holds the application state.
 type Server struct {
-	eventStore      eventstore.EventStore
-	readModels      *projections.ReadModelsDB
-	productParser   *products.Parser
-	authManager     *auth.AuthManager
-	templates       *template.Template
-	transferMatcher *transfers.Matcher
-	emailImporter   *email.Importer
+	eventStore        eventstore.EventStore
+	readModels        *projections.ReadModelsDB
+	projector         *projections.Projector
+	productParser     *products.Parser
+	articleParser     *articles.Parser
+	authManager       *auth.AuthManager
+	templates         *template.Template
+	transferMatcher   *transfers.Matcher
+	emailImporter     *email.Importer
+	adminNotifier     *notifications.AdminNotifier
+	webPushNotifier   *notifications.WebPushNotifier
 }
 
 // partialTemplates are HTMX fragments rendered without the site layout.
 var partialTemplates = map[string]struct{}{
-	"calendar.html":        {},
-	"payment_success.html": {},
+	"calendar.html":             {},
+	"payment-success-fragment": {},
 }
 
 // NewServer creates a new HTTP server.
-func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadModelsDB, productParser *products.Parser, authManager *auth.AuthManager) *Server {
+func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadModelsDB, projector *projections.Projector, productParser *products.Parser, articleParser *articles.Parser, authManager *auth.AuthManager) *Server {
 	funcMap := template.FuncMap{
 		"upper":    strings.ToUpper,
 		"safeHTML": func(s string) template.HTML { return template.HTML(s) }, // #nosec G203 // Content is from trusted markdown files
@@ -56,6 +65,7 @@ func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadMod
 			stripped := strings.ReplaceAll(strings.ReplaceAll(s, "<p>", ""), "</p>", "")
 			return template.HTML(stripped) // #nosec G203 // Content is from trusted markdown files
 		},
+		"sub": func(a, b int) int { return a - b },
 	}
 
 	tmpl := template.New("main").Funcs(funcMap)
@@ -73,14 +83,36 @@ func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadMod
 		log.Println("Email importer initialized")
 	}
 
+	// Initialize admin notifier
+	adminNotifier, err := notifications.NewAdminNotifier(readModels.GetDB())
+	if err != nil {
+		log.Printf("Failed to initialize admin notifier: %v", err)
+		adminNotifier = nil
+	} else {
+		log.Println("Admin notifier initialized")
+	}
+
+	// Initialize web push notifier
+	webPushNotifier, err := notifications.NewWebPushNotifier()
+	if err != nil {
+		log.Printf("Failed to initialize web push notifier: %v", err)
+		webPushNotifier = nil
+	} else {
+		log.Println("Web push notifier initialized")
+	}
+
 	server := &Server{
-		eventStore:      eventStore,
-		readModels:      readModels,
-		productParser:   productParser,
-		authManager:     authManager,
-		templates:       tmpl,
-		transferMatcher: transfers.NewMatcher(),
-		emailImporter:   emailImporter,
+		eventStore:       eventStore,
+		readModels:       readModels,
+		projector:        projector,
+		productParser:    productParser,
+		articleParser:    articleParser,
+		authManager:      authManager,
+		templates:        tmpl,
+		transferMatcher:  transfers.NewMatcher(),
+		emailImporter:    emailImporter,
+		adminNotifier:    adminNotifier,
+		webPushNotifier:  webPushNotifier,
 	}
 
 	// Start background email import scheduler if configured
@@ -130,6 +162,8 @@ func (s *Server) startEmailImportScheduler() {
 
 // RegisterRoutes sets up all HTTP routes.
 func (s *Server) RegisterRoutes(r chi.Router) {
+	r.Use(middleware.SessionMiddleware(s.authManager))
+
 	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
 	r.Handle("/data/images/*", http.StripPrefix("/data/images/", http.FileServer(http.Dir("data/images"))))
 	r.Get("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
@@ -140,11 +174,16 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 	r.Get("/", s.handleHome)
 	r.Get("/product/{id}", s.handleProduct)
 	r.Get("/product/{id}/calendar", s.handleProductCalendar)
+	r.Get("/articles", s.handleArticles)
+	r.Get("/articles/porady", s.handleArticlesPorady)
+	r.Get("/articles/recenzje", s.handleArticlesRecenzje)
+	r.Get("/article/{id}", s.handleArticle)
 	r.Get("/login", s.handleLogin)
 	r.Post("/login", s.handleLogin)
 	r.Get("/logout", s.handleLogout)
 	r.Post("/logout", s.handleLogout)
 	r.Get("/checkout", s.handleCheckout)
+	r.Get("/payment", s.handlePayment)
 	r.Get("/payment/{id}", s.handlePayment)
 	r.Get("/success", s.handleSuccess)
 	r.Get("/terms", s.handleTerms)
@@ -166,6 +205,8 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 
 	// User panel (protected)
 	r.Get("/user", s.handleUserPanel)
+	r.Get("/user/order/{id}", s.handleUserOrderDetail)
+	r.Post("/user/order/{id}/cancel", s.handleUserOrderCancel)
 	r.Post("/user/delete-request", s.handleUserDeleteRequest)
 	r.Post("/user/delete-confirm", s.handleUserDeleteConfirm)
 	r.Post("/user/delete-cancel", s.handleUserDeleteCancel)
@@ -190,6 +231,10 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 		r.Post("/admin/product/{id}/unblock-date", s.handleAdminUnblockProductDate)
 		r.Post("/admin/global-closure/add", s.handleAdminAddGlobalClosure)
 		r.Post("/admin/global-closure/remove", s.handleAdminRemoveGlobalClosure)
+		// Web push subscription endpoints
+		r.Get("/api/webpush/vapid-key", s.handleWebPushVAPIDKey)
+		r.Post("/api/webpush/subscribe", s.handleWebPushSubscribe)
+		r.Post("/api/webpush/unsubscribe", s.handleWebPushUnsubscribe)
 	})
 
 	// Health check
@@ -205,9 +250,12 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Filter products based on visibility
+	filtered := filterProductsByVisibility(products, r)
+
 	data := map[string]interface{}{
 		"Title":     "Wynajem sprzętu rowerowego",
-		"Products":  products,
+		"Products":  filtered,
 		"CartCount": getCartCount(r),
 		"CartTotal": getCartTotal(r),
 	}
@@ -230,14 +278,28 @@ func (s *Server) handleProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check visibility
+	if !isItemVisible(product.Visibility, r) {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Load related articles that reference this product
+	relatedArticles, err := s.articleParser.LoadArticlesByProductID(productID)
+	if err != nil {
+		log.Printf("Error loading related articles: %v", err)
+		relatedArticles = []domain.Article{}
+	}
+
 	now := time.Now()
 	data := map[string]interface{}{
-		"Title":        product.Name,
-		"Product":      product,
-		"CurrentMonth": int(now.Month()),
-		"CurrentYear":  now.Year(),
-		"CartCount":    getCartCount(r),
-		"CartTotal":    getCartTotal(r),
+		"Title":           product.Name,
+		"Product":         product,
+		"RelatedArticles":  relatedArticles,
+		"CurrentMonth":    int(now.Month()),
+		"CurrentYear":     now.Year(),
+		"CartCount":       getCartCount(r),
+		"CartTotal":       getCartTotal(r),
 	}
 
 	s.renderTemplate(w, r, "product.html", data)
@@ -273,8 +335,15 @@ func (s *Server) handleProductCalendar(w http.ResponseWriter, r *http.Request) {
 		globalBlockedDates = []string{}
 	}
 
+	dbBookedDates, err := s.readModels.GetBookedDatesForProduct(productID)
+	if err != nil {
+		log.Printf("Error loading booked dates for %s: %v", productID, err)
+		dbBookedDates = []string{}
+	}
+	bookedDates := mergeDateLists(product.BookedDates, dbBookedDates)
+
 	// Generate calendar grid
-	calendarGrid := s.generateCalendarGrid(year, month, product.BookedDates, globalBlockedDates, startDate, endDate)
+	calendarGrid := s.generateCalendarGrid(year, month, bookedDates, globalBlockedDates, startDate, endDate)
 
 	// Calculate rental days
 	rentalDays := 1
@@ -413,6 +482,11 @@ type CalendarDay struct {
 
 // handleLogin renders the login page and handles login submission.
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	if middleware.IsAuthenticated(r) {
+		s.redirectAuthenticatedUser(w, r)
+		return
+	}
+
 	errorMessage := ""
 	if r.Method == methodPost {
 		email := r.FormValue("email")
@@ -438,12 +512,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 					MaxAge:   30 * 24 * 60 * 60, // 30 days
 				})
 
-				// Redirect based on user role
-				if user.IsAdmin {
-					w.Header().Set("HX-Redirect", "/admin")
-				} else {
-					w.Header().Set("HX-Redirect", "/user")
-				}
+				// Redirect based on user role or previous page
+				s.setLoginRedirect(w, r, user.IsAdmin)
 				return
 			}
 		}
@@ -473,6 +543,69 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.renderTemplate(w, r, "login.html", data)
+}
+
+func (s *Server) redirectAuthenticatedUser(w http.ResponseWriter, r *http.Request) {
+	target := loginRedirectTarget(r, middleware.IsAdmin(r))
+	if r.URL.Query().Get("modal") == "1" || r.Header.Get("HX-Request") != "" {
+		w.Header().Set("HX-Redirect", target)
+		return
+	}
+	http.Redirect(w, r, target, http.StatusFound)
+}
+
+func (s *Server) setLoginRedirect(w http.ResponseWriter, r *http.Request, isAdmin bool) {
+	w.Header().Set("HX-Redirect", loginRedirectTarget(r, isAdmin))
+}
+
+func loginRedirectTarget(r *http.Request, isAdmin bool) string {
+	if target := safeRedirectPath(r.URL.Query().Get("next")); target != "" {
+		return target
+	}
+	if target := safeRedirectPathFromReferer(r); target != "" {
+		return target
+	}
+	if isAdmin {
+		return "/admin"
+	}
+	return "/user"
+}
+
+func safeRedirectPathFromReferer(r *http.Request) string {
+	referer := r.Header.Get("Referer")
+	if referer == "" {
+		return ""
+	}
+
+	refURL, err := url.Parse(referer)
+	if err != nil {
+		return ""
+	}
+	if refURL.Host != "" && refURL.Host != r.Host {
+		return ""
+	}
+
+	path := refURL.Path
+	if refURL.RawQuery != "" {
+		path += "?" + refURL.RawQuery
+	}
+	return safeRedirectPath(path)
+}
+
+func safeRedirectPath(path string) string {
+	if path == "" || !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") {
+		return ""
+	}
+
+	lower := strings.ToLower(path)
+	switch {
+	case strings.HasPrefix(lower, "/login"):
+		return ""
+	case strings.HasPrefix(lower, "/logout"):
+		return ""
+	}
+
+	return path
 }
 
 // handleLogout handles user logout.
@@ -518,7 +651,10 @@ func (s *Server) handleCheckout(w http.ResponseWriter, r *http.Request) {
 
 // handlePayment renders the payment page.
 func (s *Server) handlePayment(w http.ResponseWriter, r *http.Request) {
-	orderID := r.URL.Query().Get("id")
+	orderID := chi.URLParam(r, "id")
+	if orderID == "" {
+		orderID = r.URL.Query().Get("id")
+	}
 	paymentMethod := r.URL.Query().Get("method")
 
 	if orderID == "" {
@@ -545,12 +681,19 @@ func (s *Server) handlePayment(w http.ResponseWriter, r *http.Request) {
 		paymentMethod = dbPaymentMethod
 	}
 
+	if paymentMethod == "cash_pickup" || paymentMethod == "blik_pickup" {
+		http.Redirect(w, r, fmt.Sprintf("/user/order/%s", orderID), http.StatusFound)
+		return
+	}
+
 	data := map[string]interface{}{
 		"Title":         "Płatność",
 		"PaymentMethod": paymentMethod,
 		"FinalTotal":    int(totalAmount),
 		"OrderID":       orderID,
 		"PaymentCode":   paymentCode,
+		"ShowConfirmButton": false,
+		"ShowPolling":       paymentMethod == "blik" && status == "awaiting_payment",
 	}
 
 	s.renderTemplate(w, r, "payment.html", data)
@@ -652,20 +795,32 @@ func validateCheckoutForm(r *http.Request) (string, string, string, string, stri
 
 // getOrCreateUser gets existing user or creates a new one.
 func (s *Server) getOrCreateUser(ctx context.Context, email, name, phone, address, passwordHash string) (string, error) {
-	userID := fmt.Sprintf("user_%d", time.Now().UnixNano())
+	var userID string
+	err := s.readModels.GetDB().QueryRowContext(ctx, "SELECT id FROM users WHERE email = ?", email).Scan(&userID)
+	if err == nil {
+		now := time.Now().UTC().Format(time.RFC3339)
+		_, err = s.readModels.GetDB().ExecContext(ctx, `
+			UPDATE users SET name = ?, phone = ?, address = ?, updated_at = ?
+			WHERE id = ?
+		`, name, phone, address, now, userID)
+		if err != nil {
+			log.Printf("Failed to update user details: %v", err)
+		}
+		return userID, nil
+	}
+	if !errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("failed to lookup user: %w", err)
+	}
+
+	userID = fmt.Sprintf("user_%d", time.Now().UnixNano())
 	now := time.Now().UTC().Format(time.RFC3339)
 
-	_, err := s.readModels.GetDB().ExecContext(ctx, `
+	_, err = s.readModels.GetDB().ExecContext(ctx, `
 		INSERT INTO users (id, email, password_hash, name, phone, address, is_adult, accepted_tos, is_admin, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, userID, email, passwordHash, name, phone, address, 1, 1, 0, now, now)
 	if err != nil {
-		log.Printf("Failed to create user: %v", err)
-		// User might already exist, try to get existing user
-		err = s.readModels.GetDB().QueryRowContext(ctx, "SELECT id FROM users WHERE email = ?", email).Scan(&userID)
-		if err != nil {
-			return "", fmt.Errorf("failed to create/get user: %w", err)
-		}
+		return "", fmt.Errorf("failed to create user: %w", err)
 	}
 
 	return userID, nil
@@ -705,6 +860,63 @@ func (s *Server) convertCartToOrderItems(cart []CartItem) []domain.OrderItem {
 	}
 
 	return orderItems
+}
+
+// mergeDateLists returns a deduplicated merge of date lists.
+func mergeDateLists(lists ...[]string) []string {
+	seen := make(map[string]struct{})
+	var merged []string
+	for _, list := range lists {
+		for _, date := range list {
+			if _, ok := seen[date]; ok {
+				continue
+			}
+			seen[date] = struct{}{}
+			merged = append(merged, date)
+		}
+	}
+	return merged
+}
+
+// validateCartAvailability ensures cart items can still be booked.
+func (s *Server) validateCartAvailability(cart []CartItem) error {
+	globalBlockedDates, err := s.readModels.GetGlobalBlockedDates()
+	if err != nil {
+		return fmt.Errorf("failed to check availability: %w", err)
+	}
+
+	for _, item := range cart {
+		product, err := s.productParser.LoadProductByID(item.ProductID)
+		if err != nil {
+			return fmt.Errorf("product not found: %s", item.ProductID)
+		}
+
+		start, err := time.Parse("2006-01-02", item.StartDate)
+		if err != nil {
+			return fmt.Errorf("invalid start date for %s", item.ProductName)
+		}
+		end, err := time.Parse("2006-01-02", item.EndDate)
+		if err != nil {
+			return fmt.Errorf("invalid end date for %s", item.ProductName)
+		}
+
+		for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
+			dateStr := d.Format("2006-01-02")
+			if s.isDateBooked(dateStr, product.BookedDates, globalBlockedDates) {
+				return fmt.Errorf("selected dates are no longer available")
+			}
+
+			booked, err := s.readModels.IsProductDateBooked(item.ProductID, dateStr)
+			if err != nil {
+				return fmt.Errorf("failed to check availability: %w", err)
+			}
+			if booked {
+				return fmt.Errorf("selected dates are no longer available")
+			}
+		}
+	}
+
+	return nil
 }
 
 // blockProductDates blocks product dates in the database.
@@ -756,6 +968,11 @@ func (s *Server) handleCheckoutSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := s.validateCartAvailability(cart); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return
+	}
+
 	// Calculate total
 	totalAmount := calculateFinalTotal(cart)
 
@@ -788,6 +1005,16 @@ func (s *Server) handleCheckoutSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if this is the user's first order
+	isFirstOrder, err := s.readModels.IsFirstOrder(userID)
+	if err != nil {
+		log.Printf("Failed to check if first order: %v", err)
+		isFirstOrder = true // Default to requiring confirmation on error
+	}
+
+	// Note: Manual confirmation is now handled via status-based state machine
+	// Pickup payments stay in 'paid' state awaiting manual confirmation
+
 	// Convert cart items to domain.OrderItem format
 	orderItems := s.convertCartToOrderItems(cart)
 
@@ -802,16 +1029,17 @@ func (s *Server) handleCheckoutSubmit(w http.ResponseWriter, r *http.Request) {
 
 	// Emit OrderPlacedEvent
 	orderEvent := &domain.OrderPlacedEvent{
-		OrderID:       orderID,
-		UserID:        userID,
-		Items:         orderItems,
-		TotalAmount:   totalAmount,
-		PaymentMethod: paymentMethod,
-		PaymentCode:   paymentCode,
-		StartDate:     startDate,
-		EndDate:       endDate,
-		RentalDays:    rentalDays,
-		Timestamp:     time.Now().UTC(),
+		OrderID:               orderID,
+		UserID:                userID,
+		Items:                 orderItems,
+		TotalAmount:           totalAmount,
+		PaymentMethod:         paymentMethod,
+		PaymentCode:           paymentCode,
+		StartDate:             startDate,
+		EndDate:      endDate,
+		RentalDays:   rentalDays,
+		IsFirstOrder: isFirstOrder,
+		Timestamp:    time.Now().UTC(),
 	}
 
 	eventData, err := eventstore.ToEvent(orderID, "order", orderEvent, 1)
@@ -827,6 +1055,19 @@ func (s *Server) handleCheckoutSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err := s.projector.Run(ctx); err != nil {
+		log.Printf("Failed to project order event: %v", err)
+		http.Error(w, "Failed to create order", http.StatusInternalServerError)
+		return
+	}
+
+	exists, err := s.readModels.OrderExists(orderID)
+	if err != nil || !exists {
+		log.Printf("Order %s missing after projection", orderID)
+		http.Error(w, "Failed to create order", http.StatusInternalServerError)
+		return
+	}
+
 	// Create payment code record if BLIK
 	if paymentMethod == "blik" && paymentCode != nil {
 		paymentCodeID := fmt.Sprintf("pc_%d", time.Now().UnixNano())
@@ -836,18 +1077,44 @@ func (s *Server) handleCheckoutSubmit(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Block dates in product_bookings table
-	s.blockProductDates(cart, orderID)
+	// Send admin notification for pickup payments that will require manual confirmation
+	if paymentMethod == "cash_pickup" || paymentMethod == "blik_pickup" {
+		// Send email notification
+		if s.adminNotifier != nil {
+			go func() {
+				ctx := context.Background()
+				err := s.adminNotifier.NotifyOrderRequiringConfirmation(ctx, orderID, name, email, paymentMethod, float64(totalAmount))
+				if err != nil {
+					log.Printf("Failed to send admin email notification for order %s: %v", orderID, err)
+				}
+			}()
+		}
+		// Send web push notification
+		if s.webPushNotifier != nil {
+			go func() {
+				ctx := context.Background()
+				err := s.webPushNotifier.NotifyOrderRequiringConfirmation(ctx, orderID, name, paymentMethod, float64(totalAmount))
+				if err != nil {
+					log.Printf("Failed to send admin web push notification for order %s: %v", orderID, err)
+				}
+			}()
+		}
+	}
 
 	// Clear cart
 	clearCart(w, r)
 
+	if paymentMethod == "cash_pickup" || paymentMethod == "blik_pickup" {
+		http.Redirect(w, r, fmt.Sprintf("/user/order/%s", orderID), http.StatusFound)
+		return
+	}
+
 	// Redirect to payment
-	redirectURL := fmt.Sprintf("/payment?id=%s&method=%s", orderID, paymentMethod)
+	redirectURL := fmt.Sprintf("/payment/%s?method=%s", orderID, paymentMethod)
 	http.Redirect(w, r, redirectURL, http.StatusFound)
 }
 
-// handlePaymentConfirm confirms payment (HTMX).
+// handlePaymentConfirm confirms payment (HTMX). Pickup orders are confirmed by admin only.
 func (s *Server) handlePaymentConfirm(w http.ResponseWriter, r *http.Request) {
 	if r.Method != methodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -857,6 +1124,17 @@ func (s *Server) handlePaymentConfirm(w http.ResponseWriter, r *http.Request) {
 	orderID := r.URL.Query().Get("id")
 	if orderID == "" {
 		http.Error(w, "Order ID required", http.StatusBadRequest)
+		return
+	}
+
+	var paymentMethod string
+	err := s.readModels.GetDB().QueryRow(`SELECT payment_method FROM orders WHERE id = ?`, orderID).Scan(&paymentMethod)
+	if err != nil {
+		http.Error(w, "Order not found", http.StatusNotFound)
+		return
+	}
+	if paymentMethod == "cash_pickup" || paymentMethod == "blik_pickup" {
+		http.Error(w, "Pickup orders are confirmed by the shop", http.StatusBadRequest)
 		return
 	}
 
@@ -884,7 +1162,10 @@ func (s *Server) handlePaymentConfirm(w http.ResponseWriter, r *http.Request) {
 	// Clear cart
 	clearCart(w, r)
 
-	// Redirect to success page
+	if r.Header.Get("HX-Request") != "" {
+		w.Header().Set("HX-Redirect", "/success")
+		return
+	}
 	http.Redirect(w, r, "/success", http.StatusFound)
 }
 
@@ -903,24 +1184,25 @@ func (s *Server) handlePaymentStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If order is paid, return success fragment
-	if status == "paid" {
-		data := map[string]interface{}{
+	// If order is confirmed, return success fragment for HTMX polling.
+	if status == "confirmed" {
+		s.renderPartialTemplate(w, "payment-success-fragment", map[string]interface{}{
 			"Email": "user@example.com",
-		}
-		s.renderTemplate(w, r, "payment_success.html", data)
+		})
 		return
 	}
 
-	// Otherwise, return loading state
+	// Otherwise, return loading state and keep polling.
 	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprintf(w, `<div class="flex flex-col items-center justify-center py-4">
-		<svg class="w-10 h-10 text-emerald-600 animate-spin mb-4" fill="none" viewBox="0 0 24 24">
-			<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-			<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-		</svg>
-		<p class="font-bold text-gray-900">Nasłuchujemy na przelew z banku...</p>
-	</div>`)
+	fmt.Fprintf(w, `<div id="payment-status" hx-get="/payment/status/%s" hx-trigger="every 3s" hx-target="#payment-status" hx-swap="outerHTML">
+		<div class="flex flex-col items-center justify-center py-4">
+			<svg class="w-10 h-10 text-emerald-600 animate-spin mb-4" fill="none" viewBox="0 0 24 24">
+				<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+				<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+			</svg>
+			<p class="font-bold text-gray-900">Nasłuchujemy na przelew z banku...</p>
+		</div>
+	</div>`, orderID)
 }
 
 // handleSuccess renders the order success page.
@@ -964,15 +1246,290 @@ func (s *Server) handleUserPanel(w http.ResponseWriter, r *http.Request) {
 		orders = []map[string]interface{}{}
 	}
 
+	enrichedOrders := make([]map[string]interface{}, 0, len(orders))
+	for _, order := range orders {
+		enrichedOrders = append(enrichedOrders, enrichOrderSummary(order))
+	}
+
 	data := map[string]interface{}{
-		"Title":       "Panel Klienta",
+		"Title":       "Moje zamówienia",
 		"User":        authenticatedUser,
-		"Orders":      orders,
+		"Orders":      enrichedOrders,
 		"DeleteState": "idle",
 	}
 
 	data["IsLoggedIn"] = true
 	s.renderTemplate(w, r, "user_panel.html", data)
+}
+
+// handleUserOrderDetail renders a single order with payment instructions.
+func (s *Server) handleUserOrderDetail(w http.ResponseWriter, r *http.Request) {
+	user := middleware.GetUser(r)
+	if user == nil {
+		http.Redirect(w, r, "/login?next="+url.QueryEscape(r.URL.Path), http.StatusFound)
+		return
+	}
+
+	authenticatedUser, ok := user.(*domain.User)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	orderID := chi.URLParam(r, "id")
+	order, err := s.readModels.GetOrderByIDAndUserID(orderID, authenticatedUser.ID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+		log.Printf("Failed to fetch order %s: %v", orderID, err)
+		http.Error(w, "Failed to load order", http.StatusInternalServerError)
+		return
+	}
+
+	view := buildOrderDetailView(order)
+	data := map[string]interface{}{
+		"Title":                "Szczegóły zamówienia",
+		"Order":                view.Order,
+		"ParsedItems":          view.ParsedItems,
+		"StatusLabel":          view.StatusLabel,
+		"StatusBadgeClass":     view.StatusBadgeClass,
+		"PaymentMethodLabel":   view.PaymentMethodLabel,
+		"NeedsPayment":         view.NeedsPayment,
+		"AwaitingConfirmation": view.AwaitingConfirmation,
+		"CanCancel":            view.CanCancel,
+		"PaymentView":          view.PaymentView,
+		"IsLoggedIn":           true,
+	}
+
+	s.renderTemplate(w, r, "order_detail.html", data)
+}
+
+// handleUserOrderCancel cancels an order owned by the current user.
+func (s *Server) handleUserOrderCancel(w http.ResponseWriter, r *http.Request) {
+	if r.Method != methodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	user := middleware.GetUser(r)
+	if user == nil {
+		http.Redirect(w, r, "/login?next="+url.QueryEscape(r.URL.Path), http.StatusFound)
+		return
+	}
+
+	authenticatedUser, ok := user.(*domain.User)
+	if !ok {
+		http.Redirect(w, r, "/login", http.StatusFound)
+		return
+	}
+
+	orderID := chi.URLParam(r, "id")
+	order, err := s.readModels.GetOrderByIDAndUserID(orderID, authenticatedUser.ID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, "Failed to load order", http.StatusInternalServerError)
+		return
+	}
+
+	status, _ := order["Status"].(string)
+	paymentMethod, _ := order["PaymentMethod"].(string)
+	if !canUserCancelOrder(status, paymentMethod) {
+		http.Error(w, "Order cannot be cancelled", http.StatusBadRequest)
+		return
+	}
+
+	event := &domain.OrderCancelledEvent{
+		OrderID:   orderID,
+		Timestamp: time.Now().UTC(),
+	}
+	eventData, err := eventstore.ToEvent(orderID, "order", event, 0)
+	if err != nil {
+		http.Error(w, "Failed to cancel order", http.StatusInternalServerError)
+		return
+	}
+
+	ctx := r.Context()
+	if err := s.eventStore.Save(ctx, eventData); err != nil {
+		log.Printf("Failed to emit OrderCancelledEvent: %v", err)
+		http.Error(w, "Failed to cancel order", http.StatusInternalServerError)
+		return
+	}
+	if err := s.projector.Run(ctx); err != nil {
+		log.Printf("Failed to project order cancellation: %v", err)
+		http.Error(w, "Failed to cancel order", http.StatusInternalServerError)
+		return
+	}
+
+	http.Redirect(w, r, fmt.Sprintf("/user/order/%s", orderID), http.StatusFound)
+}
+
+type orderDetailView struct {
+	Order                map[string]interface{}
+	ParsedItems          []domain.OrderItem
+	StatusLabel          string
+	StatusBadgeClass     string
+	PaymentMethodLabel   string
+	NeedsPayment         bool
+	AwaitingConfirmation bool
+	CanCancel            bool
+	PaymentView          map[string]interface{}
+}
+
+func buildOrderDetailView(order map[string]interface{}) orderDetailView {
+	enriched := enrichOrderSummary(order)
+	status, _ := enriched["Status"].(string)
+	paymentMethod, _ := enriched["PaymentMethod"].(string)
+	orderID, _ := enriched["ID"].(string)
+	totalAmount, _ := enriched["TotalAmount"].(float64)
+
+	paymentCode := ""
+	if code, ok := enriched["PaymentCode"].(string); ok {
+		paymentCode = code
+	}
+
+	itemsJSON, _ := enriched["Items"].(string)
+
+	needsPayment := status == "awaiting_payment"
+	awaitingConfirmation := status == "paid" && isPickupPaymentMethod(paymentMethod)
+	canCancel := canUserCancelOrder(status, paymentMethod)
+	paymentView := map[string]interface{}{
+		"OrderID":           orderID,
+		"FinalTotal":        int(totalAmount),
+		"ShowConfirmButton": false,
+		"ShowPolling":       needsPayment && paymentMethod == "blik",
+	}
+	if paymentCode != "" {
+		paymentView["PaymentCode"] = paymentCode
+	}
+
+	return orderDetailView{
+		Order:                enriched,
+		ParsedItems:          parseOrderItems(itemsJSON),
+		StatusLabel:          enriched["StatusLabel"].(string),
+		StatusBadgeClass:     enriched["StatusBadgeClass"].(string),
+		PaymentMethodLabel:   enriched["PaymentMethodLabel"].(string),
+		NeedsPayment:         needsPayment,
+		AwaitingConfirmation: awaitingConfirmation,
+		CanCancel:            canCancel,
+		PaymentView:          paymentView,
+	}
+}
+
+func enrichOrderSummary(order map[string]interface{}) map[string]interface{} {
+	enriched := make(map[string]interface{}, len(order)+8)
+	for k, v := range order {
+		enriched[k] = v
+	}
+
+	itemsJSON, _ := order["Items"].(string)
+	items := parseOrderItems(itemsJSON)
+	enriched["ParsedItems"] = items
+	if len(items) > 0 {
+		enriched["PrimaryItemName"] = items[0].ProductName
+	}
+	enriched["ItemCount"] = len(items)
+
+	status, _ := order["Status"].(string)
+	paymentMethod, _ := order["PaymentMethod"].(string)
+	enriched["StatusLabel"] = orderStatusLabel(status, paymentMethod)
+	enriched["StatusBadgeClass"] = orderStatusBadgeClass(status, paymentMethod)
+	enriched["PaymentMethodLabel"] = paymentMethodLabel(paymentMethod, status)
+	enriched["NeedsPayment"] = status == "awaiting_payment"
+	enriched["AwaitingConfirmation"] = status == "paid" && isPickupPaymentMethod(paymentMethod)
+	enriched["CanCancel"] = canUserCancelOrder(status, paymentMethod)
+
+	return enriched
+}
+
+func isPickupPaymentMethod(method string) bool {
+	return method == "cash_pickup" || method == "blik_pickup"
+}
+
+func canUserCancelOrder(status, paymentMethod string) bool {
+	switch status {
+	case "cancelled", "confirmed", "realized":
+		return false
+	case "awaiting_payment":
+		return true
+	case "paid":
+		return isPickupPaymentMethod(paymentMethod)
+	default:
+		return false
+	}
+}
+
+func parseOrderItems(itemsJSON string) []domain.OrderItem {
+	if itemsJSON == "" {
+		return nil
+	}
+	var items []domain.OrderItem
+	if err := json.Unmarshal([]byte(itemsJSON), &items); err != nil {
+		log.Printf("Failed to parse order items: %v", err)
+		return nil
+	}
+	return items
+}
+
+func orderStatusLabel(status, paymentMethod string) string {
+	switch status {
+	case "awaiting_payment":
+		return "Oczekuje na płatność"
+	case "paid":
+		if isPickupPaymentMethod(paymentMethod) {
+			return "Oczekuje na potwierdzenie"
+		}
+		return "Opłacone"
+	case "confirmed":
+		return "Potwierdzone"
+	case "cancelled":
+		return "Anulowane"
+	case "realized":
+		return "Zrealizowane"
+	default:
+		return status
+	}
+}
+
+func orderStatusBadgeClass(status, paymentMethod string) string {
+	switch status {
+	case "awaiting_payment":
+		return "bg-yellow-100 text-yellow-800"
+	case "paid":
+		if isPickupPaymentMethod(paymentMethod) {
+			return "bg-amber-100 text-amber-800"
+		}
+		return "bg-emerald-100 text-emerald-800"
+	case "confirmed", "realized":
+		return "bg-emerald-100 text-emerald-800"
+	case "cancelled":
+		return "bg-red-100 text-red-800"
+	default:
+		return "bg-gray-100 text-gray-800"
+	}
+}
+
+func paymentMethodLabel(method, status string) string {
+	switch method {
+	case "blik":
+		if status == "awaiting_payment" {
+			return "BLIK na telefon"
+		}
+		return "Opłacone (BLIK)"
+	case "cash_pickup":
+		if status == "awaiting_payment" {
+			return "Gotówka przy odbiorze"
+		}
+		return "Gotówka przy odbiorze"
+	case "blik_pickup":
+		return "BLIK przy odbiorze"
+	default:
+		return method
+	}
 }
 
 // handleUserDeleteRequest initiates account deletion (HTMX).
@@ -1324,6 +1881,13 @@ func (s *Server) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		orders = []map[string]interface{}{}
 	}
 
+	// Fetch orders awaiting confirmation (paid pickup payments)
+	ordersAwaitingConfirmation, err := s.readModels.GetOrdersAwaitingConfirmation()
+	if err != nil {
+		log.Printf("Error loading orders awaiting confirmation: %v", err)
+		ordersAwaitingConfirmation = []map[string]interface{}{}
+	}
+
 	// Fetch transfers from read models (mock for now)
 	transfers := []map[string]interface{}{}
 
@@ -1342,13 +1906,14 @@ func (s *Server) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]interface{}{
-		"Title":              "Panel Administratora",
-		"Orders":             orders,
-		"Transfers":          transfers,
-		"Users":              users,
-		"Products":           products,
-		"GlobalBlockedDates": globalBlockedDates,
-		"LastEmailImport":    lastEmailImport,
+		"Title":                       "Panel Administratora",
+		"Orders":                      orders,
+		"OrdersAwaitingConfirmation": ordersAwaitingConfirmation,
+		"Transfers":                   transfers,
+		"Users":                       users,
+		"Products":                    products,
+		"GlobalBlockedDates":          globalBlockedDates,
+		"LastEmailImport":             lastEmailImport,
 	}
 
 	data["IsAdmin"] = true
@@ -1402,8 +1967,93 @@ func (s *Server) handleAdminOrderMarkPaid(w http.ResponseWriter, r *http.Request
 // handleAdminOrderConfirm confirms an order manually (HTMX).
 func (s *Server) handleAdminOrderConfirm(w http.ResponseWriter, r *http.Request) {
 	orderID := chi.URLParam(r, "id")
-	s.emitOrderPaidEvent(w, r, orderID, "admin_manual")
+
+	// Emit OrderConfirmedEvent
+	event := &domain.OrderConfirmedEvent{
+		OrderID:   orderID,
+		Timestamp: time.Now().UTC(),
+	}
+
+	eventData, err := eventstore.ToEvent(orderID, "order", event, 0)
+	if err != nil {
+		log.Printf("Failed to create OrderConfirmedEvent: %v", err)
+		http.Error(w, "Failed to confirm order", http.StatusInternalServerError)
+		return
+	}
+
+	ctx := r.Context()
+	if err := s.eventStore.Save(ctx, eventData); err != nil {
+		log.Printf("Failed to emit OrderConfirmedEvent: %v", err)
+		http.Error(w, "Failed to confirm order", http.StatusInternalServerError)
+		return
+	}
+
 	s.handleAdminPanel(w, r)
+}
+
+// handleWebPushVAPIDKey returns the VAPID public key for web push subscriptions.
+func (s *Server) handleWebPushVAPIDKey(w http.ResponseWriter, r *http.Request) {
+	if s.webPushNotifier == nil {
+		http.Error(w, "Web push not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"publicKey": s.webPushNotifier.GetVAPIDPublicKey(),
+	})
+}
+
+// handleWebPushSubscribe registers a web push subscription.
+func (s *Server) handleWebPushSubscribe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != methodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.webPushNotifier == nil {
+		http.Error(w, "Web push not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	var sub webpush.Subscription
+	if err := json.NewDecoder(r.Body).Decode(&sub); err != nil {
+		http.Error(w, "Invalid subscription", http.StatusBadRequest)
+		return
+	}
+
+	// Get user ID from session or context
+	userID := "admin" // In production, get from authenticated user session
+
+	s.webPushNotifier.AddSubscription(userID, sub)
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"status": "subscribed",
+	})
+}
+
+// handleWebPushUnsubscribe removes a web push subscription.
+func (s *Server) handleWebPushUnsubscribe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != methodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if s.webPushNotifier == nil {
+		http.Error(w, "Web push not configured", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Get user ID from session or context
+	userID := "admin" // In production, get from authenticated user session
+
+	s.webPushNotifier.RemoveSubscription(userID)
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"status": "unsubscribed",
+	})
 }
 
 // handleAdminTransferLink links a transfer to an order (HTMX).
@@ -1748,10 +2398,7 @@ func (s *Server) renderTemplate(w http.ResponseWriter, r *http.Request, name str
 	}
 
 	if _, isPartial := partialTemplates[name]; isPartial {
-		if err := s.templates.ExecuteTemplate(w, name, data); err != nil {
-			log.Printf("Template error (%s): %v", name, err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-		}
+		s.renderPartialTemplate(w, name, data)
 		return
 	}
 
@@ -1773,14 +2420,22 @@ func (s *Server) renderTemplate(w http.ResponseWriter, r *http.Request, name str
 	}
 }
 
+func (s *Server) renderPartialTemplate(w http.ResponseWriter, name string, data map[string]interface{}) {
+	if data == nil {
+		data = map[string]interface{}{}
+	}
+	if err := s.templates.ExecuteTemplate(w, name, data); err != nil {
+		log.Printf("Template error (%s): %v", name, err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
+	}
+}
+
 func isLoggedIn(r *http.Request) bool {
-	cookie, err := r.Cookie("session_token")
-	return err == nil && cookie.Value != ""
+	return middleware.IsAuthenticated(r)
 }
 
 func isAdmin(r *http.Request) bool {
-	cookie, err := r.Cookie("session_token")
-	return err == nil && cookie.Value != ""
+	return middleware.IsAdmin(r)
 }
 
 // Cart types and functions
@@ -1884,6 +2539,149 @@ func calculateCartTotal(cart []CartItem) int {
 		total += item.BasePrice * item.RentalDays
 	}
 	return total
+}
+
+// isItemVisible checks if an item (product or article) is visible based on its visibility setting
+func isItemVisible(visibility domain.Visibility, r *http.Request) bool {
+	switch visibility {
+	case domain.VisibilityPublic:
+		return true
+	case domain.VisibilityLoggedIn:
+		return isLoggedIn(r)
+	case domain.VisibilityAdmin:
+		return isAdmin(r)
+	case domain.VisibilityHidden:
+		return false
+	default:
+		return true // Default to public if unknown
+	}
+}
+
+// filterArticlesByVisibility filters articles based on visibility settings
+func filterArticlesByVisibility(articles []domain.Article, r *http.Request) []domain.Article {
+	var filtered []domain.Article
+	for _, article := range articles {
+		if isItemVisible(article.Visibility, r) {
+			filtered = append(filtered, article)
+		}
+	}
+	return filtered
+}
+
+// filterProductsByVisibility filters products based on visibility settings
+func filterProductsByVisibility(products []domain.Product, r *http.Request) []domain.Product {
+	var filtered []domain.Product
+	for _, product := range products {
+		if isItemVisible(product.Visibility, r) {
+			filtered = append(filtered, product)
+		}
+	}
+	return filtered
+}
+
+// handleArticles renders the articles list page.
+func (s *Server) handleArticles(w http.ResponseWriter, r *http.Request) {
+	articles, err := s.articleParser.LoadAllArticles()
+	if err != nil {
+		log.Printf("Error loading articles: %v", err)
+		http.Error(w, "Failed to load articles", http.StatusInternalServerError)
+		return
+	}
+
+	// Filter articles based on visibility
+	filtered := filterArticlesByVisibility(articles, r)
+
+	data := map[string]interface{}{
+		"Title":     "Artykuły",
+		"Articles":  filtered,
+		"CartCount": getCartCount(r),
+		"CartTotal": getCartTotal(r),
+	}
+
+	s.renderTemplate(w, r, "articles.html", data)
+}
+
+// handleArticlesPorady renders the porady (tips) articles page.
+func (s *Server) handleArticlesPorady(w http.ResponseWriter, r *http.Request) {
+	articles, err := s.articleParser.LoadArticlesByCategory(domain.CategoryPorady)
+	if err != nil {
+		log.Printf("Error loading porady articles: %v", err)
+		http.Error(w, "Failed to load articles", http.StatusInternalServerError)
+		return
+	}
+
+	// Filter articles based on visibility
+	filtered := filterArticlesByVisibility(articles, r)
+
+	data := map[string]interface{}{
+		"Title":     "Porady",
+		"Articles":  filtered,
+		"CartCount": getCartCount(r),
+		"CartTotal": getCartTotal(r),
+	}
+
+	s.renderTemplate(w, r, "articles.html", data)
+}
+
+// handleArticlesRecenzje renders the recenzje (reviews) articles page.
+func (s *Server) handleArticlesRecenzje(w http.ResponseWriter, r *http.Request) {
+	articles, err := s.articleParser.LoadArticlesByCategory(domain.CategoryRecenzje)
+	if err != nil {
+		log.Printf("Error loading recenzje articles: %v", err)
+		http.Error(w, "Failed to load articles", http.StatusInternalServerError)
+		return
+	}
+
+	// Filter articles based on visibility
+	filtered := filterArticlesByVisibility(articles, r)
+
+	data := map[string]interface{}{
+		"Title":     "Recenzje",
+		"Articles":  filtered,
+		"CartCount": getCartCount(r),
+		"CartTotal": getCartTotal(r),
+	}
+
+	s.renderTemplate(w, r, "articles.html", data)
+}
+
+// handleArticle renders a single article detail page.
+func (s *Server) handleArticle(w http.ResponseWriter, r *http.Request) {
+	articleID := chi.URLParam(r, "id")
+
+	article, err := s.articleParser.LoadArticleByID(articleID)
+	if err != nil {
+		log.Printf("Error loading article: %v", err)
+		http.Error(w, "Article not found", http.StatusNotFound)
+		return
+	}
+
+	// Check visibility
+	if !isItemVisible(article.Visibility, r) {
+		http.Error(w, "Article not found", http.StatusNotFound)
+		return
+	}
+
+	// Load related products if any
+	var relatedProducts []domain.Product
+	if len(article.RelatedProducts) > 0 {
+		for _, productID := range article.RelatedProducts {
+			product, err := s.productParser.LoadProductByID(productID)
+			if err == nil {
+				relatedProducts = append(relatedProducts, *product)
+			}
+		}
+	}
+
+	data := map[string]interface{}{
+		"Title":           article.Title,
+		"Article":         article,
+		"RelatedProducts": relatedProducts,
+		"CartCount":       getCartCount(r),
+		"CartTotal":       getCartTotal(r),
+	}
+
+	s.renderTemplate(w, r, "article.html", data)
 }
 
 func calculateAddonsTotal(cart []CartItem) int {

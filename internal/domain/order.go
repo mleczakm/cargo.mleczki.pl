@@ -4,18 +4,31 @@ import (
 	"time"
 )
 
+// OrderStatus represents the state of an order in the state machine.
+type OrderStatus string
+
+const (
+	StatusPending         OrderStatus = "pending"          // Order created, not yet submitted
+	StatusAwaitingPayment OrderStatus = "awaiting_payment"  // Order submitted, waiting for payment
+	StatusPaid            OrderStatus = "paid"             // Payment received
+	StatusConfirmed       OrderStatus = "confirmed"        // Order confirmed (ready for rental)
+	StatusRealized        OrderStatus = "realized"         // Rental completed (final state)
+	StatusCancelled       OrderStatus = "cancelled"        // Order cancelled
+)
+
 // Order Aggregate.
 type Order struct {
 	ID            string
 	UserID        string
 	Items         []OrderItem
 	TotalAmount   int
-	Status        string  // "pending_payment", "paid", "cancelled", "accepted"
-	PaymentMethod string  // "blik", "cash"
+	Status        OrderStatus
+	PaymentMethod string // "blik", "cash_pickup"
 	PaymentCode   *string // 4-character code for BLIK transfers
 	StartDate     string
 	EndDate       string
 	RentalDays    int
+	IsFirstOrder  bool   // true if this is the client's first order
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 	Version       int
@@ -45,6 +58,11 @@ type PlaceOrderCommand struct {
 	StartDate     string
 	EndDate       string
 	RentalDays    int
+	IsFirstOrder  bool
+}
+
+type ConfirmOrderCommand struct {
+	OrderID string
 }
 
 type MarkAsPaidCommand struct {
@@ -67,6 +85,7 @@ type OrderPlacedEvent struct {
 	StartDate     string      `json:"startDate"`
 	EndDate       string      `json:"endDate"`
 	RentalDays    int         `json:"rentalDays"`
+	IsFirstOrder  bool        `json:"isFirstOrder"`
 	Timestamp     time.Time   `json:"timestamp"`
 }
 
@@ -91,4 +110,13 @@ type OrderCancelledEvent struct {
 
 func (e *OrderCancelledEvent) EventType() string {
 	return "OrderCancelled"
+}
+
+type OrderConfirmedEvent struct {
+	OrderID   string    `json:"orderId"`
+	Timestamp time.Time `json:"timestamp"`
+}
+
+func (e *OrderConfirmedEvent) EventType() string {
+	return "OrderConfirmed"
 }

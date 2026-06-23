@@ -20,6 +20,48 @@
 
     <!-- Orders & Payments Tab -->
     <div id="content-orders" class="tab-content">
+        <!-- Orders Requiring Confirmation Section -->
+        {{if .OrdersRequiringConfirmation}}
+        <div class="bg-red-50 border-2 border-red-200 rounded-2xl p-6 mb-8">
+            <h3 class="font-bold text-xl mb-4 text-red-900 flex items-center">
+                <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                </svg>
+                Zamówienia wymagające ręcznego potwierdzenia
+            </h3>
+            <div class="space-y-4">
+                {{range .OrdersRequiringConfirmation}}
+                <div class="bg-white border border-red-200 p-4 rounded-xl">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="font-bold text-gray-900">{{.ID}}</span>
+                        <span class="text-xs px-2 py-1 rounded font-bold bg-red-100 text-red-700">
+                            WYMAGA POTWIERDZENIA
+                        </span>
+                    </div>
+                    <p class="text-sm text-gray-600 mb-1 flex items-center">
+                        <svg class="w-3 h-3 mr-1 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/>
+                        </svg>
+                        <span class="font-semibold ml-1">{{.UserName}}</span> ({{.UserEmail}})
+                    </p>
+                    <p class="text-sm text-gray-600 mb-1">
+                        <strong>Metoda płatności:</strong> {{.PaymentMethod}}
+                    </p>
+                    <p class="text-sm text-gray-600 mb-3">
+                        <strong>Kwota:</strong> {{.TotalAmount}} zł
+                    </p>
+                    <div class="flex justify-between items-center mt-2 pt-2 border-t border-gray-200">
+                        <span class="text-xs text-red-600 font-medium">Pierwsze zamówienie klienta - płatność przy odbiorze</span>
+                        <button hx-post="/admin/order/{{.ID}}/confirm" hx-target="#content-orders" class="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 shadow-sm transition-colors">
+                            Potwierdź zamówienie
+                        </button>
+                    </div>
+                </div>
+                {{end}}
+            </div>
+        </div>
+        {{end}}
+
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div id="orders-section" class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
                 <h3 class="font-bold text-xl mb-6 border-b pb-2">Ostatnie zamówienia</h3>
@@ -29,8 +71,8 @@
                         <div class="border border-gray-100 bg-gray-50 p-4 rounded-xl">
                             <div class="flex justify-between items-center mb-2">
                                 <span class="font-bold text-gray-900">{{.ID}}</span>
-                                <span class="text-xs px-2 py-1 rounded font-bold {{if eq .Status "paid"}}bg-emerald-100 text-emerald-700{{else}}bg-yellow-100 text-yellow-700{{end}}">
-                                    {{if eq .Status "paid"}}OPŁACONE{{else}}{{.Status | upper}}{{end}}
+                                <span class="text-xs px-2 py-1 rounded font-bold {{if eq .Status "paid"}}bg-emerald-100 text-emerald-700{{else if eq .Status "requires_confirmation"}}bg-red-100 text-red-700{{else}}bg-yellow-100 text-yellow-700{{end}}">
+                                    {{if eq .Status "paid"}}OPŁACONE{{else if eq .Status "requires_confirmation"}}WYMAGA POTWIERDZENIA{{else}}{{.Status | upper}}{{end}}
                                 </span>
                             </div>
                             <p class="text-sm text-gray-600 mb-1 flex items-center">

@@ -12,6 +12,8 @@ permissions:
 
 env:
   GO_VERSION: '1.26.4'
+  # Web Push VAPID Configuration
+  VAPID_SUBJECT: 'mailto:admin@cargo.mleczki.pl'
 
 jobs:
   test:

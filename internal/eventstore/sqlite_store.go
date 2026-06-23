@@ -72,7 +72,16 @@ func (s *SQLiteEventStore) initSchema() error {
 		}
 	}
 
-	return nil
+	return s.migrateEmptyEventIDs()
+}
+
+func (s *SQLiteEventStore) migrateEmptyEventIDs() error {
+	_, err := s.db.Exec(`
+		UPDATE events
+		SET id = aggregate_id || '-' || event_type || '-v' || version
+		WHERE id = '' OR id IS NULL
+	`)
+	return err
 }
 
 // Save appends a new event to the store.
@@ -101,18 +110,36 @@ func (s *SQLiteEventStore) Save(ctx context.Context, event *Event) error {
 
 // scanEvents scans events from sql.Rows.
 func scanEvents(rows *sql.Rows) ([]*Event, error) {
+	return scanEventsFromRows(rows, false)
+}
+
+func scanEventsFromRows(rows *sql.Rows, withStreamPosition bool) ([]*Event, error) {
 	var events []*Event
 	for rows.Next() {
 		event := &Event{}
-		err := rows.Scan(
-			&event.ID,
-			&event.AggregateID,
-			&event.AggregateType,
-			&event.EventType,
-			&event.Payload,
-			&event.Version,
-			&event.CreatedAt,
-		)
+		var err error
+		if withStreamPosition {
+			err = rows.Scan(
+				&event.ID,
+				&event.AggregateID,
+				&event.AggregateType,
+				&event.EventType,
+				&event.Payload,
+				&event.Version,
+				&event.CreatedAt,
+				&event.StreamPosition,
+			)
+		} else {
+			err = rows.Scan(
+				&event.ID,
+				&event.AggregateID,
+				&event.AggregateType,
+				&event.EventType,
+				&event.Payload,
+				&event.Version,
+				&event.CreatedAt,
+			)
+		}
 		if err != nil {
 			return nil, err
 		}
@@ -130,7 +157,7 @@ func (s *SQLiteEventStore) GetEvents(ctx context.Context, aggregateID string) ([
 	SELECT id, aggregate_id, aggregate_type, event_type, payload, version, created_at
 	FROM events
 	WHERE aggregate_id = ?
-	ORDER BY version ASC
+	ORDER BY rowid ASC
 	`
 
 	rows, err := s.db.QueryContext(ctx, query, aggregateID)
@@ -165,7 +192,7 @@ func (s *SQLiteEventStore) GetAllEvents(ctx context.Context) ([]*Event, error) {
 	query := `
 	SELECT id, aggregate_id, aggregate_type, event_type, payload, version, created_at
 	FROM events
-	ORDER BY version ASC
+	ORDER BY rowid ASC
 	`
 
 	rows, err := s.db.QueryContext(ctx, query)
@@ -177,22 +204,22 @@ func (s *SQLiteEventStore) GetAllEvents(ctx context.Context) ([]*Event, error) {
 	return scanEvents(rows)
 }
 
-// GetEventsSince retrieves all events after a specific version.
-func (s *SQLiteEventStore) GetEventsSince(ctx context.Context, version int) ([]*Event, error) {
+// GetEventsSince retrieves all events after a specific stream position.
+func (s *SQLiteEventStore) GetEventsSince(ctx context.Context, position int) ([]*Event, error) {
 	query := `
-	SELECT id, aggregate_id, aggregate_type, event_type, payload, version, created_at
+	SELECT id, aggregate_id, aggregate_type, event_type, payload, version, created_at, rowid
 	FROM events
-	WHERE version > ?
-	ORDER BY version ASC
+	WHERE rowid > ?
+	ORDER BY rowid ASC
 	`
 
-	rows, err := s.db.QueryContext(ctx, query, version)
+	rows, err := s.db.QueryContext(ctx, query, position)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	return scanEvents(rows)
+	return scanEventsFromRows(rows, true)
 }
 
 // Close closes the database connection.

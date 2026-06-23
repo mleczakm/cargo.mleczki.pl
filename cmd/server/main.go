@@ -10,6 +10,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
+	"cargo.mleczki.pl/internal/articles"
 	"cargo.mleczki.pl/internal/auth"
 	"cargo.mleczki.pl/internal/eventstore"
 	"cargo.mleczki.pl/internal/products"
@@ -20,6 +21,9 @@ func main() {
 	// Ensure data directories exist
 	if err := os.MkdirAll("data/products", 0755); err != nil {
 		log.Fatalf("Failed to create data/products directory: %v", err)
+	}
+	if err := os.MkdirAll("data/articles", 0755); err != nil {
+		log.Fatalf("Failed to create data/articles directory: %v", err)
 	}
 	if err := os.MkdirAll("db", 0755); err != nil {
 		log.Fatalf("Failed to create db directory: %v", err)
@@ -57,6 +61,9 @@ func main() {
 	// Initialize product parser
 	productParser := products.NewParser("data/products")
 
+	// Initialize article parser
+	articleParser := articles.NewParser("data/articles")
+
 	// Initialize projector
 	projector := projections.NewProjector(eventStore, readModels, "main")
 
@@ -71,7 +78,7 @@ func main() {
 	}()
 
 	// Create server
-	server := NewServer(eventStore, readModels, productParser, authManager)
+	server := NewServer(eventStore, readModels, projector, productParser, articleParser, authManager)
 
 	// Create chi router
 	r := chi.NewRouter()

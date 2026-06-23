@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"cargo.mleczki.pl/internal/domain"
@@ -41,14 +42,17 @@ func NewParser(productsDir string) *Parser {
 
 // ProductFrontmatter represents the YAML frontmatter in product files.
 type ProductFrontmatter struct {
-	ID          string             `yaml:"id"`
-	Name        string             `yaml:"name"`
-	BasePrice   int                `yaml:"basePrice"`
-	Image       string             `yaml:"image"`
-	Images      []string           `yaml:"images"`
-	Icon        string             `yaml:"icon"`
-	BookedDates []string           `yaml:"bookedDates"`
-	Addons      []AddonFrontmatter `yaml:"addons"`
+	ID          string                `yaml:"id"`
+	Name        string                `yaml:"name"`
+	BasePrice   int                   `yaml:"basePrice"`
+	Image       string                `yaml:"image"`
+	Images      []string              `yaml:"images"`
+	Icon        string                `yaml:"icon"`
+	BookedDates []string              `yaml:"bookedDates"`
+	Addons      []AddonFrontmatter     `yaml:"addons"`
+	Articles    []ArticleFrontmatter  `yaml:"articles"`
+	Visibility  string                `yaml:"visibility"`
+	Priority    int                   `yaml:"priority"`
 }
 
 type AddonFrontmatter struct {
@@ -56,6 +60,17 @@ type AddonFrontmatter struct {
 	Name  string `yaml:"name"`
 	Price int    `yaml:"price"`
 	Icon  string `yaml:"icon"`
+	Image string `yaml:"image"`
+}
+
+type ArticleFrontmatter struct {
+	ID          string `yaml:"id"`
+	Title       string `yaml:"title"`
+	Type        string `yaml:"type"`
+	URL         string `yaml:"url"`
+	PublishedAt string `yaml:"publishedAt"`
+	Author      string `yaml:"author"`
+	Summary     string `yaml:"summary"`
 }
 
 // LoadAllProducts loads all products from the products directory.
@@ -79,6 +94,11 @@ func (p *Parser) LoadAllProducts() ([]domain.Product, error) {
 
 		products = append(products, *product)
 	}
+
+	// Sort by priority (highest first), then by native order (file order)
+	sort.SliceStable(products, func(i, j int) bool {
+		return products[i].Priority > products[j].Priority
+	})
 
 	return products, nil
 }
@@ -122,11 +142,30 @@ func (p *Parser) LoadProduct(filename string) (*domain.Product, error) {
 	// Convert addons
 	addons := make([]domain.ProductAddon, len(frontmatter.Addons))
 	for i, addon := range frontmatter.Addons {
+		addonImage := addon.Image
+		if addonImage != "" && !strings.HasPrefix(addonImage, "http") && !strings.HasPrefix(addonImage, "/") {
+			addonImage = "/data/images/addons/" + addonImage
+		}
 		addons[i] = domain.ProductAddon{
 			ID:    addon.ID,
 			Name:  addon.Name,
 			Price: addon.Price,
 			Icon:  addon.Icon,
+			Image: addonImage,
+		}
+	}
+
+	// Convert articles
+	articles := make([]domain.ArticleReference, len(frontmatter.Articles))
+	for i, article := range frontmatter.Articles {
+		articles[i] = domain.ArticleReference{
+			ID:          article.ID,
+			Title:       article.Title,
+			Type:        article.Type,
+			URL:         article.URL,
+			PublishedAt: article.PublishedAt,
+			Author:      article.Author,
+			Summary:     article.Summary,
 		}
 	}
 
@@ -140,6 +179,9 @@ func (p *Parser) LoadProduct(filename string) (*domain.Product, error) {
 		Icon:        frontmatter.Icon,
 		Addons:      addons,
 		BookedDates: frontmatter.BookedDates,
+		Articles:    articles,
+		Visibility:  domain.Visibility(frontmatter.Visibility),
+		Priority:    frontmatter.Priority,
 	}
 
 	return product, nil

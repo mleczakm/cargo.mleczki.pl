@@ -1,6 +1,7 @@
 ---
 id: tandem
 name: Rower Tandem
+priority: 80
 basePrice: 80
 image: Schowek02.jpg
 images:
