@@ -610,12 +610,43 @@ func TestHandleTermsContent(t *testing.T) {
 	}
 }
 
-// TestHandleLoginGET tests the GET /login endpoint renders the login page.
+// TestHandleLoginGET tests the GET /login endpoint redirects to the auth modal on homepage.
 func TestHandleLoginGET(t *testing.T) {
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/login", nil)
 
-	// Create a minimal server for testing with templates initialized
+	server := &Server{}
+	server.handleLogin(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("Expected status 303, got %d", w.Code)
+	}
+	if location := w.Header().Get("Location"); location != "/?auth=login" {
+		t.Errorf("Expected redirect to /?auth=login, got %s", location)
+	}
+}
+
+// TestHandleLoginGETWithNext tests the GET /login endpoint preserves the next query param.
+func TestHandleLoginGETWithNext(t *testing.T) {
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/login?next=/user/orders", nil)
+
+	server := &Server{}
+	server.handleLogin(w, req)
+
+	if w.Code != http.StatusSeeOther {
+		t.Errorf("Expected status 303, got %d", w.Code)
+	}
+	if location := w.Header().Get("Location"); location != "/?auth=login&next=%2Fuser%2Forders" {
+		t.Errorf("Expected redirect to /?auth=login&next=%%2Fuser%%2Forders, got %s", location)
+	}
+}
+
+// TestHandleLoginGETModal tests the GET /login?modal=1 endpoint returns login content.
+func TestHandleLoginGETModal(t *testing.T) {
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/login?modal=1", nil)
+
 	funcMap := template.FuncMap{
 		"upper":    strings.ToUpper,
 		"safeHTML": func(s string) template.HTML { return template.HTML(s) },
@@ -634,6 +665,9 @@ func TestHandleLoginGET(t *testing.T) {
 
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected status 200, got %d", w.Code)
+	}
+	if !strings.Contains(w.Body.String(), "Zaloguj się") {
+		t.Error("Expected login form content in response body")
 	}
 }
 

@@ -497,6 +497,15 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if r.Method != methodPost && r.URL.Query().Get("modal") != "1" {
+		target := "/?auth=login"
+		if next := r.URL.Query().Get("next"); next != "" {
+			target += "&next=" + url.QueryEscape(next)
+		}
+		http.Redirect(w, r, target, http.StatusSeeOther)
+		return
+	}
+
 	errorMessage := ""
 	if r.Method == methodPost {
 		email := r.FormValue("email")
@@ -529,30 +538,23 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	next := r.URL.Query().Get("next")
+	if r.Method == methodPost {
+		if formNext := r.FormValue("next"); formNext != "" {
+			next = formNext
+		}
+	}
+
 	data := map[string]interface{}{
 		"Title":        "Zaloguj się",
 		"ErrorMessage": errorMessage,
+		"Next":         next,
 	}
 
-	// If modal request, return just the content
-	if r.URL.Query().Get("modal") == "1" {
-		if err := s.templates.ExecuteTemplate(w, "login-content", data); err != nil {
-			log.Printf("Template error: %v", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-		}
-		return
+	if err := s.templates.ExecuteTemplate(w, "login-content", data); err != nil {
+		log.Printf("Template error: %v", err)
+		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
-
-	// For POST requests with errors, also return just the content for HTMX
-	if r.Method == methodPost && errorMessage != "" {
-		if err := s.templates.ExecuteTemplate(w, "login-content", data); err != nil {
-			log.Printf("Template error: %v", err)
-			http.Error(w, "Internal server error", http.StatusInternalServerError)
-		}
-		return
-	}
-
-	s.renderTemplate(w, r, "login.html", data)
 }
 
 func (s *Server) redirectAuthenticatedUser(w http.ResponseWriter, r *http.Request) {
@@ -570,6 +572,9 @@ func (s *Server) setLoginRedirect(w http.ResponseWriter, r *http.Request, isAdmi
 
 func loginRedirectTarget(r *http.Request, isAdmin bool) string {
 	if target := safeRedirectPath(r.URL.Query().Get("next")); target != "" {
+		return target
+	}
+	if target := safeRedirectPath(r.FormValue("next")); target != "" {
 		return target
 	}
 	if target := safeRedirectPathFromReferer(r); target != "" {
