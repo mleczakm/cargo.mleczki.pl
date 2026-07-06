@@ -80,7 +80,7 @@
                 <ul class="mt-3 pt-3 border-t border-gray-100 text-sm text-gray-600 space-y-1">
                     {{range .SelectedAddons}}
                     <li class="flex justify-between">
-                        <span>+ {{.Name}}</span>
+                        <span>+ {{.Name}} {{if eq .PaymentType "one-time"}}(jednorazowo){{else}}(/ dobę){{end}}</span>
                         <span>{{.Price}} zł</span>
                     </li>
                     {{end}}

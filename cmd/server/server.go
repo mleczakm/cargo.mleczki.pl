@@ -664,9 +664,44 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleCheckout(w http.ResponseWriter, r *http.Request) {
 	cart := getCart(r)
 
+	// Enrich cart items with addon details
+	enrichedCart := make([]map[string]interface{}, len(cart))
+	for i, item := range cart {
+		enrichedItem := map[string]interface{}{
+			"CartID":      item.CartID,
+			"ProductID":   item.ProductID,
+			"ProductName": item.ProductName,
+			"BasePrice":   item.BasePrice,
+			"StartDate":   item.StartDate,
+			"EndDate":     item.EndDate,
+			"RentalDays":  item.RentalDays,
+			"Total":       item.Total,
+		}
+
+		// Get addon details
+		var addons []map[string]interface{}
+		product, err := s.productParser.LoadProductByID(item.ProductID)
+		if err == nil {
+			for _, addonID := range item.Addons {
+				for _, productAddon := range product.Addons {
+					if productAddon.ID == addonID {
+						addons = append(addons, map[string]interface{}{
+							"Name":        productAddon.Name,
+							"Price":       productAddon.Price,
+							"PaymentType": productAddon.PaymentType,
+						})
+						break
+					}
+				}
+			}
+		}
+		enrichedItem["Addons"] = addons
+		enrichedCart[i] = enrichedItem
+	}
+
 	data := map[string]interface{}{
 		"Title":       "Koszyk",
-		"Cart":        cart,
+		"Cart":        enrichedCart,
 		"CartTotal":   calculateCartTotal(cart),
 		"AddonsTotal": calculateAddonsTotal(cart),
 		"FinalTotal":  calculateFinalTotal(cart),
@@ -869,9 +904,10 @@ func (s *Server) convertCartToOrderItems(cart []CartItem) []domain.OrderItem {
 			for _, productAddon := range product.Addons {
 				if productAddon.ID == addonID {
 					selectedAddons = append(selectedAddons, domain.Addon{
-						ID:    productAddon.ID,
-						Name:  productAddon.Name,
-						Price: productAddon.Price,
+						ID:          productAddon.ID,
+						Name:        productAddon.Name,
+						Price:       productAddon.Price,
+						PaymentType: productAddon.PaymentType,
 					})
 					break
 				}
@@ -2602,14 +2638,25 @@ func getCartTotal(r *http.Request) int {
 
 func calculateItemTotal(product *domain.Product, addons []string, rentalDays int) int {
 	total := product.BasePrice
+	dailyAddonsTotal := 0
+	oneTimeAddonsTotal := 0
+
 	for _, addonID := range addons {
 		for _, addon := range product.Addons {
 			if addon.ID == addonID {
-				total += addon.Price
+				if addon.PaymentType == "one-time" {
+					oneTimeAddonsTotal += addon.Price
+				} else {
+					// Default to daily pricing
+					dailyAddonsTotal += addon.Price
+				}
 			}
 		}
 	}
-	return total * rentalDays
+
+	// Base price and daily addons are multiplied by rental days
+	// One-time addons are added only once
+	return (total+dailyAddonsTotal)*rentalDays + oneTimeAddonsTotal
 }
 
 func calculateCartTotal(cart []CartItem) int {

@@ -20,7 +20,7 @@
                             {{if .Addons}}
                                 <div class="mt-2 space-y-1">
                                     {{range .Addons}}
-                                    <p class="text-xs text-gray-500">• {{.}}</p>
+                                    <p class="text-xs text-gray-500">• {{.Name}} ({{.Price}} zł {{if eq .PaymentType "one-time"}}jednorazowo{{else}}/ dobę{{end}})</p>
                                     {{end}}
                                 </div>
                             {{end}}

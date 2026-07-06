@@ -148,6 +148,11 @@ Test product description with **markdown** formatting.
 	if product.Addons[0].Name != "Test Addon" {
 		t.Errorf("Expected addon name 'Test Addon', got %s", product.Addons[0].Name)
 	}
+
+	// Verify default payment type is "daily" when not specified
+	if product.Addons[0].PaymentType != "daily" {
+		t.Errorf("Expected default payment type 'daily', got %s", product.Addons[0].PaymentType)
+	}
 }
 
 func TestParser_LoadProductByID_NotFound(t *testing.T) {
@@ -161,5 +166,72 @@ func TestParser_LoadProductByID_NotFound(t *testing.T) {
 	_, err := parser.LoadProductByID("non-existent")
 	if err == nil {
 		t.Error("Expected error for non-existent product, got nil")
+	}
+}
+
+func TestParser_AddonPaymentType(t *testing.T) {
+	// Create temporary test directory
+	tmpDir := t.TempDir()
+
+	// Create test product file with mixed payment types
+	content := `---
+id: test-payment-types
+name: Test Product
+basePrice: 100
+image: https://example.com/image.jpg
+icon: 🚲
+bookedDates: []
+addons:
+  - id: daily-addon
+    name: Daily Addon
+    price: 10
+    icon: 📅
+    paymentType: daily
+  - id: one-time-addon
+    name: One-Time Addon
+    price: 50
+    icon: 💰
+    paymentType: one-time
+  - id: default-addon
+    name: Default Addon
+    price: 15
+    icon: ⭐
+---
+
+Test product description
+`
+
+	err := os.WriteFile(filepath.Join(tmpDir, "test.md"), []byte(content), 0644)
+	if err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
+
+	// Create parser with test directory
+	parser := products.NewParser(tmpDir)
+
+	// Load product
+	product, err := parser.LoadProductByID("test-payment-types")
+	if err != nil {
+		t.Fatalf("LoadProductByID failed: %v", err)
+	}
+
+	// Verify we have 3 addons
+	if len(product.Addons) != 3 {
+		t.Fatalf("Expected 3 addons, got %d", len(product.Addons))
+	}
+
+	// Verify daily addon
+	if product.Addons[0].PaymentType != "daily" {
+		t.Errorf("Expected daily addon to have paymentType 'daily', got %s", product.Addons[0].PaymentType)
+	}
+
+	// Verify one-time addon
+	if product.Addons[1].PaymentType != "one-time" {
+		t.Errorf("Expected one-time addon to have paymentType 'one-time', got %s", product.Addons[1].PaymentType)
+	}
+
+	// Verify default addon (should default to daily)
+	if product.Addons[2].PaymentType != "daily" {
+		t.Errorf("Expected default addon to have paymentType 'daily', got %s", product.Addons[2].PaymentType)
 	}
 }

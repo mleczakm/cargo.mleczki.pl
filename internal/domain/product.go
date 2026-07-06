@@ -28,11 +28,12 @@ type Product struct {
 
 // ProductAddon represents an optional add-on for a product.
 type ProductAddon struct {
-	ID    string
-	Name  string
-	Price int
-	Icon  string
-	Image string
+	ID          string
+	Name        string
+	Price       int
+	Icon        string
+	Image       string
+	PaymentType string // "one-time" or "daily"
 }
 
 // ArticleReference represents a reference to an external article linked to a product.

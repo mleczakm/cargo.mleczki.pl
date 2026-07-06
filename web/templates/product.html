@@ -72,7 +72,7 @@
                 <h3 class="text-lg font-bold text-gray-900 mb-4">Opcje dodatkowe</h3>
                 <div class="space-y-3">
                     {{range .Product.Addons}}
-                    <label class="flex items-center justify-between p-4 rounded-xl cursor-pointer transition-colors border border-gray-200 hover:border-emerald-300 bg-white">
+                    <label class="flex items-center justify-between p-4 rounded-xl cursor-pointer transition-colors border border-gray-200 hover:border-emerald-300 bg-white" data-addon-id="{{.ID}}" data-addon-price="{{.Price}}" data-addon-payment-type="{{.PaymentType}}">
                         <div class="flex items-center space-x-4">
                             <input type="checkbox" name="addon_{{.ID}}" value="{{.ID}}" class="w-6 h-6 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500" />
                             {{if .Image}}
@@ -86,7 +86,7 @@
                             </div>
                             {{end}}
                         </div>
-                        <span class="font-semibold text-emerald-700">+{{.Price}} zł / dobę</span>
+                        <span class="font-semibold text-emerald-700">+{{.Price}} zł {{if eq .PaymentType "one-time"}}jednorazowo{{else}}/ dobę{{end}}</span>
                     </label>
                     {{end}}
                 </div>
@@ -140,14 +140,22 @@
 
     function updateTotal() {
         const basePrice = {{.Product.BasePrice}}
-        let addonsPrice = 0;
+        let dailyAddonsPrice = 0;
+        let oneTimeAddonsPrice = 0;
 
         document.querySelectorAll('input[type="checkbox"][name^="addon_"]:checked').forEach(cb => {
-            const price = parseInt(cb.closest('label').querySelector('.font-semibold').textContent.replace('+', '').replace(' zł / dobę', ''));
-            addonsPrice += price;
+            const label = cb.closest('label');
+            const price = parseInt(label.dataset.addonPrice);
+            const paymentType = label.dataset.addonPaymentType;
+            
+            if (paymentType === 'one-time') {
+                oneTimeAddonsPrice += price;
+            } else {
+                dailyAddonsPrice += price;
+            }
         });
 
-        const total = (basePrice + addonsPrice) * rentalDays;
+        const total = (basePrice + dailyAddonsPrice) * rentalDays + oneTimeAddonsPrice;
         document.getElementById('total-price').textContent = total + ' zł';
 
         const btn = document.getElementById('add-to-cart-btn');

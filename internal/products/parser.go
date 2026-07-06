@@ -56,11 +56,12 @@ type ProductFrontmatter struct {
 }
 
 type AddonFrontmatter struct {
-	ID    string `yaml:"id"`
-	Name  string `yaml:"name"`
-	Price int    `yaml:"price"`
-	Icon  string `yaml:"icon"`
-	Image string `yaml:"image"`
+	ID          string `yaml:"id"`
+	Name        string `yaml:"name"`
+	Price       int    `yaml:"price"`
+	Icon        string `yaml:"icon"`
+	Image       string `yaml:"image"`
+	PaymentType string `yaml:"paymentType"`
 }
 
 type ArticleFrontmatter struct {
@@ -210,11 +211,16 @@ func normalizeProductFrontmatterImages(fm *ProductFrontmatter) {
 }
 
 func convertAddonFrontmatter(addon AddonFrontmatter) domain.ProductAddon {
+	paymentType := addon.PaymentType
+	if paymentType == "" {
+		paymentType = "daily" // Default to daily if not specified
+	}
 	return domain.ProductAddon{
-		ID:    addon.ID,
-		Name:  addon.Name,
-		Price: addon.Price,
-		Icon:  addon.Icon,
-		Image: normalizeImagePath(addon.Image, "/data/images/addons/"),
+		ID:          addon.ID,
+		Name:        addon.Name,
+		Price:       addon.Price,
+		Icon:        addon.Icon,
+		Image:       normalizeImagePath(addon.Image, "/data/images/addons/"),
+		PaymentType: paymentType,
 	}
 }

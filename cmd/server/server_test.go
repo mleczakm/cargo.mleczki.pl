@@ -18,7 +18,9 @@ import (
 	_ "modernc.org/sqlite"
 
 	"cargo.mleczki.pl/internal/auth"
+	"cargo.mleczki.pl/internal/domain"
 	"cargo.mleczki.pl/internal/eventstore"
+	"cargo.mleczki.pl/internal/products"
 )
 
 // getTemplatePath returns the correct path to templates regardless of working directory.
@@ -315,14 +317,14 @@ func TestCalculateItemTotal(t *testing.T) {
 			expected:   200,
 		},
 		{
-			name:       "one addon, 1 day",
+			name:       "one daily addon, 1 day",
 			basePrice:  100,
 			addons:     []string{"addon1"},
 			rentalDays: 1,
 			expected:   120,
 		},
 		{
-			name:       "two addons, 2 days",
+			name:       "two daily addons, 2 days",
 			basePrice:  100,
 			addons:     []string{"addon1", "addon2"},
 			rentalDays: 2,
@@ -350,6 +352,184 @@ func TestCalculateItemTotal(t *testing.T) {
 				t.Errorf("Expected %d, got %d", tt.expected, total)
 			}
 		})
+	}
+}
+
+// TestCalculateItemTotalWithPaymentTypes tests the actual calculateItemTotal function with payment types.
+func TestCalculateItemTotalWithPaymentTypes(t *testing.T) {
+	tests := []struct {
+		name       string
+		basePrice  int
+		addons     []domain.ProductAddon
+		addonIDs   []string
+		rentalDays int
+		expected   int
+	}{
+		{
+			name:       "no addons",
+			basePrice:  100,
+			addons:     []domain.ProductAddon{},
+			addonIDs:   []string{},
+			rentalDays: 3,
+			expected:   300, // 100 * 3
+		},
+		{
+			name:      "daily addon only",
+			basePrice: 100,
+			addons: []domain.ProductAddon{
+				{ID: "daily1", Name: "Daily Addon", Price: 20, PaymentType: "daily"},
+			},
+			addonIDs:   []string{"daily1"},
+			rentalDays: 3,
+			expected:   360, // (100 + 20) * 3
+		},
+		{
+			name:      "one-time addon only",
+			basePrice: 100,
+			addons: []domain.ProductAddon{
+				{ID: "onetime1", Name: "One-Time Addon", Price: 50, PaymentType: "one-time"},
+			},
+			addonIDs:   []string{"onetime1"},
+			rentalDays: 3,
+			expected:   350, // (100) * 3 + 50
+		},
+		{
+			name:      "mixed daily and one-time addons",
+			basePrice: 100,
+			addons: []domain.ProductAddon{
+				{ID: "daily1", Name: "Daily Addon", Price: 20, PaymentType: "daily"},
+				{ID: "onetime1", Name: "One-Time Addon", Price: 50, PaymentType: "one-time"},
+				{ID: "daily2", Name: "Daily Addon 2", Price: 15, PaymentType: "daily"},
+			},
+			addonIDs:   []string{"daily1", "onetime1", "daily2"},
+			rentalDays: 3,
+			expected:   455, // (100 + 20 + 15) * 3 + 50
+		},
+		{
+			name:      "default payment type (daily)",
+			basePrice: 100,
+			addons: []domain.ProductAddon{
+				{ID: "default1", Name: "Default Addon", Price: 25, PaymentType: ""}, // Empty defaults to daily
+			},
+			addonIDs:   []string{"default1"},
+			rentalDays: 2,
+			expected:   250, // (100 + 25) * 2
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			product := &domain.Product{
+				ID:        "test-product",
+				Name:      "Test Product",
+				BasePrice: tt.basePrice,
+				Addons:    tt.addons,
+			}
+
+			total := calculateItemTotal(product, tt.addonIDs, tt.rentalDays)
+
+			if total != tt.expected {
+				t.Errorf("Expected total %d, got %d", tt.expected, total)
+			}
+		})
+	}
+}
+
+// TestConvertCartToOrderItemsWithPaymentTypes tests the conversion of cart items to order items with payment types.
+func TestConvertCartToOrderItemsWithPaymentTypes(t *testing.T) {
+	// Create a temporary products directory
+	tmpDir := t.TempDir()
+
+	// Create a test product with mixed payment types
+	content := `---
+id: test-product
+name: Test Product
+basePrice: 100
+image: https://example.com/image.jpg
+icon: 🚲
+bookedDates: []
+addons:
+  - id: daily-addon
+    name: Daily Addon
+    price: 20
+    icon: 📅
+    paymentType: daily
+  - id: one-time-addon
+    name: One-Time Addon
+    price: 50
+    icon: 💰
+    paymentType: one-time
+---
+
+Test description
+`
+
+	err := os.WriteFile(filepath.Join(tmpDir, "test.md"), []byte(content), 0644)
+	if err != nil {
+		t.Fatalf("Failed to write test file: %v", err)
+	}
+
+	// Create parser
+	parser := products.NewParser(tmpDir)
+
+	// Create cart items
+	cart := []CartItem{
+		{
+			CartID:      "cart1",
+			ProductID:   "test-product",
+			ProductName: "Test Product",
+			BasePrice:   100,
+			StartDate:   "2026-06-10",
+			EndDate:     "2026-06-12",
+			RentalDays:  2,
+			Addons:      []string{"daily-addon", "one-time-addon"},
+			Total:       0, // Will be calculated
+		},
+	}
+
+	// Create a mock server instance
+	s := &Server{
+		productParser: parser,
+	}
+
+	// Convert cart to order items
+	orderItems := s.convertCartToOrderItems(cart)
+
+	// Verify we got 1 order item
+	if len(orderItems) != 1 {
+		t.Fatalf("Expected 1 order item, got %d", len(orderItems))
+	}
+
+	// Verify order item details
+	if orderItems[0].ProductID != "test-product" {
+		t.Errorf("Expected product ID 'test-product', got '%s'", orderItems[0].ProductID)
+	}
+
+	// Verify we have 2 addons
+	if len(orderItems[0].SelectedAddons) != 2 {
+		t.Fatalf("Expected 2 addons, got %d", len(orderItems[0].SelectedAddons))
+	}
+
+	// Verify payment types are preserved
+	addonMap := make(map[string]domain.Addon)
+	for _, addon := range orderItems[0].SelectedAddons {
+		addonMap[addon.ID] = addon
+	}
+
+	dailyAddon, ok := addonMap["daily-addon"]
+	if !ok {
+		t.Fatal("Daily addon not found in order items")
+	}
+	if dailyAddon.PaymentType != "daily" {
+		t.Errorf("Expected daily addon payment type 'daily', got '%s'", dailyAddon.PaymentType)
+	}
+
+	oneTimeAddon, ok := addonMap["one-time-addon"]
+	if !ok {
+		t.Fatal("One-time addon not found in order items")
+	}
+	if oneTimeAddon.PaymentType != "one-time" {
+		t.Errorf("Expected one-time addon payment type 'one-time', got '%s'", oneTimeAddon.PaymentType)
 	}
 }
 
