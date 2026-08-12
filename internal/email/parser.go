@@ -46,7 +46,7 @@ func (p *Parser) ParseTransferNotification(subject, body string) (*TransferNotif
 	}
 
 	// Extract account number from body (Polish account numbers are 26 digits)
-	accountRegex := regexp.MustCompile(`\b\d{2}\s*\d{4}\s*\d{4}\s*\d{4}\s*\d{4}\s*\d{4}\d{2}\b`)
+	accountRegex := regexp.MustCompile(`\b\d{2}(?:\s*\d{4}){6}\b`)
 	if match := accountRegex.FindStringSubmatch(body); len(match) > 0 {
 		notification.AccountNumber = strings.ReplaceAll(match[0], " ", "")
 	}
