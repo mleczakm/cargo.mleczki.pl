@@ -138,7 +138,11 @@ func (am *AuthManager) Login(ctx context.Context, email, password string) (strin
 	user.IsAdmin = isAdmin == 1
 
 	// Generate session token
-	sessionToken := generateSessionToken()
+	sessionToken, err := generateSessionToken()
+	if err != nil {
+		log.Printf("Failed login attempt: failed to generate session token for user %s: %v", user.ID, err)
+		return "", nil, fmt.Errorf("failed to generate session token: %w", err)
+	}
 
 	// Insert session into database
 	expiresAt := time.Now().UTC().Add(30 * 24 * time.Hour).Format(time.RFC3339)
@@ -264,7 +268,11 @@ func (am *AuthManager) EnsureAdminUser(ctx context.Context) (string, error) {
 
 	// Insert admin user
 	now := time.Now().UTC().Format(time.RFC3339)
-	userID := fmt.Sprintf("user_%d", time.Now().UnixNano())
+	userSuffix, err := GenerateSecureToken(16)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate admin user ID: %w", err)
+	}
+	userID := fmt.Sprintf("user_%s", userSuffix)
 	_, err = am.db.ExecContext(ctx, `
 		INSERT INTO users (id, email, password_hash, name, phone, address, is_adult, accepted_tos, is_admin, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -288,8 +296,8 @@ func generateRandomPassword() string {
 }
 
 // generateSessionToken generates a random session token.
-func generateSessionToken() string {
-	return fmt.Sprintf("%d", time.Now().UnixNano())
+func generateSessionToken() (string, error) {
+	return GenerateSecureToken(32)
 }
 
 // GenerateSecureToken generates a cryptographically secure random token.
@@ -332,7 +340,11 @@ func (am *AuthManager) RequestPasswordReset(ctx context.Context, email string) (
 	}
 
 	// Insert new token
-	tokenID := fmt.Sprintf("prt_%d", time.Now().UnixNano())
+	tokenSuffix, err := GenerateSecureToken(16)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate token ID: %w", err)
+	}
+	tokenID := fmt.Sprintf("prt_%s", tokenSuffix)
 	expiresAt := time.Now().UTC().Add(1 * time.Hour).Format(time.RFC3339)
 	now := time.Now().UTC().Format(time.RFC3339)
 
