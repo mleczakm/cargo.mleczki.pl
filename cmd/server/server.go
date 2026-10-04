@@ -1987,6 +1987,7 @@ func (s *Server) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		"Orders":                     orders,
 		"OrdersAwaitingConfirmation": ordersAwaitingConfirmation,
 		"Transfers":                  transfers,
+		"BankMailAddress":            s.bankMail.Address,
 		"Users":                      users,
 		"Products":                   products,
 		"GlobalBlockedDates":         globalBlockedDates,

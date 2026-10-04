@@ -117,6 +117,18 @@
                         {{end}}
                     </div>
                 </h3>
+                <div class="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-xl">
+                    <label for="bank-mail-address" class="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Adres powiadomień bankowych</label>
+                    {{if .BankMailAddress}}
+                    <div class="flex items-center space-x-2">
+                        <input id="bank-mail-address" type="text" readonly value="{{.BankMailAddress}}" class="flex-grow text-sm font-mono bg-white border border-gray-300 rounded-lg px-3 py-2 outline-none">
+                        <button type="button" data-copy-target="bank-mail-address" onclick="copyBankMailAddress(this)" class="text-xs bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-2 rounded-md font-semibold transition-colors">Kopiuj</button>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">Wpisz ten adres w banku jako odbiorcę powiadomień o wpływach.</p>
+                    {{else}}
+                    <p class="text-xs text-gray-500">Adres nie jest jeszcze skonfigurowany (brak BANK_MAIL_ADDRESS i BANK_MAIL_WEBHOOK_SECRET).</p>
+                    {{end}}
+                </div>
                 <div class="space-y-4">
                     {{if .Transfers}}
                         {{range .Transfers}}
@@ -257,6 +269,23 @@
     </div>
 </div>
 
+<script>
+function copyBankMailAddress(button) {
+    var input = document.getElementById(button.dataset.copyTarget);
+    var done = function () {
+        var label = button.textContent;
+        button.textContent = 'Skopiowano';
+        setTimeout(function () { button.textContent = label; }, 1500);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(input.value).then(done);
+        return;
+    }
+    input.select();
+    document.execCommand('copy');
+    done();
+}
+</script>
 <script>
 function showTab(tabName) {
     // Hide all tab contents
