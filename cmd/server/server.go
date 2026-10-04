@@ -1120,7 +1120,12 @@ func (s *Server) handleCheckoutSubmit(w http.ResponseWriter, r *http.Request) {
 	// Generate payment code for BLIK payments
 	var paymentCode *string
 	if paymentMethod == domain.PaymentMethodBlik {
-		code := domain.GeneratePaymentCode()
+		code, err := domain.GeneratePaymentCode()
+		if err != nil {
+			log.Printf("Failed to generate payment code: %v", err)
+			http.Error(w, "Failed to generate payment code", http.StatusInternalServerError)
+			return
+		}
 		paymentCode = &code
 	}
 

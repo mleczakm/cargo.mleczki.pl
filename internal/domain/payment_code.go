@@ -1,15 +1,15 @@
 package domain
 
 import (
-	"crypto/rand"
-	"math/big"
 	"time"
+
+	sharedpayments "github.com/mleczakm/blik-phone-payments-go"
 )
 
 const (
-	CodeLength = 4
+	CodeLength = sharedpayments.CodeLength
 	// Characters used for payment codes (excluding I and O for readability).
-	CodeChars = "0123456789ABCDEFGHJKLMNPQRSTUVWXYZ"
+	CodeChars = sharedpayments.CodeChars
 )
 
 // PaymentCode represents a unique payment code for matching transfers.
@@ -40,12 +40,6 @@ func (e *PaymentCodeGeneratedEvent) EventType() string {
 }
 
 // GeneratePaymentCode generates a random 4-character payment code.
-func GeneratePaymentCode() string {
-	maxVal := big.NewInt(int64(len(CodeChars)))
-	code := ""
-	for i := 0; i < CodeLength; i++ {
-		n, _ := rand.Int(rand.Reader, maxVal)
-		code += string(CodeChars[n.Int64()])
-	}
-	return code
+func GeneratePaymentCode() (string, error) {
+	return sharedpayments.GenerateCode()
 }
