@@ -1,0 +1,14 @@
+{
+  "name": "cargo-mleczki-pl-tooling",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test:js": "node --test cloudflare/bank-mail/src/*.test.js"
+  },
+  "devDependencies": {
+    "wrangler": "^4.147.0"
+  },
+  "dependencies": {
+    "postal-mime": "^4.0.2"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "cargo-bank-mail",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-03",
+  "workers_dev": false,
+  "queues": {
+    "producers": [{ "binding": "BANK_MAIL_QUEUE", "queue": "cargo-bank-mail" }],
+    "consumers": [{
+      "queue": "cargo-bank-mail",
+      "max_batch_size": 1,
+      "max_retries": 20,
+      "dead_letter_queue": "cargo-bank-mail-dlq",
+      "max_concurrency": 1
+    }]
+  }
+}
