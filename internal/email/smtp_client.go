@@ -44,17 +44,21 @@ func (c *SMTPClient) SendEmail(_ context.Context, sender *EmailSender, to []Emai
 		return fmt.Errorf("at least one recipient email is required")
 	}
 
-	message := buildHTMLMessage(from, toHeader.String(), subject, htmlContent)
+	message := buildHTMLMessage(from, toHeader.String(), sender.ReplyTo, subject, htmlContent)
 	addr := fmt.Sprintf("%s:%s", c.host, c.port)
 	return smtp.SendMail(addr, nil, sender.Email, recipients, message)
 }
 
-func buildHTMLMessage(from, to, subject, htmlContent string) []byte {
+func buildHTMLMessage(from, to, replyTo, subject, htmlContent string) []byte {
 	var msg strings.Builder
 	msg.WriteString("From: ")
 	msg.WriteString(from)
 	msg.WriteString("\r\nTo: ")
 	msg.WriteString(to)
+	if replyTo != "" {
+		msg.WriteString("\r\nReply-To: ")
+		msg.WriteString(replyTo)
+	}
 	msg.WriteString("\r\nSubject: ")
 	msg.WriteString(subject)
 	msg.WriteString("\r\nMIME-Version: 1.0\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n")

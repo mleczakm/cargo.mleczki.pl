@@ -30,7 +30,7 @@ func TestDefaultSenderEmail(t *testing.T) {
 	t.Setenv("BREVO_SENDER_EMAIL", "")
 	t.Setenv("SMTP_FROM", "")
 
-	if got := email.DefaultSenderEmail(); got != "noreply@cargo.mleczki.pl" {
+	if got := email.DefaultSenderEmail(); got != "noreply@mleczki.pl" {
 		t.Fatalf("expected default sender, got %q", got)
 	}
 
@@ -70,5 +70,13 @@ func TestNewMailerUnconfigured(t *testing.T) {
 	}
 	if mailer.Configured() {
 		t.Fatal("expected unconfigured mailer")
+	}
+}
+
+func TestDefaultSenderRepliesToOwner(t *testing.T) {
+	t.Setenv("MAIL_REPLY_TO", "")
+	sender := email.DefaultSender()
+	if sender.ReplyTo != "do@mleczki.pl" {
+		t.Fatalf("expected default reply-to, got %q", sender.ReplyTo)
 	}
 }

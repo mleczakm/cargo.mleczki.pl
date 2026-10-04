@@ -1685,7 +1685,7 @@ func (s *Server) handleForgotPasswordSubmit(w http.ResponseWriter, r *http.Reque
 			<p>If you did not request this password reset, please ignore this email.</p>
 		`, resetLink, resetLink)
 
-		sender := &email.EmailSender{Name: "Cargo Mleczki", Email: email.DefaultSenderEmail()}
+		sender := email.DefaultSender()
 		to := []email.EmailRecipient{{Email: userEmail}}
 		err = s.mailer.SendEmail(ctx, sender, to, "Reset your password", htmlContent)
 

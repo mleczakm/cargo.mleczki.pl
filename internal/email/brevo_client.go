@@ -39,7 +39,13 @@ func (b *BrevoClient) SendEmail(ctx context.Context, sender *EmailSender, to []E
 		})
 	}
 
+	var replyTo *lib.SendSmtpEmailReplyTo
+	if sender.ReplyTo != "" {
+		replyTo = &lib.SendSmtpEmailReplyTo{Email: sender.ReplyTo}
+	}
+
 	smtpEmail := lib.SendSmtpEmail{
+		ReplyTo:     replyTo,
 		Sender:      &senderEmail,
 		To:          recipients,
 		Subject:     subject,

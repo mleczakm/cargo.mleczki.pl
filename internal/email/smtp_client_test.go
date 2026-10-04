@@ -9,14 +9,16 @@ import (
 
 func TestBuildHTMLMessage(t *testing.T) {
 	message := string(email.BuildHTMLMessageForTest(
-		"Cargo Mleczki <noreply@cargo.mleczki.pl>",
+		"Cargo Mleczki <noreply@mleczki.pl>",
 		"jan@example.com",
+		"do@mleczki.pl",
 		"Reset your password",
 		"<p>Hello</p>",
 	))
 
 	for _, expected := range []string{
-		"From: Cargo Mleczki <noreply@cargo.mleczki.pl>",
+		"From: Cargo Mleczki <noreply@mleczki.pl>",
+		"Reply-To: do@mleczki.pl",
 		"To: jan@example.com",
 		"Subject: Reset your password",
 		"Content-Type: text/html; charset=UTF-8",

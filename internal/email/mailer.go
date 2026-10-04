@@ -9,8 +9,9 @@ type Mailer interface {
 
 // EmailSender identifies the message sender.
 type EmailSender struct {
-	Name  string
-	Email string
+	Name    string
+	Email   string
+	ReplyTo string // optional Reply-To address
 }
 
 // EmailRecipient identifies a message recipient.

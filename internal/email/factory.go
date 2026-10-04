@@ -24,7 +24,20 @@ func DefaultSenderEmail() string {
 			return email
 		}
 	}
-	return "noreply@cargo.mleczki.pl"
+	return "noreply@mleczki.pl"
+}
+
+// DefaultReplyToEmail returns the address customers' replies are routed to.
+func DefaultReplyToEmail() string {
+	if email := strings.TrimSpace(os.Getenv("MAIL_REPLY_TO")); email != "" {
+		return email
+	}
+	return "do@mleczki.pl"
+}
+
+// DefaultSender returns the standard outbound sender with the Reply-To set.
+func DefaultSender() *EmailSender {
+	return &EmailSender{Name: "Cargo Mleczki", Email: DefaultSenderEmail(), ReplyTo: DefaultReplyToEmail()}
 }
 
 // FormatAddress formats a named email address for RFC 5322 headers.

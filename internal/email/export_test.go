@@ -6,6 +6,6 @@ func SMTPHostFromEnv() string {
 }
 
 // BuildHTMLMessageForTest exposes HTML message construction for tests.
-func BuildHTMLMessageForTest(from, to, subject, htmlContent string) []byte {
-	return buildHTMLMessage(from, to, subject, htmlContent)
+func BuildHTMLMessageForTest(from, to, replyTo, subject, htmlContent string) []byte {
+	return buildHTMLMessage(from, to, replyTo, subject, htmlContent)
 }
