@@ -53,3 +53,13 @@ node_modules/
 # Build artifacts
 dist/
 build/
+
+# Cloudflare Worker tooling
+/cloudflare/bank-mail/wrangler.generated.jsonc
+.wrangler/
+/brevo token
+/brevo mcp token
+.env.production
+/.cloudflare/
+/brevo api key
+/brevo mcp key

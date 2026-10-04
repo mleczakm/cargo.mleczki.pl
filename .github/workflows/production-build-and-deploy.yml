@@ -23,6 +23,21 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Check bank mail deployment secrets
+        env:
+          BREVO_API_KEY: ${{ secrets.BREVO_API_KEY }}
+          BANK_MAIL_ADDRESS: ${{ secrets.BANK_MAIL_ADDRESS }}
+          BANK_MAIL_WEBHOOK_SECRET: ${{ secrets.BANK_MAIL_WEBHOOK_SECRET }}
+          CLOUDFLARE_WORKER_TOKEN: ${{ secrets.CLOUDFLARE_WORKER_TOKEN }}
+          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+        run: |
+          for name in BREVO_API_KEY BANK_MAIL_ADDRESS BANK_MAIL_WEBHOOK_SECRET CLOUDFLARE_WORKER_TOKEN CLOUDFLARE_ZONE_ID; do
+            if [[ -z "${!name}" ]]; then
+              echo "Missing production secret: $name" >&2
+              exit 1
+            fi
+          done
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -77,7 +92,14 @@ jobs:
 
       - name: Create .env file
         run: |
-          echo "${{ secrets.DOTENV }}" > .env.production
+          echo "${{ secrets.DOTENV }}" | grep -vE '^(BREVO_API_KEY|BREVO_SENDER_EMAIL|MAIL_REPLY_TO|IMAP_SERVER|MAILBOX_USERNAME|MAILBOX_PASSWORD|BANK_MAIL_ADDRESS|BANK_MAIL_WEBHOOK_SECRET|BANK_MAIL_FROM|BANK_MAIL_CHECK_FROM)=' > .env.production || true
+          echo "BREVO_API_KEY=${{ secrets.BREVO_API_KEY }}" >> .env.production
+          echo "BREVO_SENDER_EMAIL=noreply@mleczki.pl" >> .env.production
+          echo "MAIL_REPLY_TO=do@mleczki.pl" >> .env.production
+          echo "BANK_MAIL_ADDRESS=${{ secrets.BANK_MAIL_ADDRESS }}" >> .env.production
+          echo "BANK_MAIL_WEBHOOK_SECRET=${{ secrets.BANK_MAIL_WEBHOOK_SECRET }}" >> .env.production
+          echo "BANK_MAIL_FROM=${{ vars.BANK_MAIL_FROM || 'powiadomienia@alior.pl' }}" >> .env.production
+          echo "BANK_MAIL_CHECK_FROM=${{ vars.BANK_MAIL_CHECK_FROM || '1' }}" >> .env.production
           echo "VAPID_PRIVATE_KEY=${{ secrets.VAPID_PRIVATE_KEY }}" >> .env.production
           echo "VAPID_PUBLIC_KEY=${{ secrets.VAPID_PUBLIC_KEY }}" >> .env.production
           echo "VAPID_SUBJECT=mailto:admin@cargo.mleczki.pl" >> .env.production
@@ -98,3 +120,17 @@ jobs:
         env:
           ANSIBLE_HOST_KEY_CHECKING: False
           ANSIBLE_ROLES_PATH: ./ansible/roles:./infrastructure-mikrus/ansible/roles
+
+      - name: Set up Node for bank mail Worker
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Deploy bank mail Worker and routing
+        run: |
+          npm ci
+          node scripts/deploy-bank-mail.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_WORKER_TOKEN }}
+          CLOUDFLARE_ZONE_ID: ${{ secrets.CLOUDFLARE_ZONE_ID }}
+          ENV_FILE_PATH: ${{ env.ENV_FILE_PATH }}

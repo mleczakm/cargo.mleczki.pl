@@ -8,6 +8,13 @@ apps:
     env:
       APP_ENV: prod
       APP_VERSION: "{{ app_version | default('latest') }}"
+    required_env:
+      - BREVO_API_KEY
+      - BREVO_SENDER_EMAIL
+      - BANK_MAIL_ADDRESS
+      - BANK_MAIL_WEBHOOK_SECRET
+      - VAPID_PRIVATE_KEY
+      - VAPID_PUBLIC_KEY
     healthcheck_enabled: true
     ipv6: "{{ mikrus_ipv6 }}"
     cytrus_host: "{{ cytrus_host }}"
