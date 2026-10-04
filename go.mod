@@ -5,10 +5,10 @@ go 1.26.4
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
 	github.com/SherClockHolmes/webpush-go v1.4.0
-	github.com/emersion/go-imap v1.2.1
 	github.com/getbrevo/brevo-go v1.1.3
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/mattn/go-sqlite3 v1.14.47
+	github.com/mleczakm/blik-phone-payments-go v0.2.0
 	github.com/yuin/goldmark v1.8.2
 	golang.org/x/crypto v0.52.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -18,11 +18,11 @@ require (
 require (
 	github.com/antihax/optional v1.0.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
+	github.com/emersion/go-imap v1.2.1 // indirect
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6 // indirect
 	github.com/golang-jwt/jwt/v5 v5.2.1 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/mleczakm/blik-phone-payments-go v0.2.0 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	golang.org/x/oauth2 v0.21.0 // indirect

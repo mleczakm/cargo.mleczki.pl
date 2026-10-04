@@ -334,24 +334,17 @@ func (p *Projector) handleTransferReceived(event *eventstore.Event) error {
 	}
 
 	query := `
-	INSERT INTO transfers (id, date, sender, title, amount, status, created_at)
-	VALUES (?, ?, ?, ?, ?, ?, ?)
-	ON CONFLICT(id) DO UPDATE SET
-		date = excluded.date,
-		sender = excluded.sender,
-		title = excluded.title,
-		amount = excluded.amount,
-		status = excluded.status
+	INSERT INTO transfers (id, sender_name, amount, order_title, status, received_at)
+	VALUES (?, ?, ?, ?, 'unmatched', ?)
+	ON CONFLICT(id) DO NOTHING
 	`
 
 	_, err := p.readModels.GetDB().Exec(query,
 		e.TransferID,
-		e.Date,
 		e.Sender,
+		float64(e.Amount)/100,
 		e.Title,
-		e.Amount,
-		"unmatched",
-		e.Timestamp.Format("2006-01-02 15:04:05"),
+		e.Timestamp.UTC().Format(time.RFC3339),
 	)
 
 	return err
@@ -367,10 +360,10 @@ func (p *Projector) handleTransferLinked(event *eventstore.Event) error {
 	// Update transfer status and link to order
 	query := `
 	UPDATE transfers
-	SET status = 'matched', order_id = ?
+	SET status = 'matched', order_id = ?, linked_at = ?
 	WHERE id = ?
 	`
 
-	_, err := p.readModels.GetDB().Exec(query, e.OrderID, e.TransferID)
+	_, err := p.readModels.GetDB().Exec(query, e.OrderID, e.Timestamp.UTC().Format(time.RFC3339), e.TransferID)
 	return err
 }

@@ -222,6 +222,18 @@ func (rm *ReadModelsDB) initSchema() error {
 	CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_expires ON password_reset_tokens(expires_at);
 	`
 
+	bankMailTable := `
+	CREATE TABLE IF NOT EXISTS bank_mail_messages (
+		id TEXT PRIMARY KEY,
+		received_at TEXT NOT NULL,
+		mail_from TEXT NOT NULL,
+		subject TEXT NOT NULL,
+		body TEXT NOT NULL,
+		parsed INTEGER NOT NULL DEFAULT 0,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	);
+	`
+
 	schemas := []string{
 		usersTable,
 		ordersTable,
@@ -234,6 +246,7 @@ func (rm *ReadModelsDB) initSchema() error {
 		globalBlockedDatesTable,
 		paymentCodesTable,
 		emailImportTable,
+		bankMailTable,
 		passwordResetTokensTable,
 	}
 	for i, schema := range schemas {

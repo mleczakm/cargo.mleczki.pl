@@ -44,7 +44,7 @@ type Server struct {
 	authManager     *auth.AuthManager
 	templates       *template.Template
 	transferMatcher *transfers.Matcher
-	emailImporter   *email.Importer
+	bankMail        *transfers.BankMailHandler
 	adminNotifier   *notifications.AdminNotifier
 	webPushNotifier *notifications.WebPushNotifier
 	mailer          *email.Sender
@@ -70,18 +70,6 @@ func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadMod
 
 	tmpl := template.New("main").Funcs(funcMap)
 	tmpl = template.Must(tmpl.ParseGlob("web/templates/*.html"))
-
-	// Initialize email importer if credentials are provided
-	var emailImporter *email.Importer
-	imapServer := os.Getenv("IMAP_SERVER")
-	mailboxUsername := os.Getenv("MAILBOX_USERNAME")
-	mailboxPassword := os.Getenv("MAILBOX_PASSWORD")
-	if imapServer != "" && mailboxUsername != "" && mailboxPassword != "" {
-		imapClient := email.NewIMAPClient(imapServer, mailboxUsername, mailboxPassword, "INBOX")
-		emailParser := email.NewParser()
-		emailImporter = email.NewImporter(imapClient, emailParser, eventStore, readModels.GetDB())
-		log.Println("Email importer initialized")
-	}
 
 	// Initialize admin notifier
 	adminNotifier, err := notifications.NewAdminNotifier(readModels.GetDB())
@@ -119,55 +107,25 @@ func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadMod
 		authManager:     authManager,
 		templates:       tmpl,
 		transferMatcher: transfers.NewMatcher(),
-		emailImporter:   emailImporter,
+		bankMail: &transfers.BankMailHandler{
+			DB:         readModels.GetDB(),
+			EventStore: eventStore,
+			Address:    strings.TrimSpace(os.Getenv("BANK_MAIL_ADDRESS")),
+			Secret:     os.Getenv("BANK_MAIL_WEBHOOK_SECRET"),
+			Matcher:    transfers.NewMatcher(),
+		},
 		adminNotifier:   adminNotifier,
 		webPushNotifier: webPushNotifier,
 		mailer:          mailer,
 	}
 
-	// Start background email import scheduler if configured
-	if emailImporter != nil {
-		go server.startEmailImportScheduler()
+	if server.bankMail.Configured() {
+		log.Println("Bank mail webhook enabled (POST /api/bank-mail)")
+	} else {
+		log.Println("Bank mail webhook disabled (set BANK_MAIL_ADDRESS and BANK_MAIL_WEBHOOK_SECRET)")
 	}
 
 	return server
-}
-
-// startEmailImportScheduler runs a background scheduler that imports transfers every 30 seconds
-// only if there are pending BLIK payments waiting to be matched.
-func (s *Server) startEmailImportScheduler() {
-	ticker := time.NewTicker(30 * time.Second)
-	defer ticker.Stop()
-
-	log.Println("Email import scheduler started (runs every 30s when pending payments exist)")
-
-	for range ticker.C {
-		if s.emailImporter == nil {
-			continue
-		}
-
-		// Check if there are pending payments
-		hasPending, err := s.emailImporter.HasPendingPayments()
-		if err != nil {
-			log.Printf("Failed to check for pending payments: %v", err)
-			continue
-		}
-
-		if !hasPending {
-			continue
-		}
-
-		// Import transfers
-		count, err := s.emailImporter.ImportTransfers(context.Background())
-		if err != nil {
-			log.Printf("Failed to import transfers: %v", err)
-			continue
-		}
-
-		if count > 0 {
-			log.Printf("Scheduled import: imported %d transfers", count)
-		}
-	}
 }
 
 // RegisterRoutes sets up all HTTP routes.
@@ -235,7 +193,6 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 		r.Post("/admin/order/{id}/mark-paid", s.handleAdminOrderMarkPaid)
 		r.Post("/admin/order/{id}/confirm", s.handleAdminOrderConfirm)
 		r.Post("/admin/transfer/{id}/link", s.handleAdminTransferLink)
-		r.Post("/admin/transfers/import", s.handleAdminImportTransfers)
 		r.Post("/admin/reservation/create", s.handleAdminCreateReservation)
 		r.Post("/admin/product/{id}/block-date", s.handleAdminBlockProductDate)
 		r.Post("/admin/product/{id}/unblock-date", s.handleAdminUnblockProductDate)
@@ -249,6 +206,7 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 
 	// Health check
 	r.Get("/health", s.handleHealth)
+	r.Post("/api/bank-mail", s.bankMail.ServeHTTP)
 }
 
 // handleHome renders the home page.
@@ -2008,8 +1966,7 @@ func (s *Server) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		ordersAwaitingConfirmation = []map[string]interface{}{}
 	}
 
-	// Fetch transfers from read models (mock for now)
-	transfers := []map[string]interface{}{}
+	transfers := s.loadRecentTransfers()
 
 	// Fetch last email import metadata
 	lastEmailImport, err := s.readModels.GetLastEmailImport()
@@ -2176,6 +2133,35 @@ func (s *Server) handleWebPushUnsubscribe(w http.ResponseWriter, r *http.Request
 	})
 }
 
+// loadRecentTransfers returns the latest bank transfers for the admin inbox.
+func (s *Server) loadRecentTransfers() []map[string]interface{} {
+	transfers := []map[string]interface{}{}
+	rows, err := s.readModels.GetDB().Query(`
+		SELECT id, COALESCE(sender_name, ''), amount, COALESCE(order_title, ''), status, received_at
+		FROM transfers ORDER BY received_at DESC LIMIT 30`)
+	if err != nil {
+		log.Printf("Error loading transfers: %v", err)
+		return transfers
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, sender, title, status, received string
+		var amount float64
+		if err := rows.Scan(&id, &sender, &amount, &title, &status, &received); err != nil {
+			log.Printf("Error scanning transfer: %v", err)
+			continue
+		}
+		transfers = append(transfers, map[string]interface{}{
+			"ID": id, "Sender": sender, "Amount": fmt.Sprintf("%.2f", amount),
+			"Title": title, "Status": status, "Date": received,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("Error iterating transfers: %v", err)
+	}
+	return transfers
+}
+
 // handleAdminTransferLink links a transfer to an order (HTMX).
 func (s *Server) handleAdminTransferLink(w http.ResponseWriter, r *http.Request) {
 	if r.Method != methodPost {
@@ -2189,7 +2175,7 @@ func (s *Server) handleAdminTransferLink(w http.ResponseWriter, r *http.Request)
 	// Get transfer details
 	var title string
 	err := s.readModels.GetDB().QueryRow(`
-		SELECT title FROM transfers WHERE id = ?
+		SELECT COALESCE(order_title, '') FROM transfers WHERE id = ?
 	`, transferID).Scan(&title)
 	if err != nil {
 		log.Printf("Failed to get transfer: %v", err)
@@ -2274,31 +2260,6 @@ func (s *Server) handleAdminTransferLink(w http.ResponseWriter, r *http.Request)
 	}
 
 	// Return updated transfers section
-	s.handleAdminPanel(w, r)
-}
-
-// handleAdminImportTransfers triggers manual transfer import from email (HTMX).
-func (s *Server) handleAdminImportTransfers(w http.ResponseWriter, r *http.Request) {
-	if r.Method != methodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	if s.emailImporter == nil {
-		http.Error(w, "Email importer not configured. Set IMAP_SERVER, IMAP_USERNAME, and IMAP_PASSWORD environment variables.", http.StatusInternalServerError)
-		return
-	}
-
-	count, err := s.emailImporter.ImportTransfers(r.Context())
-	if err != nil {
-		log.Printf("Failed to import transfers: %v", err)
-		http.Error(w, fmt.Sprintf("Failed to import transfers: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	log.Printf("Successfully imported %d transfers from email", count)
-
-	// Return updated admin panel
 	s.handleAdminPanel(w, r)
 }
 
