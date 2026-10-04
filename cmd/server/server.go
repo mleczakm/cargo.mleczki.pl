@@ -1631,25 +1631,11 @@ func (s *Server) handleForgotPasswordSubmit(w http.ResponseWriter, r *http.Reque
 	if token != "" && s.mailer != nil && s.mailer.Configured() {
 		resetLink := fmt.Sprintf("%s/reset-password?token=%s", getBaseURL(r), token)
 
-		htmlContent := fmt.Sprintf(`
-			<h2>Reset your password</h2>
-			<p>Hello,</p>
-			<p>We received a request to reset your password for your account at cargo.mleczki.pl.</p>
-			<p>Click the link below to reset your password:</p>
-			<p><a href="%s" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Reset Password</a></p>
-			<p>Or copy and paste this link into your browser:</p>
-			<p>%s</p>
-			<p>This link will expire in 1 hour.</p>
-			<p>If you did not request this password reset, please ignore this email.</p>
-		`, resetLink, resetLink)
-
-		sender := email.DefaultSender()
-		to := []email.EmailRecipient{{Email: userEmail}}
-		err = s.mailer.SendEmail(ctx, sender, to, "Reset your password", htmlContent)
-
-		if err != nil {
-			log.Printf("Failed to send password reset email: %v", err)
-			// Fall through to show success message anyway (security)
+		if htmlContent, renderErr := email.RenderPasswordReset(resetLink); renderErr != nil {
+			log.Printf("Failed to render password reset email: %v", renderErr)
+		} else if sendErr := s.mailer.SendEmail(ctx, email.DefaultSender(), []email.EmailRecipient{{Email: userEmail}}, email.ResetEmailSubject, htmlContent); sendErr != nil {
+			// Fall through to the success message anyway (security)
+			log.Printf("Failed to send password reset email: %v", sendErr)
 		}
 	} else if token != "" {
 		// Dev fallback: log token server-side only — never expose in the UI

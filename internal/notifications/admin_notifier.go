@@ -70,20 +70,14 @@ func (n *AdminNotifier) NotifyOrderRequiringConfirmation(ctx context.Context, or
 
 	subject := fmt.Sprintf("Nowa zamówienie wymaga potwierdzenia: %s", orderID)
 
-	htmlContent := fmt.Sprintf(`
-		<h2>Zamówienie wymaga ręcznego potwierdzenia</h2>
-		<p><strong>ID zamówienia:</strong> %s</p>
-		<p><strong>Klient:</strong> %s (%s)</p>
-		<p><strong>Metoda płatności:</strong> %s</p>
-		<p><strong>Kwota:</strong> %.2f zł</p>
-		<p><strong>Typ:</strong> Pierwsze zamówienie klienta - płatność przy odbiorze</p>
-		<p><a href="https://cargo.mleczki.pl/admin">Przejdź do panelu administratora</a></p>
-	`, orderID, userName, userEmail, paymentMethod, totalAmount)
-
-	sender := &email.EmailSender{
-		Name:  "Cargo Mleczki",
-		Email: email.DefaultSenderEmail(),
+	htmlContent, err := email.RenderOrderNotice(email.OrderNotice{
+		OrderID: orderID, UserName: userName, UserEmail: userEmail, PaymentMethod: paymentMethod, Amount: totalAmount,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to render admin notification email: %w", err)
 	}
+
+	sender := email.DefaultSender()
 
 	recipients := make([]email.EmailRecipient, 0, len(adminEmails))
 	for _, adminEmail := range adminEmails {
