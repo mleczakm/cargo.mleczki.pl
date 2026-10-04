@@ -28,7 +28,7 @@
   assert:
     that:
       - "(app_env_vars[item] | default('') | length) > 0"
-    fail_msg: "Missing required production environment variable: {{ item }}"
+    fail_msg: "Missing required production environment variable: {{ item }} (variables present: {{ app_env_vars.keys() | list | sort | join(', ') }})"
     quiet: true
   loop: "{{ app.required_env | default([]) }}"
 
