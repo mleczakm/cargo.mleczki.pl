@@ -136,6 +136,7 @@ func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadMod
 
 // RegisterRoutes sets up all HTTP routes.
 func (s *Server) RegisterRoutes(r chi.Router) {
+	r.Use(http.NewCrossOriginProtection().Handler)
 	r.Use(middleware.SessionMiddleware(s.authManager))
 
 	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
@@ -157,7 +158,6 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 	r.Get("/shop/{id}/go", s.handleShopGo)
 	r.Get("/login", s.handleLogin)
 	r.Post("/login", s.handleLogin)
-	r.Get("/logout", s.handleLogout)
 	r.Post("/logout", s.handleLogout)
 	r.Get("/checkout", s.handleCheckout)
 	r.Get("/payment", s.handlePayment)

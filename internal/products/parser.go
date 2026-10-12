@@ -8,11 +8,9 @@ import (
 	"strings"
 
 	"cargo.mleczki.pl/internal/domain"
+	"cargo.mleczki.pl/internal/markdown"
 
 	"github.com/yuin/goldmark"
-	"github.com/yuin/goldmark/extension"
-	"github.com/yuin/goldmark/parser"
-	"github.com/yuin/goldmark/renderer/html"
 	"gopkg.in/yaml.v3"
 )
 
@@ -24,15 +22,7 @@ type Parser struct {
 
 // NewParser creates a new product parser.
 func NewParser(productsDir string) *Parser {
-	md := goldmark.New(
-		goldmark.WithExtensions(extension.GFM),
-		goldmark.WithParserOptions(
-			parser.WithAutoHeadingID(),
-		),
-		goldmark.WithRendererOptions(
-			html.WithHardWraps(),
-		),
-	)
+	md := goldmark.New(markdown.Options()...)
 
 	return &Parser{
 		productsDir: productsDir,

@@ -298,29 +298,19 @@ func (rm *ReadModelsDB) runMigrations() error {
 }
 
 func (rm *ReadModelsDB) ensureColumn(table, column, definition string) error {
-	rows, err := rm.db.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+	var exists bool
+	err := rm.db.QueryRow("SELECT EXISTS(SELECT 1 FROM pragma_table_info(?) WHERE name = ?)", table, column).Scan(&exists)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var cid int
-		var name, colType string
-		var notNull, pk int
-		var dfltValue sql.NullString
-		if err := rows.Scan(&cid, &name, &colType, &notNull, &dfltValue, &pk); err != nil {
-			return err
-		}
-		if name == column {
-			return nil
-		}
-	}
-	if err := rows.Err(); err != nil {
-		return err
+	if exists {
+		return nil
 	}
 
-	_, err = rm.db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", table, column, definition))
+	// Identifiers cannot be bound as query parameters. Quote them separately;
+	// definition is trusted SQL from the static migration list above.
+	quoteIdentifier := func(name string) string { return `"` + strings.ReplaceAll(name, `"`, `""`) + `"` }
+	_, err = rm.db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", quoteIdentifier(table), quoteIdentifier(column), definition))
 	return err
 }
 

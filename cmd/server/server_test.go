@@ -21,6 +21,7 @@ import (
 	"cargo.mleczki.pl/internal/domain"
 	"cargo.mleczki.pl/internal/eventstore"
 	"cargo.mleczki.pl/internal/products"
+	"cargo.mleczki.pl/internal/projections"
 )
 
 // getTemplatePath returns the correct path to templates regardless of working directory.
@@ -853,44 +854,12 @@ func TestHandleLoginGETModal(t *testing.T) {
 
 // TestHandleLoginPOST tests the POST /login endpoint with valid credentials.
 func TestHandleLoginPOST(t *testing.T) {
-	// Setup in-memory database
-	db, err := sql.Open("sqlite", ":memory:")
+	readModels, err := projections.NewReadModelsDB(":memory:")
 	if err != nil {
-		t.Fatalf("Failed to open database: %v", err)
+		t.Fatalf("Failed to initialize database: %v", err)
 	}
-	defer db.Close()
-
-	// Initialize schema
-	_, err = db.Exec(`
-		CREATE TABLE users (
-			id TEXT PRIMARY KEY,
-			email TEXT UNIQUE NOT NULL,
-			password_hash TEXT,
-			name TEXT NOT NULL,
-			phone TEXT,
-			address TEXT,
-			is_adult INTEGER DEFAULT 0,
-			accepted_tos INTEGER DEFAULT 0,
-			is_admin INTEGER DEFAULT 0,
-			deletion_requested INTEGER DEFAULT 0,
-			deletion_requested_at TEXT,
-			created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-			updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-		);
-		CREATE TABLE user_sessions (
-			id TEXT PRIMARY KEY,
-			user_id TEXT,
-			ip_address TEXT,
-			user_agent TEXT,
-			is_admin INTEGER DEFAULT 0,
-			created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-			expires_at TEXT,
-			last_activity TEXT
-		);
-	`)
-	if err != nil {
-		t.Fatalf("Failed to create schema: %v", err)
-	}
+	db := readModels.GetDB()
+	defer readModels.Close()
 
 	// Create event store
 	eventStore, err := eventstore.NewSQLiteEventStore(":memory:")
@@ -919,24 +888,6 @@ func TestHandleLoginPOST(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create admin user: %v", err)
 	}
-
-	// Verify user was created
-	var count int
-	err = db.QueryRowContext(ctx, "SELECT COUNT(*) FROM users WHERE email = ?", "admin@example.com").Scan(&count)
-	if err != nil {
-		t.Fatalf("Failed to query user count: %v", err)
-	}
-	if count != 1 {
-		t.Fatalf("Expected 1 user, got %d", count)
-	}
-
-	// Verify password hash
-	var storedHash string
-	err = db.QueryRowContext(ctx, "SELECT password_hash FROM users WHERE email = ?", "admin@example.com").Scan(&storedHash)
-	if err != nil {
-		t.Fatalf("Failed to query password hash: %v", err)
-	}
-	t.Logf("User created successfully, hash length: %d", len(storedHash))
 
 	// Create server
 	funcMap := template.FuncMap{

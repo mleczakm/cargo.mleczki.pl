@@ -158,7 +158,7 @@
                             zamówienia</a>
                         {{end}}
                         <div class="border-t border-gray-100 my-1"></div>
-                        <a href="/logout" class="block px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50">Wyloguj</a>
+                        <form action="/logout" method="post"><button type="submit" class="block w-full text-left px-4 py-2.5 text-sm font-medium text-red-600 hover:bg-red-50">Wyloguj</button></form>
                     </div>
                     {{end}}
 
@@ -206,8 +206,8 @@
                class="block w-full text-left px-3 py-3 text-base font-medium text-gray-700 hover:bg-emerald-50 rounded-lg">Moje
                 zamówienia</a>
             {{end}}
-            <a href="/logout"
-               class="block w-full text-left px-3 py-3 text-base font-medium text-red-600 hover:bg-red-50 rounded-lg">Wyloguj</a>
+            <form action="/logout" method="post"><button type="submit"
+               class="block w-full text-left px-3 py-3 text-base font-medium text-red-600 hover:bg-red-50 rounded-lg">Wyloguj</button></form>
             {{else}}
             <a href="/login" hx-get="/login?modal=1" hx-target="#modal-content" hx-trigger="click"
                onclick="document.getElementById('modal-container').classList.remove('hidden'); document.getElementById('mobile-menu').classList.add('hidden');"

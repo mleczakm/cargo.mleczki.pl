@@ -153,6 +153,16 @@ func (p *Projector) handleOrderPlaced(event *eventstore.Event) error {
 // order-level dates, which then apply to every line.
 func (p *Projector) blockOrderProductDates(eventData domain.OrderPlacedEvent) error {
 	db := p.readModels.GetDB()
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	statement, err := tx.Prepare("INSERT INTO product_bookings (product_id, order_id, booked_date) VALUES (?, ?, ?)")
+	if err != nil {
+		return err
+	}
+	defer statement.Close()
 	for _, item := range eventData.Items {
 		if item.IsShop() {
 			continue // shop purchases hold stock, not calendar days
@@ -175,16 +185,13 @@ func (p *Projector) blockOrderProductDates(eventData domain.OrderPlacedEvent) er
 		}
 		for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
 			dateStr := d.Format("2006-01-02")
-			_, err = db.Exec(`
-				INSERT INTO product_bookings (product_id, order_id, booked_date)
-				VALUES (?, ?, ?)
-			`, item.ProductID, eventData.OrderID, dateStr)
+			_, err = statement.Exec(item.ProductID, eventData.OrderID, dateStr)
 			if err != nil {
 				return fmt.Errorf("product %s on %s: %w", item.ProductID, dateStr, err)
 			}
 		}
 	}
-	return nil
+	return tx.Commit()
 }
 
 // handleOrderPaid updates the order status to paid, and auto-confirms for non-pickup payments.
