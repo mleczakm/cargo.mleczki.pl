@@ -124,3 +124,39 @@ func TestBankMailAmountMismatchStaysUnmatched(t *testing.T) {
 		t.Fatalf("order must not be paid on amount mismatch: %v", events)
 	}
 }
+
+func TestBankMailMatchesAmountsWithGroszeExactly(t *testing.T) {
+	cases := map[string]struct {
+		amount string
+		paid   bool
+	}{
+		"exact":         {"49,90", true},
+		"one grosz off": {"49,89", false},
+		"whole złoty":   {"50,00", false},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			handler, db := newTestHandler(t)
+			for _, stmt := range []string{
+				`INSERT INTO orders VALUES ('ORD-2', 49.9, 'awaiting_payment', 'blik')`,
+				`INSERT INTO payment_codes VALUES ('pc2', 'KLM7', 'ORD-2')`,
+			} {
+				if _, err := db.Exec(stmt); err != nil {
+					t.Fatal(err)
+				}
+			}
+			p := payload(strings.Repeat("d", 64))
+			p.Subject = "Uznanie rachunku 43...2755 kwotą " + tc.amount + " PLN"
+			p.Body = strings.NewReplacer("150,00", tc.amount, "JLN4", "KLM7").Replace(p.Body)
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, signedRequest(t, p, testSecret, time.Now()))
+			if w.Code != http.StatusNoContent {
+				t.Fatalf("got %d", w.Code)
+			}
+			events, _ := handler.EventStore.GetEvents(t.Context(), "ORD-2")
+			if paid := len(events) == 1; paid != tc.paid {
+				t.Errorf("paid = %v, want %v (events %v)", paid, tc.paid, events)
+			}
+		})
+	}
+}

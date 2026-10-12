@@ -47,13 +47,15 @@
                 </div>
                 <div class="p-4">
                     <h4 class="font-bold text-gray-900 mb-1">{{.Name}}</h4>
-                    <p class="text-emerald-600 font-medium">{{.BasePrice}} zł / dobę</p>
+                    <p class="text-emerald-600 font-medium">{{.BasePrice}} / dobę</p>
                 </div>
             </div>
             {{end}}
         </div>
     </div>
     {{end}}
+
+    {{if .RelatedShop}}{{template "shop-strip" .RelatedShop}}{{end}}
 
     <div class="mt-8">
         <a href="/articles" class="inline-flex items-center text-emerald-600 hover:text-emerald-700 font-medium">

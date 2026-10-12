@@ -53,12 +53,12 @@ func TestSetAndGetCart(t *testing.T) {
 			CartID:      "123",
 			ProductID:   "cargo",
 			ProductName: "Cargo Bike",
-			BasePrice:   100,
+			BasePrice:   domain.Zloty(100),
 			StartDate:   "2026-06-10",
 			EndDate:     "2026-06-12",
 			RentalDays:  2,
 			Addons:      []string{"addon1"},
-			Total:       200,
+			Total:       domain.Zloty(200),
 		},
 	}
 
@@ -90,8 +90,8 @@ func TestSetAndGetCart(t *testing.T) {
 		t.Errorf("Expected cartID '123', got '%s'", cart[0].CartID)
 	}
 
-	if cart[0].Total != 200 {
-		t.Errorf("Expected total 200, got %d", cart[0].Total)
+	if cart[0].Total != domain.Zloty(200) {
+		t.Errorf("Expected total 200, got %s", cart[0].Total)
 	}
 }
 
@@ -106,23 +106,23 @@ func TestSetMultipleCartItems(t *testing.T) {
 			CartID:      "item1",
 			ProductID:   "cargo",
 			ProductName: "Cargo Bike",
-			BasePrice:   100,
+			BasePrice:   domain.Zloty(100),
 			StartDate:   "2026-06-10",
 			EndDate:     "2026-06-12",
 			RentalDays:  2,
 			Addons:      []string{},
-			Total:       200,
+			Total:       domain.Zloty(200),
 		},
 		{
 			CartID:      "item2",
 			ProductID:   "tandem",
 			ProductName: "Tandem Bike",
-			BasePrice:   80,
+			BasePrice:   domain.Zloty(80),
 			StartDate:   "2026-06-10",
 			EndDate:     "2026-06-12",
 			RentalDays:  2,
 			Addons:      []string{"addon1"},
-			Total:       160,
+			Total:       domain.Zloty(160),
 		},
 	}
 
@@ -155,23 +155,23 @@ func TestRemoveCartItem(t *testing.T) {
 			CartID:      "item1",
 			ProductID:   "cargo",
 			ProductName: "Cargo Bike",
-			BasePrice:   100,
+			BasePrice:   domain.Zloty(100),
 			StartDate:   "2026-06-10",
 			EndDate:     "2026-06-12",
 			RentalDays:  2,
 			Addons:      []string{},
-			Total:       200,
+			Total:       domain.Zloty(200),
 		},
 		{
 			CartID:      "item2",
 			ProductID:   "tandem",
 			ProductName: "Tandem Bike",
-			BasePrice:   80,
+			BasePrice:   domain.Zloty(80),
 			StartDate:   "2026-06-10",
 			EndDate:     "2026-06-12",
 			RentalDays:  2,
 			Addons:      []string{},
-			Total:       160,
+			Total:       domain.Zloty(160),
 		},
 	}
 
@@ -213,12 +213,12 @@ func TestCartCookieEncoding(t *testing.T) {
 			CartID:      "123",
 			ProductID:   "cargo",
 			ProductName: "Cargo \"Bike\" (Special)",
-			BasePrice:   100,
+			BasePrice:   domain.Zloty(100),
 			StartDate:   "2026-06-10",
 			EndDate:     "2026-06-12",
 			RentalDays:  2,
 			Addons:      []string{"addon-1", "addon-2"},
-			Total:       200,
+			Total:       domain.Zloty(200),
 		},
 	}
 
@@ -261,12 +261,12 @@ func TestClearCart(t *testing.T) {
 			CartID:      "123",
 			ProductID:   "cargo",
 			ProductName: "Cargo Bike",
-			BasePrice:   100,
+			BasePrice:   domain.Zloty(100),
 			StartDate:   "2026-06-10",
 			EndDate:     "2026-06-12",
 			RentalDays:  2,
 			Addons:      []string{},
-			Total:       200,
+			Total:       domain.Zloty(200),
 		},
 	}
 
@@ -359,11 +359,11 @@ func TestCalculateItemTotal(t *testing.T) {
 func TestCalculateItemTotalWithPaymentTypes(t *testing.T) {
 	tests := []struct {
 		name       string
-		basePrice  int
+		basePrice  int64
 		addons     []domain.ProductAddon
 		addonIDs   []string
 		rentalDays int
-		expected   int
+		expected   int64
 	}{
 		{
 			name:       "no addons",
@@ -377,7 +377,7 @@ func TestCalculateItemTotalWithPaymentTypes(t *testing.T) {
 			name:      "daily addon only",
 			basePrice: 100,
 			addons: []domain.ProductAddon{
-				{ID: "daily1", Name: "Daily Addon", Price: 20, PaymentType: "daily"},
+				{ID: "daily1", Name: "Daily Addon", Price: domain.Zloty(20), PaymentType: "daily"},
 			},
 			addonIDs:   []string{"daily1"},
 			rentalDays: 3,
@@ -387,7 +387,7 @@ func TestCalculateItemTotalWithPaymentTypes(t *testing.T) {
 			name:      "one-time addon only",
 			basePrice: 100,
 			addons: []domain.ProductAddon{
-				{ID: "onetime1", Name: "One-Time Addon", Price: 50, PaymentType: "one-time"},
+				{ID: "onetime1", Name: "One-Time Addon", Price: domain.Zloty(50), PaymentType: "one-time"},
 			},
 			addonIDs:   []string{"onetime1"},
 			rentalDays: 3,
@@ -397,9 +397,9 @@ func TestCalculateItemTotalWithPaymentTypes(t *testing.T) {
 			name:      "mixed daily and one-time addons",
 			basePrice: 100,
 			addons: []domain.ProductAddon{
-				{ID: "daily1", Name: "Daily Addon", Price: 20, PaymentType: "daily"},
-				{ID: "onetime1", Name: "One-Time Addon", Price: 50, PaymentType: "one-time"},
-				{ID: "daily2", Name: "Daily Addon 2", Price: 15, PaymentType: "daily"},
+				{ID: "daily1", Name: "Daily Addon", Price: domain.Zloty(20), PaymentType: "daily"},
+				{ID: "onetime1", Name: "One-Time Addon", Price: domain.Zloty(50), PaymentType: "one-time"},
+				{ID: "daily2", Name: "Daily Addon 2", Price: domain.Zloty(15), PaymentType: "daily"},
 			},
 			addonIDs:   []string{"daily1", "onetime1", "daily2"},
 			rentalDays: 3,
@@ -409,7 +409,7 @@ func TestCalculateItemTotalWithPaymentTypes(t *testing.T) {
 			name:      "default payment type (daily)",
 			basePrice: 100,
 			addons: []domain.ProductAddon{
-				{ID: "default1", Name: "Default Addon", Price: 25, PaymentType: ""}, // Empty defaults to daily
+				{ID: "default1", Name: "Default Addon", Price: domain.Zloty(25), PaymentType: ""}, // Empty defaults to daily
 			},
 			addonIDs:   []string{"default1"},
 			rentalDays: 2,
@@ -422,14 +422,14 @@ func TestCalculateItemTotalWithPaymentTypes(t *testing.T) {
 			product := &domain.Product{
 				ID:        "test-product",
 				Name:      "Test Product",
-				BasePrice: tt.basePrice,
+				BasePrice: domain.Zloty(tt.basePrice),
 				Addons:    tt.addons,
 			}
 
 			total := calculateItemTotal(product, tt.addonIDs, tt.rentalDays)
 
-			if total != tt.expected {
-				t.Errorf("Expected total %d, got %d", tt.expected, total)
+			if total != domain.Zloty(tt.expected) {
+				t.Errorf("Expected total %d, got %s", tt.expected, total)
 			}
 		})
 	}
@@ -478,12 +478,12 @@ Test description
 			CartID:      "cart1",
 			ProductID:   "test-product",
 			ProductName: "Test Product",
-			BasePrice:   100,
+			BasePrice:   domain.Zloty(100),
 			StartDate:   "2026-06-10",
 			EndDate:     "2026-06-12",
 			RentalDays:  2,
 			Addons:      []string{"daily-addon", "one-time-addon"},
-			Total:       0, // Will be calculated
+			Total:       domain.Zloty(0), // Will be calculated
 		},
 	}
 
@@ -544,12 +544,12 @@ func TestCartWithSpecialCharacters(t *testing.T) {
 			CartID:      fmt.Sprintf("%d", time.Now().UnixNano()),
 			ProductID:   "special",
 			ProductName: "Rower Cargo & Tandem (Special!)",
-			BasePrice:   100,
+			BasePrice:   domain.Zloty(100),
 			StartDate:   "2026-06-10",
 			EndDate:     "2026-06-12",
 			RentalDays:  2,
 			Addons:      []string{"daszek", "timer"},
-			Total:       200,
+			Total:       domain.Zloty(200),
 		},
 	}
 
@@ -582,12 +582,12 @@ func TestHandleCartRemoveInvalid(_ *testing.T) {
 			CartID:      "item1",
 			ProductID:   "cargo",
 			ProductName: "Cargo Bike",
-			BasePrice:   100,
+			BasePrice:   domain.Zloty(100),
 			StartDate:   "2026-06-10",
 			EndDate:     "2026-06-12",
 			RentalDays:  2,
 			Addons:      []string{},
-			Total:       200,
+			Total:       domain.Zloty(200),
 		},
 	}
 
@@ -613,12 +613,12 @@ func TestRemoveNonexistentItem(t *testing.T) {
 			CartID:      "item1",
 			ProductID:   "cargo",
 			ProductName: "Cargo Bike",
-			BasePrice:   100,
+			BasePrice:   domain.Zloty(100),
 			StartDate:   "2026-06-10",
 			EndDate:     "2026-06-12",
 			RentalDays:  2,
 			Addons:      []string{},
-			Total:       200,
+			Total:       domain.Zloty(200),
 		},
 	}
 
@@ -660,12 +660,12 @@ func TestCartPersistenceAcrossRequests(t *testing.T) {
 			CartID:      "persistence-test-1",
 			ProductID:   "cargo",
 			ProductName: "Cargo Bike",
-			BasePrice:   100,
+			BasePrice:   domain.Zloty(100),
 			StartDate:   "2026-06-10",
 			EndDate:     "2026-06-12",
 			RentalDays:  2,
 			Addons:      []string{},
-			Total:       200,
+			Total:       domain.Zloty(200),
 		},
 	}
 
@@ -694,12 +694,12 @@ func TestCartPersistenceAcrossRequests(t *testing.T) {
 		CartID:      "persistence-test-2",
 		ProductID:   "tandem",
 		ProductName: "Tandem Bike",
-		BasePrice:   80,
+		BasePrice:   domain.Zloty(80),
 		StartDate:   "2026-06-10",
 		EndDate:     "2026-06-12",
 		RentalDays:  2,
 		Addons:      []string{},
-		Total:       160,
+		Total:       domain.Zloty(160),
 	}
 
 	prevCart = append(prevCart, newItem)

@@ -1,0 +1,147 @@
+{{define "shop_item-content"}}
+{{with .Item}}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <a href="/shop" class="flex items-center text-gray-500 hover:text-emerald-600 mb-8 transition-colors">
+        <i data-lucide="arrow-left" class="w-5 h-5 mr-2"></i>
+        Wróć do sklepu
+    </a>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-12">
+        <div class="space-y-4 lg:sticky lg:top-24 lg:self-start">
+            <div class="rounded-3xl overflow-hidden shadow-lg h-96 lg:h-[520px] bg-gray-50 flex items-center justify-center">
+                {{if .Image}}
+                <img id="main-image" src="{{.Image}}" alt="{{.Name}}" class="w-full h-full object-contain object-center" />
+                {{else}}
+                <span class="text-8xl" aria-hidden="true">{{if .Icon}}{{.Icon}}{{else}}🛒{{end}}</span>
+                {{end}}
+            </div>
+            {{if gt (len .Images) 1}}
+            <div class="grid grid-cols-4 gap-4">
+                {{range .Images}}
+                <div class="aspect-square rounded-xl overflow-hidden cursor-pointer border-2 border-transparent hover:border-emerald-500 transition-all shadow-sm" onclick="document.getElementById('main-image').src='{{.}}'">
+                    <img src="{{.}}" alt="" class="w-full h-full object-contain" />
+                </div>
+                {{end}}
+            </div>
+            {{end}}
+        </div>
+
+        <div class="flex flex-col">
+            {{if .Category}}<p class="text-sm font-semibold text-emerald-700 mb-2">{{.Category}}</p>{{end}}
+            <h1 class="text-3xl lg:text-4xl font-black text-gray-900 mb-4">{{.Name}}</h1>
+
+            <div class="text-lg text-gray-600 mb-8 leading-relaxed prose prose-emerald max-w-none">
+                {{.DescriptionHTML}}
+            </div>
+
+            {{if .IsAffiliate}}
+            <div class="bg-gray-50 border border-gray-200 rounded-2xl p-6 mb-4">
+                <p class="text-sm text-gray-500 mb-1">Oferta w serwisie {{.Affiliate.Merchant}}</p>
+                {{if .Affiliate.PriceHint}}<p class="text-2xl font-black text-gray-900 mb-4">{{.Affiliate.PriceHint}}</p>{{end}}
+                <a href="/shop/{{.ID}}/go" target="_blank" rel="sponsored nofollow noopener noreferrer"
+                   class="w-full font-bold py-4 px-8 rounded-xl transition-colors duration-300 flex items-center justify-center space-x-2 bg-emerald-600 hover:bg-emerald-700 text-white">
+                    <span>{{.Affiliate.Label}}</span>
+                    <i data-lucide="external-link" class="w-5 h-5"></i>
+                </a>
+            </div>
+            <p class="text-xs text-gray-500">To link afiliacyjny: jeśli kupisz przez niego, możemy otrzymać niewielką prowizję, a Ty nie płacisz więcej. Cenę i dostępność określa sprzedawca.</p>
+            {{else}}
+            {{if $.Added}}
+            <div class="mb-6 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl px-4 py-3 text-sm flex flex-wrap items-center justify-between gap-2" role="status">
+                <span class="font-semibold">Dodano do koszyka.</span>
+                <span class="space-x-4"><a href="/checkout" class="underline font-semibold">Przejdź do koszyka</a><a href="/shop" class="underline">Kontynuuj zakupy</a></span>
+            </div>
+            {{end}}
+            {{if $.CartError}}
+            <div class="mb-6 bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 text-sm" role="alert">{{$.CartError}}</div>
+            {{end}}
+
+            <form action="/cart/add-shop" method="post" class="bg-gray-50 border border-gray-200 rounded-2xl p-6">
+                <input type="hidden" name="item_id" value="{{.ID}}" />
+
+                {{if .VariantViews}}
+                <fieldset class="mb-6">
+                    <legend class="text-sm font-bold text-gray-900 mb-3">Wybierz wersję</legend>
+                    <div class="space-y-2">
+                        {{range .VariantViews}}
+                        <label class="flex items-center justify-between gap-4 p-3 rounded-xl border border-gray-200 bg-white {{if .Availability.CanBuy}}cursor-pointer hover:border-emerald-300{{else}}opacity-60{{end}}">
+                            <span class="flex items-center space-x-3">
+                                <input type="radio" name="sku" value="{{.SKU}}" required class="w-5 h-5 text-emerald-600" {{if not .Availability.CanBuy}}disabled{{end}} />
+                                <span class="font-medium text-gray-900">{{.Name}}</span>
+                            </span>
+                            <span class="text-right text-sm">
+                                <span class="font-bold text-gray-900">{{.EffectivePrice}}</span>
+                                <span class="block text-xs text-gray-500">{{.Availability.Label}}</span>
+                            </span>
+                        </label>
+                        {{end}}
+                    </div>
+                </fieldset>
+                {{else}}
+                <div class="flex items-end justify-between mb-6">
+                    <p class="text-4xl font-black text-gray-900">{{.DisplayPrice}}</p>
+                    <span class="text-xs font-bold px-3 py-1.5 rounded-full {{.BadgeClass}}">{{.Availability.Label}}</span>
+                </div>
+                {{end}}
+
+                {{if .Availability.CanBuy}}
+                <div class="flex items-center gap-4">
+                    <label class="text-sm font-bold text-gray-900" for="quantity">Ilość</label>
+                    <input id="quantity" type="number" name="quantity" value="1" min="1" max="{{.MaxQuantity}}" class="w-24 p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" />
+                    <button type="submit" class="flex-grow font-bold py-4 px-8 rounded-xl transition-colors duration-300 flex items-center justify-center space-x-2 bg-emerald-600 hover:bg-emerald-700 text-white">
+                        <i data-lucide="shopping-cart" class="w-5 h-5"></i>
+                        <span>Dodaj do koszyka</span>
+                    </button>
+                </div>
+                {{if .Stock.Backorder}}<p class="text-xs text-gray-500 mt-3">Produkty niedostępne od ręki realizujemy na zamówienie{{if .Stock.LeadTime}} ({{.Stock.LeadTime}}){{end}}.</p>{{end}}
+                {{else}}
+                <button type="button" disabled class="w-full font-bold py-4 px-8 rounded-xl bg-gray-200 text-gray-500 cursor-not-allowed">Brak w magazynie</button>
+                {{end}}
+                <p class="text-xs text-gray-500 mt-4">Odbiór osobisty w Radzyminie, razem z wypożyczonym sprzętem lub osobno. Płatność BLIK lub gotówką przy odbiorze.</p>
+            </form>
+            {{end}}
+        </div>
+    </div>
+
+    {{if $.RelatedProducts}}
+    <section class="mt-12 pt-8 border-t border-gray-200">
+        <h3 class="text-2xl font-bold text-gray-900 mb-6">Pasuje do sprzętu z wypożyczalni</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {{range $.RelatedProducts}}
+            <a href="/product/{{.ID}}" class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition-shadow duration-300">
+                <div class="h-40 overflow-hidden"><img src="{{.Image}}" alt="{{.Name}}" class="w-full h-full object-contain object-bottom" /></div>
+                <div class="p-4">
+                    <h4 class="font-bold text-gray-900 mb-1">{{.Name}}</h4>
+                    <p class="text-emerald-600 font-medium">{{.BasePrice}} / dobę</p>
+                </div>
+            </a>
+            {{end}}
+        </div>
+    </section>
+    {{end}}
+
+    {{if $.RelatedArticles}}
+    <section class="mt-12 pt-8 border-t border-gray-200">
+        <h3 class="text-2xl font-bold text-gray-900 mb-6">Przeczytaj więcej</h3>
+        <div class="space-y-4">
+            {{range $.RelatedArticles}}
+            <a href="/article/{{.ID}}" class="block p-4 rounded-xl border border-gray-200 hover:border-emerald-300 hover:bg-emerald-50 transition-colors">
+                <h4 class="font-bold text-gray-900 mb-1">{{.Title}}</h4>
+                <p class="text-sm text-gray-600">{{.Summary}}</p>
+            </a>
+            {{end}}
+        </div>
+    </section>
+    {{end}}
+
+    {{if $.RelatedShop}}
+    <section class="mt-12 pt-8 border-t border-gray-200">
+        <h3 class="text-2xl font-bold text-gray-900 mb-6">Zobacz też</h3>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            {{range $.RelatedShop}}{{template "shop-card" .}}{{end}}
+        </div>
+    </section>
+    {{end}}
+</div>
+{{end}}
+{{end}}

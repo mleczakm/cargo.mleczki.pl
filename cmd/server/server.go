@@ -29,6 +29,7 @@ import (
 	"cargo.mleczki.pl/internal/notifications"
 	"cargo.mleczki.pl/internal/products"
 	"cargo.mleczki.pl/internal/projections"
+	"cargo.mleczki.pl/internal/shop"
 	"cargo.mleczki.pl/internal/transfers"
 )
 
@@ -41,6 +42,7 @@ type Server struct {
 	projector       *projections.Projector
 	productParser   *products.Parser
 	articleParser   *articles.Parser
+	shopParser      *shop.Parser
 	authManager     *auth.AuthManager
 	templates       *template.Template
 	transferMatcher *transfers.Matcher
@@ -56,9 +58,9 @@ var partialTemplates = map[string]struct{}{
 	"payment-success-fragment": {},
 }
 
-// NewServer creates a new HTTP server.
-func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadModelsDB, projector *projections.Projector, productParser *products.Parser, articleParser *articles.Parser, authManager *auth.AuthManager) *Server {
-	funcMap := template.FuncMap{
+// templateFuncs are the helpers available to every template.
+func templateFuncs() template.FuncMap {
+	return template.FuncMap{
 		"upper":    strings.ToUpper,
 		"safeHTML": func(s string) template.HTML { return template.HTML(s) }, // #nosec G203 // Content is from trusted markdown files
 		"stripHTML": func(s string) template.HTML {
@@ -67,8 +69,11 @@ func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadMod
 			return template.HTML(stripped) // #nosec G203 // Content is from trusted markdown files
 		},
 	}
+}
 
-	tmpl := template.New("main").Funcs(funcMap)
+// NewServer creates a new HTTP server.
+func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadModelsDB, projector *projections.Projector, productParser *products.Parser, articleParser *articles.Parser, shopParser *shop.Parser, authManager *auth.AuthManager) *Server {
+	tmpl := template.New("main").Funcs(templateFuncs())
 	tmpl = template.Must(tmpl.ParseGlob("web/templates/*.html"))
 
 	// Initialize admin notifier
@@ -104,6 +109,7 @@ func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadMod
 		projector:       projector,
 		productParser:   productParser,
 		articleParser:   articleParser,
+		shopParser:      shopParser,
 		authManager:     authManager,
 		templates:       tmpl,
 		transferMatcher: transfers.NewMatcher(),
@@ -146,6 +152,9 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 	r.Get("/articles/porady", s.handleArticlesPorady)
 	r.Get("/articles/recenzje", s.handleArticlesRecenzje)
 	r.Get("/article/{id}", s.handleArticle)
+	r.Get("/shop", s.handleShop)
+	r.Get("/shop/{id}", s.handleShopItem)
+	r.Get("/shop/{id}/go", s.handleShopGo)
 	r.Get("/login", s.handleLogin)
 	r.Post("/login", s.handleLogin)
 	r.Get("/logout", s.handleLogout)
@@ -163,6 +172,8 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 	// Cart API (HTMX)
 	r.Post("/cart/add", s.handleCartAdd)
 	r.Post("/cart/remove/{id}", s.handleCartRemove)
+	r.Post("/cart/add-shop", s.handleCartAddShop)
+	r.Post("/cart/update/{id}", s.handleCartUpdateShop)
 
 	// Checkout API (HTMX)
 	r.Post("/checkout/submit", s.handleCheckoutSubmit)
@@ -192,6 +203,8 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 		r.Post("/admin/user/{id}/reset-password", s.handleAdminUserResetPassword)
 		r.Post("/admin/order/{id}/mark-paid", s.handleAdminOrderMarkPaid)
 		r.Post("/admin/order/{id}/confirm", s.handleAdminOrderConfirm)
+		r.Post("/admin/order/{id}/realize", s.handleAdminOrderRealize)
+		r.Post("/admin/shop/stock/adjust", s.handleAdminShopStockAdjust)
 		r.Post("/admin/transfer/{id}/link", s.handleAdminTransferLink)
 		r.Post("/admin/reservation/create", s.handleAdminCreateReservation)
 		r.Post("/admin/product/{id}/block-date", s.handleAdminBlockProductDate)
@@ -220,6 +233,9 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 
 	// Filter products based on visibility
 	filtered := filterProductsByVisibility(products, r)
+	for i := range filtered {
+		filtered[i].Description = s.plainTextLinks(r, filtered[i].Description)
+	}
 
 	data := map[string]interface{}{
 		"Title":     "Wynajem sprzętu rowerowego",
@@ -259,11 +275,14 @@ func (s *Server) handleProduct(w http.ResponseWriter, r *http.Request) {
 		relatedArticles = []domain.Article{}
 	}
 
+	product.Description = string(s.expandLinks(r, product.Description))
+
 	now := time.Now()
 	data := map[string]interface{}{
 		"Title":           product.Name,
 		"Product":         product,
 		"RelatedArticles": relatedArticles,
+		"RelatedShop":     s.shopItemsForProduct(r, product),
 		"CurrentMonth":    int(now.Month()),
 		"CurrentYear":     now.Year(),
 		"CartCount":       getCartCount(r),
@@ -620,7 +639,7 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 // handleCheckout renders the checkout page.
 func (s *Server) handleCheckout(w http.ResponseWriter, r *http.Request) {
-	cart := getCart(r)
+	cart, problems := s.normalizeCart(r, getCart(r))
 
 	// Enrich cart items with addon details
 	enrichedCart := make([]map[string]interface{}, len(cart))
@@ -634,6 +653,14 @@ func (s *Server) handleCheckout(w http.ResponseWriter, r *http.Request) {
 			"EndDate":     item.EndDate,
 			"RentalDays":  item.RentalDays,
 			"Total":       item.Total,
+			"IsShop":      item.IsShop(),
+			"Quantity":    item.Quantity,
+			"Problem":     problems[item.CartID],
+		}
+		if item.IsShop() {
+			enrichedItem["Addons"] = []map[string]interface{}(nil)
+			enrichedCart[i] = enrichedItem
+			continue
 		}
 
 		// Get addon details
@@ -658,13 +685,19 @@ func (s *Server) handleCheckout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]interface{}{
-		"Title":       "Koszyk",
-		"Cart":        enrichedCart,
-		"CartTotal":   calculateCartTotal(cart),
-		"AddonsTotal": calculateAddonsTotal(cart),
-		"FinalTotal":  calculateFinalTotal(cart),
-		"CartCount":   len(cart),
-		"UserDetails": map[string]string{},
+		"Title":          "Koszyk",
+		"Cart":           enrichedCart,
+		"CartTotal":      calculateFinalTotal(cart), // the header badge shows the whole cart
+		"RentalTotal":    calculateCartTotal(cart),
+		"AddonsTotal":    calculateAddonsTotal(cart),
+		"ShopTotal":      calculateShopTotal(cart),
+		"FinalTotal":     calculateFinalTotal(cart),
+		"CartCount":      len(cart),
+		"HasShopLines":   cartHasShopLines(cart),
+		"HasRentalLines": cartHasRentalLines(cart),
+		"HasProblems":    len(problems) > 0,
+		"Notice":         checkoutNotice(r.URL.Query().Get("notice")),
+		"UserDetails":    map[string]string{},
 	}
 
 	s.renderTemplate(w, r, "checkout.html", data)
@@ -710,7 +743,7 @@ func (s *Server) handlePayment(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
 		"Title":             "Płatność",
 		"PaymentMethod":     paymentMethod,
-		"FinalTotal":        int(totalAmount),
+		"FinalTotal":        domain.MoneyFromZloty(totalAmount),
 		"OrderID":           orderID,
 		"PaymentCode":       paymentCode,
 		"ShowConfirmButton": false,
@@ -727,39 +760,32 @@ func (s *Server) handleCartAdd(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse form data
+	// Only the product, the dates and the chosen add-ons come from the visitor;
+	// the day count, names and prices are worked out from the catalog.
 	productID := r.FormValue("product_id")
-	startDate := r.FormValue("start_date")
-	endDate := r.FormValue("end_date")
-	rentalDays, _ := strconv.Atoi(r.FormValue("rental_days"))
-
-	// Get addons
-	var addons []string
-	for _, addon := range r.Form["addons"] {
-		addons = append(addons, addon)
-	}
-
-	// Load product
 	product, err := s.productParser.LoadProductByID(productID)
-	if err != nil {
+	if err != nil || !isItemVisible(product.Visibility, r) {
 		http.Error(w, "Product not found", http.StatusNotFound)
 		return
 	}
 
-	// Add to cart session
-	cart := getCart(r)
-	cartItem := CartItem{
-		CartID:      fmt.Sprintf("%d", time.Now().UnixNano()),
-		ProductID:   productID,
-		ProductName: product.Name,
-		BasePrice:   product.BasePrice,
-		StartDate:   startDate,
-		EndDate:     endDate,
-		RentalDays:  rentalDays,
-		Addons:      addons,
-		Total:       calculateItemTotal(product, addons, rentalDays),
+	endDate := r.FormValue("end_date")
+	if endDate == "" {
+		endDate = r.FormValue("start_date")
 	}
-	cart = append(cart, cartItem)
+	cartItem, problem := priceRentalLine(*product, CartItem{
+		CartID:    fmt.Sprintf("%d", time.Now().UnixNano()),
+		ProductID: productID,
+		StartDate: r.FormValue("start_date"),
+		EndDate:   endDate,
+		Addons:    r.Form["addons"],
+	}, today())
+	if problem != "" {
+		http.Error(w, problem, http.StatusBadRequest)
+		return
+	}
+
+	cart := append(getCart(r), cartItem)
 	setCart(w, r, cart)
 
 	// Redirect to checkout
@@ -847,37 +873,35 @@ func (s *Server) getOrCreateUser(ctx context.Context, email, name, phone, addres
 	return userID, nil
 }
 
-// convertCartToOrderItems converts cart items to domain.OrderItem format.
+// convertCartToOrderItems converts the (normalized) cart to order lines. Prices,
+// add-ons and dates are copied from the cart as priced by normalizeCart.
 func (s *Server) convertCartToOrderItems(cart []CartItem) []domain.OrderItem {
 	var orderItems []domain.OrderItem
 	for _, item := range cart {
+		if item.IsShop() {
+			orderItems = append(orderItems, domain.OrderItem{
+				ProductID:   item.ProductID,
+				ProductName: item.ProductName,
+				BasePrice:   item.BasePrice,
+				Kind:        domain.OrderItemKindShop,
+				SKU:         item.SKU,
+				Quantity:    item.Quantity,
+			})
+			continue
+		}
 		product, err := s.productParser.LoadProductByID(item.ProductID)
 		if err != nil {
 			log.Printf("Failed to load product %s: %v", item.ProductID, err)
 			continue
 		}
-
-		var selectedAddons []domain.Addon
-		for _, addonID := range item.Addons {
-			for _, productAddon := range product.Addons {
-				if productAddon.ID == addonID {
-					selectedAddons = append(selectedAddons, domain.Addon{
-						ID:          productAddon.ID,
-						Name:        productAddon.Name,
-						Price:       productAddon.Price,
-						PaymentType: productAddon.PaymentType,
-					})
-					break
-				}
-			}
-		}
-
 		orderItems = append(orderItems, domain.OrderItem{
 			ProductID:      item.ProductID,
 			ProductName:    item.ProductName,
 			BasePrice:      item.BasePrice,
-			SelectedAddons: selectedAddons,
+			SelectedAddons: productAddons(*product, item.Addons),
 			RentalDays:     item.RentalDays,
+			StartDate:      item.StartDate,
+			EndDate:        item.EndDate,
 		})
 	}
 
@@ -908,6 +932,9 @@ func (s *Server) validateCartAvailability(cart []CartItem) error {
 	}
 
 	for _, item := range cart {
+		if item.IsShop() {
+			continue // stock is reserved separately, see handleCheckoutSubmit
+		}
 		product, err := s.productParser.LoadProductByID(item.ProductID)
 		if err != nil {
 			return fmt.Errorf("product not found: %s", item.ProductID)
@@ -956,18 +983,12 @@ func hashOptionalPassword(r *http.Request) (string, error) {
 func (s *Server) buildOrderPlacedEvent(
 	orderID, userID string,
 	cart []CartItem,
-	totalAmount int,
+	totalAmount domain.Money,
 	paymentMethod string,
 	paymentCode *string,
 	isFirstOrder bool,
 ) *domain.OrderPlacedEvent {
-	var startDate, endDate string
-	var rentalDays int
-	if len(cart) > 0 {
-		startDate = cart[0].StartDate
-		endDate = cart[0].EndDate
-		rentalDays = cart[0].RentalDays
-	}
+	startDate, endDate, rentalDays := rentalSpan(cart)
 
 	return &domain.OrderPlacedEvent{
 		OrderID:       orderID,
@@ -1015,7 +1036,7 @@ func (s *Server) saveBLIKPaymentCode(orderID string, paymentCode *string) {
 	}
 }
 
-func (s *Server) notifyPickupOrderAdminsAsync(parent context.Context, orderID, name, email, paymentMethod string, totalAmount int) {
+func (s *Server) notifyPickupOrderAdminsAsync(parent context.Context, orderID, name, email, paymentMethod string, totalAmount domain.Money) {
 	if !isPickupPaymentMethod(paymentMethod) {
 		return
 	}
@@ -1023,14 +1044,14 @@ func (s *Server) notifyPickupOrderAdminsAsync(parent context.Context, orderID, n
 	notifyCtx := context.WithoutCancel(parent)
 	if s.adminNotifier != nil {
 		go func(ctx context.Context) {
-			if err := s.adminNotifier.NotifyOrderRequiringConfirmation(ctx, orderID, name, email, paymentMethod, float64(totalAmount)); err != nil {
+			if err := s.adminNotifier.NotifyOrderRequiringConfirmation(ctx, orderID, name, email, paymentMethod, totalAmount.Zloty()); err != nil {
 				log.Printf("Failed to send admin email notification for order %s: %v", orderID, err)
 			}
 		}(notifyCtx)
 	}
 	if s.webPushNotifier != nil {
 		go func(ctx context.Context) {
-			if err := s.webPushNotifier.NotifyOrderRequiringConfirmation(ctx, orderID, name, paymentMethod, float64(totalAmount)); err != nil {
+			if err := s.webPushNotifier.NotifyOrderRequiringConfirmation(ctx, orderID, name, paymentMethod, totalAmount.Zloty()); err != nil {
 				log.Printf("Failed to send admin web push notification for order %s: %v", orderID, err)
 			}
 		}(notifyCtx)
@@ -1041,6 +1062,21 @@ func writeJSON(w http.ResponseWriter, payload any) {
 	if err := json.NewEncoder(w).Encode(payload); err != nil {
 		log.Printf("Failed to write JSON response: %v", err)
 	}
+}
+
+// paymentCodeFor generates the code that identifies a BLIK transfer; other
+// payment methods have none. It answers the request itself when that fails.
+func paymentCodeFor(w http.ResponseWriter, paymentMethod string) (*string, bool) {
+	if paymentMethod != domain.PaymentMethodBlik {
+		return nil, true
+	}
+	code, err := domain.GeneratePaymentCode()
+	if err != nil {
+		log.Printf("Failed to generate payment code: %v", err)
+		http.Error(w, "Failed to generate payment code", http.StatusInternalServerError)
+		return nil, false
+	}
+	return &code, true
 }
 
 // handleCheckoutSubmit processes the checkout form (HTMX).
@@ -1057,10 +1093,15 @@ func (s *Server) handleCheckoutSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get cart
-	cart := getCart(r)
-	if len(cart) == 0 {
+	// Get cart. Shop lines are re-priced from the catalog: the cookie is not trusted.
+	cart, problems := s.normalizeCart(r, getCart(r))
+	totalAmount := calculateFinalTotal(cart)
+	if len(cart) == 0 || !totalAmount.IsPositive() {
 		http.Error(w, "Cart is empty", http.StatusBadRequest)
+		return
+	}
+	if len(problems) > 0 {
+		redirectToCheckout(w, r, "cart")
 		return
 	}
 
@@ -1070,33 +1111,35 @@ func (s *Server) handleCheckoutSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Calculate total
-	totalAmount := calculateFinalTotal(cart)
 
 	// Generate order ID
 	orderID := fmt.Sprintf("ORD-%d", time.Now().UnixNano())
 
 	// Generate payment code for BLIK payments
-	var paymentCode *string
-	if paymentMethod == domain.PaymentMethodBlik {
-		code, err := domain.GeneratePaymentCode()
-		if err != nil {
-			log.Printf("Failed to generate payment code: %v", err)
-			http.Error(w, "Failed to generate payment code", http.StatusInternalServerError)
-			return
-		}
-		paymentCode = &code
+	paymentCode, ok := paymentCodeFor(w, paymentMethod)
+	if !ok {
+		return
+	}
+
+	// Hold the shop stock before anything else is created. This is the only
+	// place where overselling is prevented, so it must succeed atomically.
+	ctx := r.Context()
+	releaseStock, reserved := s.reserveStockOrRespond(w, r, orderID, cart)
+	if !reserved {
+		return
 	}
 
 	passwordHash, err := hashOptionalPassword(r)
 	if err != nil {
+		releaseStock()
 		http.Error(w, "Failed to process password", http.StatusInternalServerError)
 		return
 	}
 
 	// Get or create user
-	ctx := r.Context()
 	userID, err := s.getOrCreateUser(ctx, email, name, phone, address, passwordHash)
 	if err != nil {
+		releaseStock()
 		http.Error(w, "Failed to create/get user", http.StatusInternalServerError)
 		return
 	}
@@ -1110,6 +1153,7 @@ func (s *Server) handleCheckoutSubmit(w http.ResponseWriter, r *http.Request) {
 
 	orderEvent := s.buildOrderPlacedEvent(orderID, userID, cart, totalAmount, paymentMethod, paymentCode, isFirstOrder)
 	if err := s.persistPlacedOrder(ctx, orderID, orderEvent); err != nil {
+		releaseStock()
 		log.Printf("Failed to create order: %v", err)
 		http.Error(w, "Failed to create order", http.StatusInternalServerError)
 		return
@@ -1405,7 +1449,7 @@ func buildOrderDetailView(order map[string]interface{}) orderDetailView {
 	status, _ := enriched["Status"].(string)
 	paymentMethod, _ := enriched["PaymentMethod"].(string)
 	orderID, _ := enriched["ID"].(string)
-	totalAmount, _ := enriched["TotalAmount"].(float64)
+	totalAmount, _ := enriched["TotalAmount"].(domain.Money)
 
 	paymentCode := ""
 	if code, ok := enriched["PaymentCode"].(string); ok {
@@ -1419,7 +1463,7 @@ func buildOrderDetailView(order map[string]interface{}) orderDetailView {
 	canCancel := canUserCancelOrder(status, paymentMethod)
 	paymentView := map[string]interface{}{
 		"OrderID":           orderID,
-		"FinalTotal":        int(totalAmount),
+		"FinalTotal":        totalAmount,
 		"ShowConfirmButton": false,
 		"ShowPolling":       needsPayment && paymentMethod == domain.PaymentMethodBlik,
 	}
@@ -1978,6 +2022,9 @@ func (s *Server) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		"Products":                   products,
 		"GlobalBlockedDates":         globalBlockedDates,
 		"LastEmailImport":            lastEmailImport,
+		"Shop":                       s.shopAdminView(r.Context()),
+		"AdminNotice":                r.URL.Query().Get("notice"),
+		"AdminError":                 r.URL.Query().Get("error"),
 	}
 
 	data["IsAdmin"] = true
@@ -2267,6 +2314,15 @@ func (s *Server) handleAdminCreateReservation(w http.ResponseWriter, r *http.Req
 		http.Error(w, "Missing required fields", http.StatusBadRequest)
 		return
 	}
+	amount, err := domain.ParsePLN(price)
+	if err != nil || amount.IsNegative() {
+		http.Error(w, "Invalid price: use a non-negative amount with at most two decimals", http.StatusBadRequest)
+		return
+	}
+	if _, _, err := parseRentalDates(startDate, endDate); err != nil {
+		http.Error(w, "Invalid dates", http.StatusBadRequest)
+		return
+	}
 
 	// Generate order ID
 	orderID := fmt.Sprintf("MANUAL-%d", time.Now().UnixNano())
@@ -2277,7 +2333,7 @@ func (s *Server) handleAdminCreateReservation(w http.ResponseWriter, r *http.Req
 	INSERT INTO orders (id, user_id, total_amount, status, payment_method, start_date, end_date, created_at, updated_at)
 	VALUES (?, ?, ?, 'confirmed', 'manual', ?, ?, ?, ?)
 	`
-	_, err := s.readModels.GetDB().Exec(query, orderID, userID, price, startDate, endDate, now, now)
+	_, err = s.readModels.GetDB().Exec(query, orderID, userID, amount.Zloty(), startDate, endDate, now, now)
 	if err != nil {
 		log.Printf("Failed to create manual reservation: %v", err)
 		http.Error(w, "Failed to create reservation", http.StatusInternalServerError)
@@ -2464,6 +2520,9 @@ func (s *Server) renderTemplate(w http.ResponseWriter, r *http.Request, name str
 	if _, ok := data["CartTotal"]; !ok {
 		data["CartTotal"] = getCartTotal(r)
 	}
+	if _, ok := data["ShopNav"]; !ok {
+		data["ShopNav"] = s.shopHasVisibleItems(r)
+	}
 
 	if _, isPartial := partialTemplates[name]; isPartial {
 		s.renderPartialTemplate(w, name, data)
@@ -2508,17 +2567,34 @@ func isAdmin(r *http.Request) bool {
 
 // Cart types and functions
 
+// CartItem is a cart line: a dated rental, or (Kind == cartKindShop) a quantity of a shop item.
+// For shop lines ProductID is the shop item ID and BasePrice the unit price. The
+// cart lives in a cookie the visitor controls, so shop lines are re-priced from
+// the catalog before they are displayed or ordered (see normalizeCart): names,
+// prices, add-ons, day counts and totals in the cookie are never trusted.
 type CartItem struct {
-	CartID      string   `json:"cartId"`
-	ProductID   string   `json:"productId"`
-	ProductName string   `json:"productName"`
-	BasePrice   int      `json:"basePrice"`
-	StartDate   string   `json:"startDate"`
-	EndDate     string   `json:"endDate"`
-	RentalDays  int      `json:"rentalDays"`
-	Addons      []string `json:"addons"`
-	Total       int      `json:"total"`
+	CartID      string       `json:"cartId"`
+	Kind        string       `json:"kind,omitempty"`
+	ProductID   string       `json:"productId"`
+	SKU         string       `json:"sku,omitempty"`
+	ProductName string       `json:"productName"`
+	BasePrice   domain.Money `json:"basePrice"`
+	StartDate   string       `json:"startDate,omitempty"`
+	EndDate     string       `json:"endDate,omitempty"`
+	RentalDays  int          `json:"rentalDays,omitempty"`
+	Quantity    int          `json:"quantity,omitempty"`
+	Addons      []string     `json:"addons,omitempty"`
+	Total       domain.Money `json:"total"`
+
+	// Filled in by normalizeShopLines, never stored in the cookie.
+	tracked   bool
+	backorder bool
 }
+
+const cartKindShop = "shop"
+
+// IsShop reports whether the line is a shop purchase rather than a rental.
+func (c CartItem) IsShop() bool { return c.Kind == cartKindShop }
 
 func getCart(r *http.Request) []CartItem {
 	if cookie, err := r.Cookie("cart"); err == nil {
@@ -2585,37 +2661,55 @@ func getCartCount(r *http.Request) int {
 	return len(getCart(r))
 }
 
-func getCartTotal(r *http.Request) int {
-	return calculateFinalTotal(getCart(r))
+// getCartTotal is the header badge: a display-only sum of the totals stored in
+// the cookie. The amount charged is always recomputed by normalizeCart.
+func getCartTotal(r *http.Request) domain.Money {
+	total := domain.Money{}
+	for _, item := range getCart(r) {
+		total = total.Add(item.Total)
+	}
+	return total
 }
 
-func calculateItemTotal(product *domain.Product, addons []string, rentalDays int) int {
-	total := product.BasePrice
-	dailyAddonsTotal := 0
-	oneTimeAddonsTotal := 0
+// calculateItemTotal prices a rental of product with the chosen add-ons: the
+// base price and daily add-ons are multiplied by the rental days, one-time
+// add-ons are added once. Unknown add-on IDs are ignored.
+func calculateItemTotal(product *domain.Product, addons []string, rentalDays int) domain.Money {
+	return domain.RentalPrice(product.BasePrice, productAddons(*product, addons), rentalDays)
+}
 
-	for _, addonID := range addons {
+// productAddons resolves add-on IDs against the product, in the order chosen.
+func productAddons(product domain.Product, ids []string) []domain.Addon {
+	var resolved []domain.Addon
+	for _, id := range ids {
 		for _, addon := range product.Addons {
-			if addon.ID == addonID {
-				if addon.PaymentType == "one-time" {
-					oneTimeAddonsTotal += addon.Price
-				} else {
-					// Default to daily pricing
-					dailyAddonsTotal += addon.Price
-				}
+			if addon.ID == id {
+				resolved = append(resolved, domain.Addon{ID: addon.ID, Name: addon.Name, Price: addon.Price, PaymentType: addon.PaymentType})
+				break
 			}
 		}
 	}
-
-	// Base price and daily addons are multiplied by rental days
-	// One-time addons are added only once
-	return (total+dailyAddonsTotal)*rentalDays + oneTimeAddonsTotal
+	return resolved
 }
 
-func calculateCartTotal(cart []CartItem) int {
-	total := 0
+// calculateCartTotal totals the rental lines of the cart without add-ons.
+func calculateCartTotal(cart []CartItem) domain.Money {
+	total := domain.Money{}
 	for _, item := range cart {
-		total += item.BasePrice * item.RentalDays
+		if !item.IsShop() {
+			total = total.Add(item.BasePrice.Mul(item.RentalDays))
+		}
+	}
+	return total
+}
+
+// calculateShopTotal totals the shop lines of the cart.
+func calculateShopTotal(cart []CartItem) domain.Money {
+	total := domain.Money{}
+	for _, item := range cart {
+		if item.IsShop() {
+			total = total.Add(item.BasePrice.Mul(item.Quantity))
+		}
 	}
 	return total
 }
@@ -2752,10 +2846,13 @@ func (s *Server) handleArticle(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	article.Content = string(s.expandLinks(r, article.Content))
+
 	data := map[string]interface{}{
 		"Title":           article.Title,
 		"Article":         article,
 		"RelatedProducts": relatedProducts,
+		"RelatedShop":     s.shopItemsForArticle(r, article),
 		"CartCount":       getCartCount(r),
 		"CartTotal":       getCartTotal(r),
 	}
@@ -2763,15 +2860,19 @@ func (s *Server) handleArticle(w http.ResponseWriter, r *http.Request) {
 	s.renderTemplate(w, r, "article.html", data)
 }
 
-func calculateAddonsTotal(cart []CartItem) int {
-	total := 0
+// calculateAddonsTotal is what the chosen rental add-ons add on top of the base
+// price (a line's Total includes them).
+func calculateAddonsTotal(cart []CartItem) domain.Money {
+	total := domain.Money{}
 	for _, item := range cart {
-		// Simplified - in real implementation, calculate addon prices
-		_ = item
+		if !item.IsShop() {
+			total = total.Add(item.Total.Sub(item.BasePrice.Mul(item.RentalDays)))
+		}
 	}
 	return total
 }
 
-func calculateFinalTotal(cart []CartItem) int {
-	return calculateCartTotal(cart) + calculateAddonsTotal(cart)
+// calculateFinalTotal is everything the customer pays.
+func calculateFinalTotal(cart []CartItem) domain.Money {
+	return calculateCartTotal(cart).Add(calculateAddonsTotal(cart)).Add(calculateShopTotal(cart))
 }

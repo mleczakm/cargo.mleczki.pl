@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"math"
 	"net/http"
 	"strings"
 	"time"
@@ -202,7 +201,7 @@ func (h *BankMailHandler) autoMatch(ctx context.Context, transferID string, noti
 		orders[code] = struct {
 			id    string
 			gross int64
-		}{orderID, int64(math.Round(total * 100))}
+		}{orderID, domain.MoneyFromZloty(total).Minor()}
 	}
 	if err := rows.Err(); err != nil {
 		log.Printf("bank mail: iterate payment codes: %v", err)

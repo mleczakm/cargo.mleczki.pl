@@ -44,24 +44,25 @@ func NewParser(productsDir string) *Parser {
 type ProductFrontmatter struct {
 	ID          string               `yaml:"id"`
 	Name        string               `yaml:"name"`
-	BasePrice   int                  `yaml:"basePrice"`
+	BasePrice   domain.Money         `yaml:"basePrice"`
 	Image       string               `yaml:"image"`
 	Images      []string             `yaml:"images"`
 	Icon        string               `yaml:"icon"`
 	BookedDates []string             `yaml:"bookedDates"`
 	Addons      []AddonFrontmatter   `yaml:"addons"`
 	Articles    []ArticleFrontmatter `yaml:"articles"`
+	Shop        []string             `yaml:"shop"`
 	Visibility  string               `yaml:"visibility"`
 	Priority    int                  `yaml:"priority"`
 }
 
 type AddonFrontmatter struct {
-	ID          string `yaml:"id"`
-	Name        string `yaml:"name"`
-	Price       int    `yaml:"price"`
-	Icon        string `yaml:"icon"`
-	Image       string `yaml:"image"`
-	PaymentType string `yaml:"paymentType"`
+	ID          string       `yaml:"id"`
+	Name        string       `yaml:"name"`
+	Price       domain.Money `yaml:"price"`
+	Icon        string       `yaml:"icon"`
+	Image       string       `yaml:"image"`
+	PaymentType string       `yaml:"paymentType"`
 }
 
 type ArticleFrontmatter struct {
@@ -164,6 +165,7 @@ func (p *Parser) LoadProduct(filename string) (*domain.Product, error) {
 		Addons:      addons,
 		BookedDates: frontmatter.BookedDates,
 		Articles:    articles,
+		ShopItems:   frontmatter.Shop,
 		Visibility:  domain.Visibility(frontmatter.Visibility),
 		Priority:    frontmatter.Priority,
 	}

@@ -4,19 +4,33 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
+
+	"cargo.mleczki.pl/internal/domain"
+	"cargo.mleczki.pl/internal/shop"
 )
 
 // ReadModelsDB handles the read models database.
 type ReadModelsDB struct {
-	db *sql.DB
+	db    *sql.DB
+	stock *shop.Store
+}
+
+// withBusyTimeout makes SQLite wait for a competing writer instead of failing
+// at once with "database is locked". In-memory databases are left alone.
+func withBusyTimeout(dbPath string) string {
+	if dbPath == ":memory:" || strings.Contains(dbPath, "?") {
+		return dbPath
+	}
+	return dbPath + "?_pragma=busy_timeout(5000)"
 }
 
 // NewReadModelsDB creates a new read models database connection.
 func NewReadModelsDB(dbPath string) (*ReadModelsDB, error) {
-	db, err := sql.Open("sqlite", dbPath)
+	db, err := sql.Open("sqlite", withBusyTimeout(dbPath))
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
@@ -26,7 +40,7 @@ func NewReadModelsDB(dbPath string) (*ReadModelsDB, error) {
 		return nil, fmt.Errorf("failed to enable WAL mode: %w", err)
 	}
 
-	rm := &ReadModelsDB{db: db}
+	rm := &ReadModelsDB{db: db, stock: shop.NewStore(db)}
 	if err := rm.initSchema(); err != nil {
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
@@ -248,6 +262,7 @@ func (rm *ReadModelsDB) initSchema() error {
 		emailImportTable,
 		bankMailTable,
 		passwordResetTokensTable,
+		shop.Schema,
 	}
 	for i, schema := range schemas {
 		if _, err := rm.db.Exec(schema); err != nil {
@@ -314,6 +329,11 @@ func (rm *ReadModelsDB) GetDB() *sql.DB {
 	return rm.db
 }
 
+// Stock returns the shop stock ledger living in this database.
+func (rm *ReadModelsDB) Stock() *shop.Store {
+	return rm.stock
+}
+
 // Close closes the database connection.
 func (rm *ReadModelsDB) Close() error {
 	return rm.db.Close()
@@ -343,7 +363,7 @@ func (rm *ReadModelsDB) SaveCheckpoint(projectionName string, version int) error
 // GetAllUsers retrieves all users from the database.
 func (rm *ReadModelsDB) GetAllUsers() ([]map[string]interface{}, error) {
 	query := `
-	SELECT id, email, name, phone, address, is_admin, created_at
+	SELECT id, email, name, COALESCE(phone, ''), COALESCE(address, ''), is_admin, created_at
 	FROM users
 	WHERE deletion_requested = 0
 	ORDER BY created_at DESC
@@ -379,7 +399,7 @@ func (rm *ReadModelsDB) GetAllUsers() ([]map[string]interface{}, error) {
 // GetAllOrders retrieves all orders from the database.
 func (rm *ReadModelsDB) GetAllOrders() ([]map[string]interface{}, error) {
 	query := `
-	SELECT o.id, o.user_id, u.name as user_name, o.total_amount, o.status, o.payment_method, o.items_json, o.created_at
+	SELECT o.id, o.user_id, COALESCE(u.name, '') as user_name, o.total_amount, o.status, COALESCE(o.payment_method, ''), COALESCE(o.items_json, ''), o.created_at
 	FROM orders o
 	LEFT JOIN users u ON o.user_id = u.id
 	ORDER BY o.created_at DESC
@@ -402,7 +422,7 @@ func (rm *ReadModelsDB) GetAllOrders() ([]map[string]interface{}, error) {
 			"ID":            id,
 			"UserID":        userID,
 			"UserName":      userName,
-			"TotalAmount":   totalAmount,
+			"TotalAmount":   domain.MoneyFromZloty(totalAmount),
 			"Status":        status,
 			"PaymentMethod": paymentMethod,
 			"Items":         itemsJSON,
@@ -417,7 +437,7 @@ func (rm *ReadModelsDB) GetAllOrders() ([]map[string]interface{}, error) {
 // GetOrdersByUserID retrieves orders for a specific user.
 func (rm *ReadModelsDB) GetOrdersByUserID(userID string) ([]map[string]interface{}, error) {
 	query := `
-	SELECT o.id, o.user_id, o.total_amount, o.status, o.payment_method, o.items_json, o.start_date, o.end_date, o.rental_days, o.created_at
+	SELECT o.id, o.user_id, o.total_amount, o.status, COALESCE(o.payment_method, ''), COALESCE(o.items_json, ''), COALESCE(o.start_date, ''), COALESCE(o.end_date, ''), COALESCE(o.rental_days, 0), o.created_at
 	FROM orders o
 	WHERE o.user_id = ?
 	ORDER BY o.created_at DESC
@@ -440,7 +460,7 @@ func (rm *ReadModelsDB) GetOrdersByUserID(userID string) ([]map[string]interface
 		orders = append(orders, map[string]interface{}{
 			"ID":            id,
 			"UserID":        userIDRetrieved,
-			"TotalAmount":   totalAmount,
+			"TotalAmount":   domain.MoneyFromZloty(totalAmount),
 			"Status":        status,
 			"PaymentMethod": paymentMethod,
 			"Items":         itemsJSON,
@@ -459,7 +479,7 @@ func (rm *ReadModelsDB) GetOrdersByUserID(userID string) ([]map[string]interface
 // GetOrderByIDAndUserID retrieves a single order for a user.
 func (rm *ReadModelsDB) GetOrderByIDAndUserID(orderID, userID string) (map[string]interface{}, error) {
 	query := `
-	SELECT id, user_id, total_amount, status, payment_method, items_json, start_date, end_date, rental_days, created_at, payment_code
+	SELECT id, user_id, total_amount, status, COALESCE(payment_method, ''), COALESCE(items_json, ''), COALESCE(start_date, ''), COALESCE(end_date, ''), COALESCE(rental_days, 0), created_at, payment_code
 	FROM orders
 	WHERE id = ? AND user_id = ?
 	`
@@ -491,7 +511,7 @@ func (rm *ReadModelsDB) GetOrderByIDAndUserID(orderID, userID string) (map[strin
 	order := map[string]interface{}{
 		"ID":            id,
 		"UserID":        userIDRetrieved,
-		"TotalAmount":   totalAmount,
+		"TotalAmount":   domain.MoneyFromZloty(totalAmount),
 		"Status":        status,
 		"PaymentMethod": paymentMethod,
 		"Items":         itemsJSON,
@@ -621,7 +641,7 @@ func (rm *ReadModelsDB) GetPaymentCodeByOrderID(orderID string) (string, error) 
 // GetOrderByPaymentCode retrieves an order by its payment code.
 func (rm *ReadModelsDB) GetOrderByPaymentCode(code string) (map[string]interface{}, error) {
 	query := `
-	SELECT o.id, o.user_id, o.total_amount, o.status, o.payment_method, o.items_json, o.created_at
+	SELECT o.id, o.user_id, o.total_amount, o.status, COALESCE(o.payment_method, ''), COALESCE(o.items_json, ''), o.created_at
 	FROM orders o
 	WHERE o.payment_code = ?
 	`
@@ -637,7 +657,7 @@ func (rm *ReadModelsDB) GetOrderByPaymentCode(code string) (map[string]interface
 	return map[string]interface{}{
 		"ID":            id,
 		"UserID":        userID,
-		"TotalAmount":   totalAmount,
+		"TotalAmount":   domain.MoneyFromZloty(totalAmount),
 		"Status":        status,
 		"PaymentMethod": paymentMethod,
 		"Items":         itemsJSON,
@@ -696,7 +716,7 @@ func (rm *ReadModelsDB) IsFirstOrder(userID string) (bool, error) {
 // GetOrdersAwaitingConfirmation retrieves orders that are paid but not yet confirmed (pickup payments).
 func (rm *ReadModelsDB) GetOrdersAwaitingConfirmation() ([]map[string]interface{}, error) {
 	query := `
-	SELECT o.id, o.user_id, u.name as user_name, u.email as user_email, o.total_amount, o.status, o.payment_method, o.items_json, o.created_at
+	SELECT o.id, o.user_id, COALESCE(u.name, '') as user_name, COALESCE(u.email, '') as user_email, o.total_amount, o.status, COALESCE(o.payment_method, ''), COALESCE(o.items_json, ''), o.created_at
 	FROM orders o
 	LEFT JOIN users u ON o.user_id = u.id
 	WHERE o.status = 'paid' AND (o.payment_method = 'cash_pickup' OR o.payment_method = 'blik_pickup')
@@ -720,7 +740,7 @@ func (rm *ReadModelsDB) GetOrdersAwaitingConfirmation() ([]map[string]interface{
 			"UserID":        userID,
 			"UserName":      userName,
 			"UserEmail":     userEmail,
-			"TotalAmount":   totalAmount,
+			"TotalAmount":   domain.MoneyFromZloty(totalAmount),
 			"Status":        status,
 			"PaymentMethod": paymentMethod,
 			"Items":         itemsJSON,

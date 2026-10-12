@@ -72,7 +72,7 @@
                 <h3 class="text-lg font-bold text-gray-900 mb-4">Opcje dodatkowe</h3>
                 <div class="space-y-3">
                     {{range .Product.Addons}}
-                    <label class="flex items-center justify-between p-4 rounded-xl cursor-pointer transition-colors border border-gray-200 hover:border-emerald-300 bg-white" data-addon-id="{{.ID}}" data-addon-price="{{.Price}}" data-addon-payment-type="{{.PaymentType}}">
+                    <label class="flex items-center justify-between p-4 rounded-xl cursor-pointer transition-colors border border-gray-200 hover:border-emerald-300 bg-white" data-addon-id="{{.ID}}" data-addon-price="{{.Price.Minor}}" data-addon-payment-type="{{.PaymentType}}">
                         <div class="flex items-center space-x-4">
                             <input type="checkbox" name="addon_{{.ID}}" value="{{.ID}}" class="w-6 h-6 text-emerald-600 rounded border-gray-300 focus:ring-emerald-500" />
                             {{if .Image}}
@@ -86,7 +86,7 @@
                             </div>
                             {{end}}
                         </div>
-                        <span class="font-semibold text-emerald-700">+{{.Price}} zł {{if eq .PaymentType "one-time"}}jednorazowo{{else}}/ dobę{{end}}</span>
+                        <span class="font-semibold text-emerald-700">+{{.Price}} {{if eq .PaymentType "one-time"}}jednorazowo{{else}}/ dobę{{end}}</span>
                     </label>
                     {{end}}
                 </div>
@@ -118,10 +118,20 @@
             </div>
             {{end}}
 
+            {{if .RelatedShop}}
+            <div class="mb-8">
+                <h3 class="text-lg font-bold text-gray-900 mb-1">Akcesoria do tego sprzętu</h3>
+                <p class="text-sm text-gray-500 mb-4">Kup od nas i odbierz razem z rowerem.</p>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {{range .RelatedShop}}{{template "shop-card" .}}{{end}}
+                </div>
+            </div>
+            {{end}}
+
             <div class="mt-auto bg-gray-900 rounded-2xl p-6 text-white flex flex-col sm:flex-row items-center justify-between">
                 <div class="mb-4 sm:mb-0 text-center sm:text-left">
                     <p class="text-gray-400 text-sm">Cena za wybrany okres:</p>
-                    <p id="total-price" class="text-3xl font-black text-emerald-400">{{.Product.BasePrice}} zł</p>
+                    <p id="total-price" class="text-3xl font-black text-emerald-400">{{.Product.BasePrice}}</p>
                 </div>
                 <button id="add-to-cart-btn" class="w-full sm:w-auto font-bold py-4 px-8 rounded-xl transition-colors duration-300 flex items-center justify-center space-x-2 bg-gray-700 text-gray-400 cursor-not-allowed" disabled>
                     <i data-lucide="shopping-cart" class="w-5 h-5"></i>
@@ -138,14 +148,22 @@
     let selectedEndDate = null;
     let rentalDays = 1;
 
+    // Prices are handled in grosze so decimals never go through floating point.
+    function formatPLN(grosze) {
+        const whole = Math.trunc(grosze / 100);
+        const rest = Math.abs(grosze % 100);
+        const wholeText = whole.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+        return rest === 0 ? wholeText + ' zł' : wholeText + ',' + String(rest).padStart(2, '0') + ' zł';
+    }
+
     function updateTotal() {
-        const basePrice = {{.Product.BasePrice}}
+        const basePrice = {{.Product.BasePrice.Minor}};
         let dailyAddonsPrice = 0;
         let oneTimeAddonsPrice = 0;
 
         document.querySelectorAll('input[type="checkbox"][name^="addon_"]:checked').forEach(cb => {
             const label = cb.closest('label');
-            const price = parseInt(label.dataset.addonPrice);
+            const price = parseInt(label.dataset.addonPrice, 10);
             const paymentType = label.dataset.addonPaymentType;
             
             if (paymentType === 'one-time') {
@@ -156,7 +174,7 @@
         });
 
         const total = (basePrice + dailyAddonsPrice) * rentalDays + oneTimeAddonsPrice;
-        document.getElementById('total-price').textContent = total + ' zł';
+        document.getElementById('total-price').textContent = formatPLN(total);
 
         const btn = document.getElementById('add-to-cart-btn');
         if (selectedStartDate) {

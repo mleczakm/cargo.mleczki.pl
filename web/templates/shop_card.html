@@ -1,0 +1,37 @@
+{{define "shop-card"}}
+<a href="/shop/{{.ID}}" class="group bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-xl transition-shadow duration-300 flex flex-col">
+    <div class="h-48 bg-gray-50 relative overflow-hidden flex items-center justify-center">
+        {{if .Image}}
+        <img src="{{.Image}}" alt="{{.Name}}" class="w-full h-full object-contain group-hover:scale-105 transition-transform duration-500" />
+        {{else}}
+        <span class="text-6xl" aria-hidden="true">{{if .Icon}}{{.Icon}}{{else}}🛒{{end}}</span>
+        {{end}}
+        {{if .IsAffiliate}}
+        <span class="absolute top-3 left-3 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-xs font-bold text-gray-700 shadow-sm">Polecamy · {{.Affiliate.Merchant}}</span>
+        {{end}}
+    </div>
+    <div class="p-5 flex flex-col flex-grow">
+        <h3 class="text-lg font-bold text-gray-900 mb-1">{{.Name}}</h3>
+        {{if .Summary}}<p class="text-gray-600 text-sm mb-4 line-clamp-2">{{.Summary}}</p>{{end}}
+        <div class="mt-auto pt-2 flex items-center justify-between gap-2">
+            {{if .IsAffiliate}}
+            <span class="font-semibold text-gray-900">{{if .Affiliate.PriceHint}}{{.Affiliate.PriceHint}}{{else}}Sprawdź cenę{{end}}</span>
+            <span class="text-sm font-semibold text-emerald-700 group-hover:underline">Zobacz →</span>
+            {{else}}
+            <span class="text-xl font-black text-gray-900">{{if .PriceFrom}}od {{end}}{{.DisplayPrice}}</span>
+            <span class="text-xs font-bold px-2.5 py-1 rounded-full {{.BadgeClass}}">{{.Availability.Label}}</span>
+            {{end}}
+        </div>
+    </div>
+</a>
+{{end}}
+
+{{define "shop-strip"}}
+<section class="mt-12 pt-8 border-t border-gray-200">
+    <h3 class="text-2xl font-bold text-gray-900 mb-2">Akcesoria i polecane produkty</h3>
+    <p class="text-sm text-gray-500 mb-6">Przydatne dodatki ze sklepu. Linki oznaczone „Polecamy” prowadzą do zewnętrznych ofert.</p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        {{range .}}{{template "shop-card" .}}{{end}}
+    </div>
+</section>
+{{end}}

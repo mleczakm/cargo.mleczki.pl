@@ -51,6 +51,7 @@ type ArticleFrontmatter struct {
 	Image           string   `yaml:"image"`
 	PublishedAt     string   `yaml:"publishedAt"`
 	RelatedProducts []string `yaml:"relatedProducts"`
+	RelatedShop     []string `yaml:"relatedShop"`
 	Tags            []string `yaml:"tags"`
 	Visibility      string   `yaml:"visibility"`
 	Priority        int      `yaml:"priority"`
@@ -154,6 +155,7 @@ func (p *Parser) LoadArticle(filename string) (*domain.Article, error) {
 		Image:           image,
 		PublishedAt:     publishedAt,
 		RelatedProducts: frontmatter.RelatedProducts,
+		RelatedShop:     frontmatter.RelatedShop,
 		Tags:            frontmatter.Tags,
 		Visibility:      domain.Visibility(frontmatter.Visibility),
 		Priority:        frontmatter.Priority,

@@ -40,7 +40,7 @@ func (p *Projector) Run(ctx context.Context) error {
 	}
 
 	for _, event := range events {
-		if err := p.processEvent(event); err != nil {
+		if err := p.processEvent(ctx, event); err != nil {
 			log.Printf("Error processing event %s: %v", event.ID, err)
 			if saveErr := p.readModels.SaveCheckpoint(p.projectionName, lastVersion); saveErr != nil {
 				return fmt.Errorf("failed to save checkpoint: %w", saveErr)
@@ -54,16 +54,18 @@ func (p *Projector) Run(ctx context.Context) error {
 }
 
 // processEvent handles a single event and updates the appropriate read model.
-func (p *Projector) processEvent(event *eventstore.Event) error {
+func (p *Projector) processEvent(ctx context.Context, event *eventstore.Event) error {
 	switch event.EventType {
 	case "OrderPlaced":
 		return p.handleOrderPlaced(event)
 	case "OrderPaid":
 		return p.handleOrderPaid(event)
 	case "OrderCancelled":
-		return p.handleOrderCancelled(event)
+		return p.handleOrderCancelled(ctx, event)
 	case "OrderConfirmed":
 		return p.handleOrderConfirmed(event)
+	case "OrderRealized":
+		return p.handleOrderRealized(ctx, event)
 	case "UserRegistered":
 		return p.handleUserRegistered(event)
 	case "UserDetailsUpdated":
@@ -128,7 +130,7 @@ func (p *Projector) handleOrderPlaced(event *eventstore.Event) error {
 		eventData.OrderID,
 		eventData.UserID,
 		itemsJSON,
-		eventData.TotalAmount,
+		eventData.TotalAmount.Zloty(),
 		status,
 		eventData.PaymentMethod,
 		eventData.StartDate,
@@ -146,22 +148,31 @@ func (p *Projector) handleOrderPlaced(event *eventstore.Event) error {
 	return p.blockOrderProductDates(eventData)
 }
 
+// blockOrderProductDates books the calendar days of every rental line. Each line
+// has its own dates; orders placed before that (and manual ones) only carry the
+// order-level dates, which then apply to every line.
 func (p *Projector) blockOrderProductDates(eventData domain.OrderPlacedEvent) error {
-	if eventData.StartDate == "" || eventData.EndDate == "" || len(eventData.Items) == 0 {
-		return nil
-	}
-
-	start, err := time.Parse("2006-01-02", eventData.StartDate)
-	if err != nil {
-		return fmt.Errorf("invalid start date: %w", err)
-	}
-	end, err := time.Parse("2006-01-02", eventData.EndDate)
-	if err != nil {
-		return fmt.Errorf("invalid end date: %w", err)
-	}
-
 	db := p.readModels.GetDB()
 	for _, item := range eventData.Items {
+		if item.IsShop() {
+			continue // shop purchases hold stock, not calendar days
+		}
+		startDate, endDate := item.StartDate, item.EndDate
+		if startDate == "" || endDate == "" {
+			startDate, endDate = eventData.StartDate, eventData.EndDate
+		}
+		if startDate == "" || endDate == "" {
+			continue
+		}
+
+		start, err := time.Parse("2006-01-02", startDate)
+		if err != nil {
+			return fmt.Errorf("invalid start date: %w", err)
+		}
+		end, err := time.Parse("2006-01-02", endDate)
+		if err != nil {
+			return fmt.Errorf("invalid end date: %w", err)
+		}
 		for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
 			dateStr := d.Format("2006-01-02")
 			_, err = db.Exec(`
@@ -173,7 +184,6 @@ func (p *Projector) blockOrderProductDates(eventData domain.OrderPlacedEvent) er
 			}
 		}
 	}
-
 	return nil
 }
 
@@ -209,7 +219,7 @@ func (p *Projector) handleOrderPaid(event *eventstore.Event) error {
 }
 
 // handleOrderCancelled updates the order status to cancelled.
-func (p *Projector) handleOrderCancelled(event *eventstore.Event) error {
+func (p *Projector) handleOrderCancelled(ctx context.Context, event *eventstore.Event) error {
 	var e domain.OrderCancelledEvent
 	if err := json.Unmarshal(event.Payload, &e); err != nil {
 		return err
@@ -226,8 +236,12 @@ func (p *Projector) handleOrderCancelled(event *eventstore.Event) error {
 		return err
 	}
 
-	_, err = p.readModels.GetDB().Exec(`DELETE FROM product_bookings WHERE order_id = ?`, e.OrderID)
-	return err
+	if _, err = p.readModels.GetDB().Exec(`DELETE FROM product_bookings WHERE order_id = ?`, e.OrderID); err != nil {
+		return err
+	}
+
+	// Give back any shop stock the order was holding (no-op for rental-only orders).
+	return p.readModels.Stock().ReleaseOrder(ctx, e.OrderID)
 }
 
 // handleOrderConfirmed updates the order status to confirmed.
@@ -245,6 +259,25 @@ func (p *Projector) handleOrderConfirmed(event *eventstore.Event) error {
 
 	_, err := p.readModels.GetDB().Exec(query, e.Timestamp.Format("2006-01-02 15:04:05"), e.OrderID)
 	return err
+}
+
+// handleOrderRealized marks the order as completed and takes its shop stock off the shelf.
+func (p *Projector) handleOrderRealized(ctx context.Context, event *eventstore.Event) error {
+	var e domain.OrderRealizedEvent
+	if err := json.Unmarshal(event.Payload, &e); err != nil {
+		return err
+	}
+
+	_, err := p.readModels.GetDB().Exec(`
+		UPDATE orders
+		SET status = 'realized', updated_at = ?
+		WHERE id = ?
+	`, e.Timestamp.Format("2006-01-02 15:04:05"), e.OrderID)
+	if err != nil {
+		return err
+	}
+
+	return p.readModels.Stock().FulfilOrder(ctx, e.OrderID)
 }
 
 // handleUserRegistered creates a user in the read model.

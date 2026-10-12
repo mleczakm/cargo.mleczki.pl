@@ -1,13 +1,40 @@
 {{define "checkout-content"}}
 <div class="max-w-7xl mx-auto px-4 py-12 lg:flex lg:space-x-12">
     <div class="lg:w-2/3">
-        <h2 class="text-3xl font-black text-gray-900 mb-8">Dane do umowy i zamówienie</h2>
+        <h2 class="text-3xl font-black text-gray-900 mb-8">{{if .HasRentalLines}}Dane do umowy i zamówienie{{else}}Zamówienie{{end}}</h2>
+
+        {{if .Notice}}
+        <div class="mb-6 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl px-4 py-3 text-sm" role="alert">{{.Notice}}</div>
+        {{end}}
 
         <div class="space-y-4 mb-8">
-            <h3 class="text-xl font-bold text-gray-900">Sprzęt w koszyku</h3>
+            <h3 class="text-xl font-bold text-gray-900">{{if .HasRentalLines}}{{if .HasShopLines}}Sprzęt i produkty w koszyku{{else}}Sprzęt w koszyku{{end}}{{else}}Produkty w koszyku{{end}}</h3>
             {{if .Cart}}
                 {{range .Cart}}
-                <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                {{if .IsShop}}
+                <div class="bg-white rounded-2xl shadow-sm border {{if .Problem}}border-red-300{{else}}border-gray-100{{end}} p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div class="flex items-center space-x-4">
+                        <div class="w-16 h-16 bg-gray-50 rounded-xl flex items-center justify-center text-gray-400 text-2xl" aria-hidden="true">🛒</div>
+                        <div>
+                            <a href="/shop/{{.ProductID}}" class="font-bold text-gray-900 hover:text-emerald-700">{{.ProductName}}</a>
+                            <p class="text-sm text-gray-500 mt-1">{{.BasePrice}} / szt.</p>
+                            {{if .Problem}}<p class="text-sm text-red-600 font-medium mt-1">{{.Problem}}</p>{{end}}
+                        </div>
+                    </div>
+                    <div class="text-right flex flex-col items-end">
+                        <p class="font-bold text-lg text-gray-900">{{.Total}}</p>
+                        <form action="/cart/update/{{.CartID}}" method="post" class="flex items-center space-x-2 mt-2">
+                            <label class="sr-only" for="qty-{{.CartID}}">Ilość</label>
+                            <input id="qty-{{.CartID}}" type="number" name="quantity" value="{{.Quantity}}" min="0" class="w-16 p-1.5 border border-gray-300 rounded-lg text-sm text-center" />
+                            <button type="submit" class="text-sm text-emerald-700 hover:underline">Zmień</button>
+                        </form>
+                        <form action="/cart/remove/{{.CartID}}" method="post" class="inline">
+                            <button type="submit" class="text-sm text-red-500 mt-2 hover:underline">Usuń</button>
+                        </form>
+                    </div>
+                </div>
+                {{else}}
+                <div class="bg-white rounded-2xl shadow-sm border {{if .Problem}}border-red-300{{else}}border-gray-100{{end}} p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div class="flex items-center space-x-4">
                         <div class="w-16 h-16 bg-gray-50 rounded-xl flex items-center justify-center text-gray-400">
                             <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -17,22 +44,24 @@
                         <div>
                             <h4 class="font-bold text-gray-900">{{.ProductName}}</h4>
                             <p class="text-sm text-emerald-600 font-medium mt-1">Od {{.StartDate}} do {{.EndDate}} ({{.RentalDays}} dni)</p>
+                            {{if .Problem}}<p class="text-sm text-red-600 font-medium mt-1">{{.Problem}}</p>{{end}}
                             {{if .Addons}}
                                 <div class="mt-2 space-y-1">
                                     {{range .Addons}}
-                                    <p class="text-xs text-gray-500">• {{.Name}} ({{.Price}} zł {{if eq .PaymentType "one-time"}}jednorazowo{{else}}/ dobę{{end}})</p>
+                                    <p class="text-xs text-gray-500">• {{.Name}} ({{.Price}} {{if eq .PaymentType "one-time"}}jednorazowo{{else}}/ dobę{{end}})</p>
                                     {{end}}
                                 </div>
                             {{end}}
                         </div>
                     </div>
                     <div class="text-right flex flex-col items-end">
-                        <p class="font-bold text-lg text-gray-900">{{.Total}} zł</p>
+                        <p class="font-bold text-lg text-gray-900">{{.Total}}</p>
                         <form action="/cart/remove/{{.CartID}}" method="post" class="inline">
                             <button type="submit" class="text-sm text-red-500 mt-2 hover:underline">Usuń</button>
                         </form>
                     </div>
                 </div>
+                {{end}}
                 {{end}}
             {{else}}
                 <div class="bg-gray-50 rounded-2xl p-8 text-center">
@@ -51,7 +80,7 @@
                     <svg class="w-5 h-5 mr-2 text-emerald-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
                     </svg>
-                    Dane Najemcy (do umowy)
+                    {{if .HasRentalLines}}Dane Najemcy (do umowy){{else}}Dane do zamówienia{{end}}
                 </h3>
                 {{if not .IsLoggedIn}}
                     <a href="/login" class="text-sm text-emerald-600 font-medium hover:underline mt-2 sm:mt-0">
@@ -129,24 +158,33 @@
         <div class="bg-gray-900 rounded-3xl p-8 text-white sticky top-24 shadow-2xl">
             <h3 class="text-2xl font-bold mb-6">Podsumowanie</h3>
             <div class="space-y-4 mb-6 text-gray-300">
+                {{if or .HasRentalLines (not .HasShopLines)}}
                 <div class="flex justify-between">
                     <span>Koszt sprzętu</span>
-                    <span class="font-medium text-white">{{.CartTotal}} zł</span>
+                    <span class="font-medium text-white">{{.RentalTotal}}</span>
                 </div>
-                {{if gt .AddonsTotal 0}}
+                {{end}}
+                {{if .HasShopLines}}
+                <div class="flex justify-between">
+                    <span>Produkty ze sklepu</span>
+                    <span class="font-medium text-white">{{.ShopTotal}}</span>
+                </div>
+                {{end}}
+                {{if .AddonsTotal.IsPositive}}
                     <div class="flex justify-between">
                         <span>Opcje dodatkowe</span>
-                        <span class="font-medium text-white">{{.AddonsTotal}} zł</span>
+                        <span class="font-medium text-white">{{.AddonsTotal}}</span>
                     </div>
                 {{end}}
                 <div class="border-t border-gray-700 my-4"></div>
                 <div class="flex justify-between text-xl font-bold text-white">
                     <span>Razem do zapłaty</span>
-                    <span class="text-emerald-400">{{.FinalTotal}} zł</span>
+                    <span class="text-emerald-400">{{.FinalTotal}}</span>
                 </div>
             </div>
 
-            <button type="submit" form="checkout-form" class="w-full bg-emerald-500 hover:bg-emerald-400 text-white font-bold py-4 px-4 rounded-xl transition-colors duration-300 flex items-center justify-center">
+            {{if .HasProblems}}<p class="text-sm text-amber-300 mb-3">Popraw pozycje oznaczone na czerwono, aby złożyć zamówienie.</p>{{end}}
+            <button type="submit" form="checkout-form" {{if .HasProblems}}disabled{{end}} class="w-full bg-emerald-500 hover:bg-emerald-400 text-white font-bold py-4 px-4 rounded-xl transition-colors duration-300 flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed">
                 Potwierdzam zamówienie
                 <svg class="ml-2 w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/>

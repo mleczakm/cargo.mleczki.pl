@@ -10,11 +10,15 @@
         </h2>
     </div>
 
+    {{if .AdminNotice}}<div class="mb-6 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl px-4 py-3 text-sm" role="status">{{.AdminNotice}}</div>{{end}}
+    {{if .AdminError}}<div class="mb-6 bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 text-sm" role="alert">{{.AdminError}}</div>{{end}}
+
     <!-- Tab Navigation -->
     <div class="flex space-x-2 mb-8 border-b border-gray-200 pb-2 overflow-x-auto">
         <button onclick="showTab('orders')" id="tab-orders" class="px-4 py-2 font-bold rounded-t-lg bg-gray-900 text-white">Zamówienia & Wpłaty</button>
         <button onclick="showTab('users')" id="tab-users" class="px-4 py-2 font-bold rounded-t-lg text-gray-600 hover:bg-gray-100">Klienci (CRM)</button>
         <button onclick="showTab('fleet')" id="tab-fleet" class="px-4 py-2 font-bold rounded-t-lg text-gray-600 hover:bg-gray-100">Zarządzanie Flotą</button>
+        <button onclick="showTab('shop')" id="tab-shop" class="px-4 py-2 font-bold rounded-t-lg text-gray-600 hover:bg-gray-100">Sklep{{with .Shop}}{{if .Problems}} <span class="ml-1 text-xs bg-red-600 text-white rounded-full px-1.5 py-0.5">{{len .Problems}}</span>{{end}}{{end}}</button>
         <button onclick="showTab('settings')" id="tab-settings" class="px-4 py-2 font-bold rounded-t-lg text-gray-600 hover:bg-gray-100">Globalne Zamknięcia Sklepu</button>
     </div>
 
@@ -48,7 +52,7 @@
                         <strong>Metoda płatności:</strong> {{.PaymentMethod}}
                     </p>
                     <p class="text-sm text-gray-600 mb-3">
-                        <strong>Kwota:</strong> {{.TotalAmount}} zł
+                        <strong>Kwota:</strong> {{.TotalAmount}}
                     </p>
                     <div class="flex justify-between items-center mt-2 pt-2 border-t border-gray-200">
                         <span class="text-xs text-red-600 font-medium">Pierwsze zamówienie klienta - płatność przy odbiorze</span>
@@ -89,7 +93,12 @@
                             </p>
 
                             <div class="flex justify-between items-center mt-2 pt-2 border-t border-gray-200">
-                                <span class="font-bold text-gray-900">{{.TotalAmount}} zł ({{.PaymentMethod}})</span>
+                                <span class="font-bold text-gray-900">{{.TotalAmount}} ({{.PaymentMethod}})</span>
+                                {{if eq .Status "confirmed"}}
+                                    <form method="post" action="/admin/order/{{.ID}}/realize" onsubmit="return confirm('Oznaczyć zamówienie jako zrealizowane (wydane)?');">
+                                        <button type="submit" class="text-xs bg-gray-900 text-white px-3 py-1.5 rounded-lg hover:bg-gray-800 shadow-sm transition-colors">Oznacz jako zrealizowane</button>
+                                    </form>
+                                {{end}}
                                 {{if and (ne .Status "paid") (eq .PaymentMethod "cash")}}
                                     <button hx-post="/admin/order/{{.ID}}/mark-paid" hx-target="#orders-section" class="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 shadow-sm transition-colors">
                                         Oznacz zapłacone (Gotówka)
@@ -148,7 +157,7 @@
                                     <select id="select-{{.ID}}" class="text-sm border border-gray-300 rounded-lg px-2 py-1.5 flex-grow outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500">
                                         <option value="">Powiąż wpłatę z zamówieniem...</option>
                                         {{range .UnmatchedOrders}}
-                                            <option value="{{.ID}}">{{.ID}} ({{.UserName}}) - {{.TotalAmount}}zł</option>
+                                            <option value="{{.ID}}">{{.ID}} ({{.UserName}}) - {{.TotalAmount}}</option>
                                         {{end}}
                                     </select>
                                     <button hx-post="/admin/transfer/{{.ID}}/link" hx-include="#select-{{.ID}}" hx-target="#transfers-section" class="bg-gray-900 hover:bg-gray-800 text-white text-xs px-4 py-2 rounded-lg font-bold transition-colors">
@@ -233,6 +242,124 @@
         </div>
     </div>
 
+
+    <!-- Shop Tab -->
+    {{with .Shop}}
+    <div id="content-shop" class="tab-content hidden">
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <div class="bg-white rounded-2xl border border-gray-200 p-5"><p class="text-xs font-bold text-gray-500 uppercase tracking-wider">Produkty w katalogu</p><p class="text-3xl font-black text-gray-900 mt-1">{{.ItemsTotal}}</p></div>
+            <div class="bg-white rounded-2xl border border-gray-200 p-5"><p class="text-xs font-bold text-gray-500 uppercase tracking-wider">Kończą się</p><p class="text-3xl font-black text-amber-600 mt-1">{{.LowCount}}</p></div>
+            <div class="bg-white rounded-2xl border border-gray-200 p-5"><p class="text-xs font-bold text-gray-500 uppercase tracking-wider">Wyprzedane</p><p class="text-3xl font-black text-red-600 mt-1">{{.OutCount}}</p></div>
+            <div class="bg-white rounded-2xl border border-gray-200 p-5"><p class="text-xs font-bold text-gray-500 uppercase tracking-wider">Problemy w katalogu</p><p class="text-3xl font-black {{if .Problems}}text-red-600{{else}}text-emerald-600{{end}} mt-1">{{len .Problems}}</p></div>
+        </div>
+
+        {{if .Problems}}
+        <div class="bg-red-50 border-2 border-red-200 rounded-2xl p-6 mb-8">
+            <h3 class="font-bold text-lg text-red-900 mb-3">Do poprawienia w plikach katalogu</h3>
+            <ul class="list-disc pl-5 space-y-1 text-sm text-red-800">
+                {{range .Problems}}<li>{{.}}</li>{{end}}
+            </ul>
+            <p class="text-xs text-red-700 mt-3">Pozycje z błędami są ukryte w sklepie, dopóki plik nie zostanie poprawiony.</p>
+        </div>
+        {{end}}
+
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-8">
+            <h3 class="font-bold text-xl mb-2">Stany magazynowe</h3>
+            <p class="text-sm text-gray-600 mb-6">„Zarezerwowane” to sztuki z niezrealizowanych zamówień. „Dostępne” = na stanie − zarezerwowane. Inwentaryzacja ustawia stan na policzoną ilość.</p>
+            {{if .Stock}}
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm text-left">
+                    <thead class="text-xs uppercase text-gray-500 border-b border-gray-200">
+                        <tr><th class="py-2 pr-4">Produkt</th><th class="py-2 pr-4">SKU</th><th class="py-2 pr-4 text-right">Na stanie</th><th class="py-2 pr-4 text-right">Zarezerw.</th><th class="py-2 pr-4 text-right">Dostępne</th><th class="py-2">Operacja</th></tr>
+                    </thead>
+                    <tbody>
+                        {{range .Stock}}
+                        <tr class="border-b border-gray-100 align-middle">
+                            <td class="py-3 pr-4">
+                                <a href="/shop/{{.ItemID}}" class="font-semibold text-gray-900 hover:text-emerald-700">{{.ItemName}}</a>
+                                {{if .VariantName}}<span class="text-gray-500"> – {{.VariantName}}</span>{{end}}
+                                {{if .Backorder}}<span class="ml-1 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">na zamówienie</span>{{end}}
+                            </td>
+                            <td class="py-3 pr-4 font-mono text-xs text-gray-500">{{.SKU}}</td>
+                            <td class="py-3 pr-4 text-right font-semibold">{{.OnHand}}</td>
+                            <td class="py-3 pr-4 text-right">{{.Reserved}}</td>
+                            <td class="py-3 pr-4 text-right">
+                                <span class="font-bold px-2 py-1 rounded {{if eq .State "out"}}bg-red-100 text-red-700{{else if eq .State "low"}}bg-amber-100 text-amber-800{{else}}bg-emerald-100 text-emerald-800{{end}}">{{.Available}}</span>
+                            </td>
+                            <td class="py-3">
+                                <form method="post" action="/admin/shop/stock/adjust" class="flex flex-wrap items-center gap-2">
+                                    <input type="hidden" name="sku" value="{{.SKU}}" />
+                                    <label class="sr-only" for="kind-{{.SKU}}">Rodzaj operacji</label>
+                                    <select id="kind-{{.SKU}}" name="kind" class="p-2 border border-gray-300 rounded-lg text-xs bg-white">
+                                        <option value="receive">Dostawa (+)</option>
+                                        <option value="return">Zwrot od klienta (+)</option>
+                                        <option value="loss">Strata / uszkodzenie (−)</option>
+                                        <option value="count">Inwentaryzacja (ustaw stan)</option>
+                                    </select>
+                                    <input type="number" name="quantity" min="0" required placeholder="Ilość" aria-label="Ilość" class="w-20 p-2 border border-gray-300 rounded-lg text-xs" />
+                                    <input type="text" name="note" maxlength="200" placeholder="Notatka (opcjonalnie)" aria-label="Notatka" class="w-44 p-2 border border-gray-300 rounded-lg text-xs" />
+                                    <button type="submit" class="bg-gray-900 hover:bg-gray-800 text-white text-xs font-bold px-3 py-2 rounded-lg">Zapisz</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+            </div>
+            {{else}}
+            <p class="text-gray-500 text-center py-4">Brak produktów ze śledzonym stanem. Dodaj plik w <code>data/shop/</code>.</p>
+            {{end}}
+            {{if .Unlimited}}
+            <p class="text-xs text-gray-500 mt-4">Bez limitu (stan nie jest liczony): {{range $i, $n := .Unlimited}}{{if $i}}, {{end}}{{$n}}{{end}}.</p>
+            {{end}}
+        </div>
+
+        <div class="grid grid-cols-1 xl:grid-cols-2 gap-8">
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+                <h3 class="font-bold text-xl mb-4">Ostatnie ruchy magazynowe</h3>
+                {{if .Movements}}
+                <div class="space-y-2 max-h-96 overflow-y-auto pr-2">
+                    {{range .Movements}}
+                    <div class="border border-gray-100 bg-gray-50 rounded-xl px-4 py-3 text-sm">
+                        <div class="flex justify-between gap-3">
+                            <span class="font-semibold text-gray-900">{{.ItemName}}</span>
+                            <span class="font-bold {{if lt .DeltaOnHand 0}}text-red-600{{else if gt .DeltaOnHand 0}}text-emerald-700{{else}}text-gray-500{{end}}">{{if gt .DeltaOnHand 0}}+{{end}}{{.DeltaOnHand}}{{if .DeltaReserved}} <span class="text-xs text-gray-500">(rez. {{if gt .DeltaReserved 0}}+{{end}}{{.DeltaReserved}})</span>{{end}}</span>
+                        </div>
+                        <p class="text-xs text-gray-500 mt-1">{{.KindLabel}}{{if .OrderID}} · {{.OrderID}}{{end}}{{if .Actor}} · {{.Actor}}{{end}} · {{.CreatedAt}}</p>
+                        {{if .Note}}<p class="text-xs text-gray-600 mt-1">{{.Note}}</p>{{end}}
+                    </div>
+                    {{end}}
+                </div>
+                {{else}}
+                <p class="text-gray-500 text-sm">Brak ruchów.</p>
+                {{end}}
+            </div>
+
+            <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
+                <h3 class="font-bold text-xl mb-4">Linki afiliacyjne</h3>
+                {{if .Affiliate}}
+                <div class="space-y-2">
+                    {{range .Affiliate}}
+                    <div class="border border-gray-100 bg-gray-50 rounded-xl px-4 py-3 text-sm flex justify-between gap-3">
+                        <div class="min-w-0">
+                            <a href="/shop/{{.ItemID}}" class="font-semibold text-gray-900 hover:text-emerald-700">{{.Name}}</a>
+                            <p class="text-xs text-gray-500 truncate">{{.Merchant}} · {{.URL}}</p>
+                        </div>
+                        <div class="text-right flex-shrink-0">
+                            <p class="font-bold text-gray-900">{{.Last30Days}} <span class="text-xs font-normal text-gray-500">/ 30 dni</span></p>
+                            <p class="text-xs text-gray-500">{{.Total}} łącznie</p>
+                        </div>
+                    </div>
+                    {{end}}
+                </div>
+                {{else}}
+                <p class="text-gray-500 text-sm">Brak produktów afiliacyjnych.</p>
+                {{end}}
+            </div>
+        </div>
+    </div>
+    {{end}}
+
     <!-- Global Store Closures Tab -->
     <div id="content-settings" class="tab-content hidden">
         <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
@@ -285,6 +412,12 @@ function copyBankMailAddress(button) {
     document.execCommand('copy');
     done();
 }
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    var tab = window.location.hash.slice(1);
+    if (tab && document.getElementById('content-' + tab)) { showTab(tab); }
+});
 </script>
 <script>
 function showTab(tabName) {

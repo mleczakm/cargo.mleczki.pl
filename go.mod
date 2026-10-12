@@ -4,6 +4,7 @@ go 1.26.4
 
 require (
 	github.com/DATA-DOG/go-sqlmock v1.5.2
+	github.com/Rhymond/go-money v1.0.15
 	github.com/SherClockHolmes/webpush-go v1.4.0
 	github.com/getbrevo/brevo-go v1.1.3
 	github.com/go-chi/chi/v5 v5.3.0

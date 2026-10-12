@@ -5,6 +5,8 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -15,7 +17,25 @@ import (
 	"cargo.mleczki.pl/internal/eventstore"
 	"cargo.mleczki.pl/internal/products"
 	"cargo.mleczki.pl/internal/projections"
+	"cargo.mleczki.pl/internal/shop"
 )
+
+// defaultShopReservationHours is how long an unpaid order may hold shop stock.
+const defaultShopReservationHours = 48
+
+// shopReservationTTL reads SHOP_RESERVATION_TTL_HOURS; 0 disables expiry.
+func shopReservationTTL() time.Duration {
+	hours := defaultShopReservationHours
+	if raw := strings.TrimSpace(os.Getenv("SHOP_RESERVATION_TTL_HOURS")); raw != "" {
+		parsed, err := strconv.Atoi(raw)
+		if err != nil || parsed < 0 {
+			log.Printf("Ignoring invalid SHOP_RESERVATION_TTL_HOURS=%q, using %d", raw, defaultShopReservationHours)
+		} else {
+			hours = parsed
+		}
+	}
+	return time.Duration(hours) * time.Hour
+}
 
 func main() {
 	// Ensure data directories exist
@@ -24,6 +44,9 @@ func main() {
 	}
 	if err := os.MkdirAll("data/articles", 0755); err != nil {
 		log.Fatalf("Failed to create data/articles directory: %v", err)
+	}
+	if err := os.MkdirAll("data/shop", 0755); err != nil {
+		log.Fatalf("Failed to create data/shop directory: %v", err)
 	}
 	if err := os.MkdirAll("db", 0755); err != nil {
 		log.Fatalf("Failed to create db directory: %v", err)
@@ -64,6 +87,16 @@ func main() {
 	// Initialize article parser
 	articleParser := articles.NewParser("data/articles")
 
+	// Initialize shop catalog and make sure every stocked SKU has a ledger row
+	shopParser := shop.NewParser("data/shop")
+	shopItems, shopErr := shopParser.LoadAll()
+	if shopErr != nil {
+		log.Printf("Shop catalog problems (affected items are hidden):\n%v", shopErr)
+	}
+	if err := readModels.Stock().SyncCatalog(ctx, shopItems); err != nil {
+		log.Printf("Warning: failed to sync shop stock: %v", err)
+	}
+
 	// Initialize projector
 	projector := projections.NewProjector(eventStore, readModels, "main")
 
@@ -78,7 +111,13 @@ func main() {
 	}()
 
 	// Create server
-	server := NewServer(eventStore, readModels, projector, productParser, articleParser, authManager)
+	server := NewServer(eventStore, readModels, projector, productParser, articleParser, shopParser, authManager)
+
+	// Unpaid orders must not hold shop stock forever.
+	if ttl := shopReservationTTL(); ttl > 0 {
+		log.Printf("Unpaid orders holding shop stock expire after %s", ttl)
+		go server.RunShopReservationSweeper(ctx, ttl, 10*time.Minute)
+	}
 
 	// Create chi router
 	r := chi.NewRouter()

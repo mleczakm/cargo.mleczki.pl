@@ -112,3 +112,83 @@ func TestReadModelsDB_SaveCheckpoint(t *testing.T) {
 		t.Errorf("Expected checkpoint 42, got %d", checkpoint)
 	}
 }
+
+func projectOrderPlaced(t *testing.T, payload string) (*projections.ReadModelsDB, error) {
+	t.Helper()
+	eventStore, err := eventstore.NewSQLiteEventStore(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = eventStore.Close() })
+	readModels, err := projections.NewReadModelsDB(":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = readModels.Close() })
+
+	event := &eventstore.Event{ID: "e1", AggregateID: "ORD-1", AggregateType: "order", EventType: "OrderPlaced", Payload: json.RawMessage(payload), Version: 1}
+	if err := eventStore.Save(t.Context(), event); err != nil {
+		t.Fatal(err)
+	}
+	return readModels, projections.NewProjector(eventStore, readModels, "test").Run(t.Context())
+}
+
+func bookedDays(t *testing.T, readModels *projections.ReadModelsDB, product string) []string {
+	t.Helper()
+	days, err := readModels.GetBookedDatesForProduct(product)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return days
+}
+
+func TestProjector_BooksEveryRentalLineOnItsOwnDates(t *testing.T) {
+	readModels, err := projectOrderPlaced(t, `{
+		"orderId":"ORD-1","userId":"u","paymentMethod":"blik","timestamp":"2024-01-01T00:00:00Z",
+		"startDate":"2099-05-01","endDate":"2099-05-20","rentalDays":20,
+		"totalAmount":"381.50",
+		"items":[
+			{"productId":"cargo","productName":"Cargo","basePrice":"150.00","rentalDays":2,"startDate":"2099-05-01","endDate":"2099-05-02"},
+			{"productId":"tandem","productName":"Tandem","basePrice":"80.50","rentalDays":1,"startDate":"2099-05-20","endDate":"2099-05-20"},
+			{"kind":"shop","productId":"bell","sku":"bell","basePrice":"9.90","quantity":2}
+		]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := bookedDays(t, readModels, "cargo"); len(got) != 2 || got[0] != "2099-05-01" || got[1] != "2099-05-02" {
+		t.Errorf("cargo booked %v", got)
+	}
+	if got := bookedDays(t, readModels, "tandem"); len(got) != 1 || got[0] != "2099-05-20" {
+		t.Errorf("tandem booked %v", got)
+	}
+	if got := bookedDays(t, readModels, "bell"); len(got) != 0 {
+		t.Errorf("shop lines book no days, got %v", got)
+	}
+
+	var total float64
+	if err := readModels.GetDB().QueryRow(`SELECT total_amount FROM orders WHERE id = 'ORD-1'`).Scan(&total); err != nil || total != 381.5 {
+		t.Errorf("total = %v, %v", total, err)
+	}
+	orders, err := readModels.GetAllOrders()
+	if err != nil || len(orders) != 1 || orders[0]["TotalAmount"] != domain.PLN(38150) {
+		t.Errorf("orders = %v, %v", orders, err)
+	}
+}
+
+func TestProjector_OrdersStoredBeforeLineDatesUseTheOrderDates(t *testing.T) {
+	// The shape of an event written before decimals and per-line dates existed.
+	readModels, err := projectOrderPlaced(t, `{
+		"orderId":"ORD-1","userId":"u","paymentMethod":"blik","timestamp":"2024-01-01T00:00:00Z",
+		"startDate":"2099-05-01","endDate":"2099-05-03","rentalDays":3,"totalAmount":450,
+		"items":[{"productId":"cargo","productName":"Cargo","basePrice":150,"rentalDays":3,"selectedAddons":[]}]}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := bookedDays(t, readModels, "cargo"); len(got) != 3 {
+		t.Errorf("cargo booked %v, want the 3 order days", got)
+	}
+	orders, _ := readModels.GetAllOrders()
+	if len(orders) != 1 || orders[0]["TotalAmount"] != domain.Zloty(450) {
+		t.Errorf("a legacy whole-złoty total must read as 450 zł: %v", orders)
+	}
+}

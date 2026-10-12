@@ -22,6 +22,7 @@ type Article struct {
 	Image           string
 	PublishedAt     time.Time
 	RelatedProducts []string // Product IDs this article relates to
+	RelatedShop     []string // Shop item IDs this article relates to
 	Tags            []string
 	Visibility      Visibility
 	Priority        int // Higher priority = shown first

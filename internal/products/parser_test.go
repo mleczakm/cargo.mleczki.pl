@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"cargo.mleczki.pl/internal/domain"
 	"cargo.mleczki.pl/internal/products"
 )
 
@@ -133,8 +134,8 @@ Test product description with **markdown** formatting.
 		t.Errorf("Expected name 'Test Product', got %s", product.Name)
 	}
 
-	if product.BasePrice != 150 {
-		t.Errorf("Expected base price 150, got %d", product.BasePrice)
+	if product.BasePrice != domain.Zloty(150) {
+		t.Errorf("Expected base price 150, got %s", product.BasePrice)
 	}
 
 	if len(product.BookedDates) != 2 {

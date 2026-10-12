@@ -15,13 +15,14 @@ type Product struct {
 	ID          string
 	Name        string
 	Description string
-	BasePrice   int
+	BasePrice   Money
 	Image       string
 	Images      []string
 	Icon        string
 	Addons      []ProductAddon
 	BookedDates []string
 	Articles    []ArticleReference
+	ShopItems   []string // shop item IDs recommended with this product
 	Visibility  Visibility
 	Priority    int // Higher priority = shown first
 }
@@ -30,7 +31,7 @@ type Product struct {
 type ProductAddon struct {
 	ID          string
 	Name        string
-	Price       int
+	Price       Money
 	Icon        string
 	Image       string
 	PaymentType string // "one-time" or "daily"
