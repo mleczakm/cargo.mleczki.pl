@@ -130,6 +130,50 @@
             </form>
         </div>
 
+        {{with .Delivery}}
+        <div id="delivery-section" class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-8">
+            <h3 class="text-xl font-bold text-gray-900 mb-4 flex items-center"><i data-lucide="package" class="w-5 h-5 mr-2 text-emerald-600"></i>Dostawa</h3>
+            {{if .Note}}<p class="text-sm text-gray-600 bg-gray-50 border border-gray-100 rounded-xl px-4 py-3 mb-4">{{.Note}}</p>{{end}}
+            <div class="space-y-3">
+                {{range .Options}}
+                <label class="delivery-option flex items-center justify-between gap-4 p-4 border-2 rounded-2xl cursor-pointer transition-all {{if .Default}}border-emerald-500 bg-emerald-50{{else}}border-gray-200 hover:border-emerald-300{{end}}"
+                       data-kind="{{.Kind}}" data-code="{{.Code}}" data-cost="{{.CostLabel}}" data-total="{{.TotalLabel}}" data-shipped="{{if ne .Kind "pickup"}}1{{end}}">
+                    <span class="flex items-center gap-3">
+                        <input type="radio" name="shipping_method" value="{{.Code}}" form="checkout-form" class="w-5 h-5 text-emerald-600" {{if .Default}}checked{{end}} />
+                        <span>
+                            <span class="block font-bold text-gray-900">{{.Name}}</span>
+                            {{if .Description}}<span class="block text-xs text-gray-500">{{.Description}}</span>{{end}}
+                            {{if and .FreeFrom.IsPositive (ne .Kind "pickup")}}<span class="block text-xs text-emerald-700">Bezpłatnie od {{.FreeFrom}}</span>{{end}}
+                        </span>
+                    </span>
+                    <span class="font-bold text-gray-900 whitespace-nowrap">{{.CostLabel}}</span>
+                </label>
+                {{end}}
+            </div>
+
+            <div id="delivery-locker" class="hidden mt-5 p-4 bg-gray-50 border border-gray-200 rounded-2xl">
+                <label class="block text-sm font-bold text-gray-900 mb-2" for="locker-query">Znajdź paczkomat lub punkt odbioru</label>
+                <div class="flex gap-2">
+                    <input id="locker-query" type="search" autocomplete="off" placeholder="miasto, ulica, kod pocztowy lub kod paczkomatu" class="flex-grow p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" />
+                    <button type="button" id="locker-search" class="px-5 rounded-xl bg-gray-900 text-white font-bold hover:bg-gray-800">Szukaj</button>
+                </div>
+                <ul id="locker-results" class="mt-3 space-y-2 text-sm" aria-live="polite"></ul>
+                <p id="locker-chosen" class="hidden mt-3 text-sm bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl px-4 py-3"></p>
+                <input type="hidden" name="locker" id="locker-code" form="checkout-form" />
+            </div>
+
+            <div id="delivery-address" class="hidden mt-5 p-4 bg-gray-50 border border-gray-200 rounded-2xl grid grid-cols-1 md:grid-cols-3 gap-4">
+                <label class="md:col-span-3 block text-sm font-medium text-gray-700">Ulica i numer domu / mieszkania
+                    <input type="text" name="ship_street" form="checkout-form" autocomplete="street-address" class="mt-1 w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" /></label>
+                <label class="block text-sm font-medium text-gray-700">Kod pocztowy
+                    <input type="text" name="ship_postcode" form="checkout-form" autocomplete="postal-code" inputmode="numeric" placeholder="00-000" pattern="[0-9]{2}-[0-9]{3}" class="mt-1 w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" /></label>
+                <label class="md:col-span-2 block text-sm font-medium text-gray-700">Miasto
+                    <input type="text" name="ship_city" form="checkout-form" autocomplete="address-level2" class="mt-1 w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" /></label>
+            </div>
+            <p id="delivery-payment-note" class="hidden mt-4 text-xs text-gray-500">Przesyłkę opłacasz BLIK-iem przed wysyłką — płatność przy odbiorze jest wtedy niedostępna.</p>
+        </div>
+        {{end}}
+
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <h3 class="text-xl font-bold text-gray-900 mb-4">Metoda płatności</h3>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -176,10 +220,16 @@
                         <span class="font-medium text-white">{{.AddonsTotal}}</span>
                     </div>
                 {{end}}
+                {{if .Delivery}}
+                    <div class="flex justify-between">
+                        <span>Dostawa</span>
+                        <span id="delivery-cost" class="font-medium text-white">Bezpłatnie</span>
+                    </div>
+                {{end}}
                 <div class="border-t border-gray-700 my-4"></div>
                 <div class="flex justify-between text-xl font-bold text-white">
                     <span>Razem do zapłaty</span>
-                    <span class="text-emerald-400">{{.FinalTotal}}</span>
+                    <span id="final-total" class="text-emerald-400" data-base="{{.FinalTotal}}">{{.FinalTotal}}</span>
                 </div>
             </div>
 
@@ -227,6 +277,108 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         });
     });
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    const section = document.getElementById('delivery-section');
+    if (!section) return;
+    const options = section.querySelectorAll('.delivery-option');
+    const lockerBox = document.getElementById('delivery-locker');
+    const addressBox = document.getElementById('delivery-address');
+    const lockerCode = document.getElementById('locker-code');
+    const chosenBox = document.getElementById('locker-chosen');
+    const results = document.getElementById('locker-results');
+    const query = document.getElementById('locker-query');
+    const paymentNote = document.getElementById('delivery-payment-note');
+    const costEl = document.getElementById('delivery-cost');
+    const totalEl = document.getElementById('final-total');
+    const cash = document.querySelector('.payment-method-label[data-method="cash_pickup"]');
+    const blik = document.querySelector('.payment-method-label[data-method="blik"]');
+    let method = '';
+
+    function current() { return section.querySelector('input[name="shipping_method"]:checked'); }
+
+    function apply() {
+        const radio = current();
+        if (!radio) return;
+        const label = radio.closest('.delivery-option');
+        method = radio.value;
+        options.forEach(o => {
+            const on = o === label;
+            o.classList.toggle('border-emerald-500', on);
+            o.classList.toggle('bg-emerald-50', on);
+            o.classList.toggle('border-gray-200', !on);
+        });
+        const kind = label.dataset.kind;
+        const shipped = label.dataset.shipped === '1';
+        lockerBox.classList.toggle('hidden', kind !== 'locker');
+        addressBox.classList.toggle('hidden', kind !== 'courier');
+        addressBox.querySelectorAll('input').forEach(i => { i.required = kind === 'courier'; });
+        paymentNote.classList.toggle('hidden', !shipped);
+        if (costEl) costEl.textContent = label.dataset.cost;
+        if (totalEl) totalEl.textContent = label.dataset.total;
+        if (cash) {
+            cash.classList.toggle('opacity-40', shipped);
+            cash.classList.toggle('pointer-events-none', shipped);
+            cash.querySelector('input').disabled = shipped;
+            if (shipped && cash.querySelector('input').checked && blik) blik.click();
+        }
+    }
+
+    function render(points) {
+        results.innerHTML = '';
+        if (!points.length) {
+            const li = document.createElement('li');
+            li.className = 'text-gray-500';
+            li.textContent = 'Nic nie znaleziono. Spróbuj wpisać miasto lub kod pocztowy.';
+            results.appendChild(li);
+            return;
+        }
+        points.forEach(p => {
+            const li = document.createElement('li');
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'w-full text-left p-3 rounded-xl border border-gray-200 bg-white hover:border-emerald-400';
+            b.textContent = p.label;
+            b.addEventListener('click', () => choose(p));
+            li.appendChild(b);
+            results.appendChild(li);
+        });
+    }
+
+    function choose(p) {
+        lockerCode.value = p.id;
+        chosenBox.textContent = 'Wybrano: ' + p.label;
+        chosenBox.classList.remove('hidden');
+        results.innerHTML = '';
+    }
+
+    async function search() {
+        const q = query.value.trim();
+        if (q.length < 2) return;
+        results.innerHTML = '<li class="text-gray-500">Szukam…</li>';
+        try {
+            const res = await fetch('/shipping/points?method=' + encodeURIComponent(method) + '&q=' + encodeURIComponent(q));
+            render(await res.json());
+        } catch (e) {
+            results.innerHTML = '<li class="text-red-600">Nie udało się wyszukać. Spróbuj ponownie.</li>';
+        }
+    }
+
+    document.getElementById('locker-search').addEventListener('click', search);
+    query.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); search(); } });
+    section.addEventListener('change', apply);
+    document.getElementById('checkout-form').addEventListener('submit', e => {
+        const label = (current() || {}).closest ? current().closest('.delivery-option') : null;
+        if (label && label.dataset.kind === 'locker' && !lockerCode.value) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            chosenBox.textContent = 'Wybierz paczkomat lub punkt odbioru.';
+            chosenBox.classList.remove('hidden');
+            query.focus();
+        }
+    }, true);
+    apply();
 });
 </script>
 {{end}}

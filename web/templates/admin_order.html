@@ -1,0 +1,187 @@
+{{define "admin_order-content"}}
+<div class="max-w-5xl mx-auto px-4 py-12">
+    <a href="/admin" class="inline-flex items-center text-gray-500 hover:text-emerald-600 mb-6 transition-colors">
+        <i data-lucide="arrow-left" class="w-4 h-4 mr-2"></i>
+        Wróć do panelu
+    </a>
+
+    {{if .AdminNotice}}<div class="mb-6 bg-emerald-50 border border-emerald-200 text-emerald-900 rounded-xl px-4 py-3 text-sm" role="status">{{.AdminNotice}}</div>{{end}}
+    {{if .AdminError}}<div class="mb-6 bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 text-sm" role="alert">{{.AdminError}}</div>{{end}}
+    {{if .ConfigError}}<div class="mb-6 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl px-4 py-3 text-sm" role="alert">Plik data/shipping.yml ma błąd, działa poprzednia wersja: {{.ConfigError}}</div>{{end}}
+
+    {{with .Order}}
+    <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8">
+        <div>
+            <span class="text-xs font-bold px-2 py-1 rounded bg-gray-100 text-gray-700">{{$.StatusLabel}}</span>
+            <h2 class="text-3xl font-black text-gray-900 mt-3">{{.ID}}</h2>
+            <p class="text-gray-500 mt-1">Złożono: {{.CreatedAt}}</p>
+        </div>
+        <div class="text-left sm:text-right">
+            <p class="text-3xl font-black text-emerald-700">{{.Total}}</p>
+            <p class="text-sm text-gray-500 mt-1">{{.PaymentMethod}}</p>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+        <div class="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+            <h3 class="font-bold text-lg text-gray-900 mb-4">Klient</h3>
+            <dl class="space-y-2 text-sm">
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Imię i nazwisko</dt><dd class="font-semibold text-gray-900 text-right"><a class="text-emerald-700 hover:underline" href="/admin/user/{{.UserID}}">{{.UserName}}</a></dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">E-mail</dt><dd class="font-semibold text-gray-900 text-right">{{.UserEmail}}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Telefon</dt><dd class="font-semibold text-gray-900 text-right">{{.UserPhone}}</dd></div>
+            </dl>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm">
+            <h3 class="font-bold text-lg text-gray-900 mb-4">Dostawa</h3>
+            {{if $.Delivery}}
+            <dl class="space-y-2 text-sm">
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Sposób</dt><dd class="font-semibold text-gray-900 text-right">{{$.Delivery.Name}}</dd></div>
+                {{if $.Delivery.IsShipped}}
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Adres</dt><dd class="font-semibold text-gray-900 text-right">{{$.Delivery.Where}}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Odbiorca</dt><dd class="font-semibold text-gray-900 text-right">{{$.Delivery.Person}}, {{$.Delivery.Phone}}</dd></div>
+                <div class="flex justify-between gap-4"><dt class="text-gray-500">Zapłacono za dostawę</dt><dd class="font-semibold text-gray-900 text-right">{{$.Delivery.Cost}}</dd></div>
+                {{end}}
+            </dl>
+            {{else}}
+            <p class="text-sm text-gray-600">Odbiór osobisty w Radzyminie.</p>
+            {{end}}
+        </div>
+    </div>
+    {{end}}
+
+    <div class="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm mb-8">
+        <h3 class="font-bold text-lg text-gray-900 mb-4">Zawartość zamówienia</h3>
+        <ul class="divide-y divide-gray-100 text-sm">
+            {{range .Items}}
+            <li class="py-2 flex justify-between gap-4">
+                <span>{{.ProductName}} <span class="text-gray-500">{{if eq .Kind "shop"}}× {{.Quantity}}{{else}}· {{.RentalDays}} dni{{end}}</span></span>
+                <span class="font-semibold">{{.Total}}</span>
+            </li>
+            {{end}}
+            {{if and .Delivery .Delivery.IsShipped}}
+            <li class="py-2 flex justify-between gap-4"><span>Dostawa: {{.Delivery.Name}}</span><span class="font-semibold">{{.Delivery.Cost}}</span></li>
+            {{end}}
+        </ul>
+    </div>
+
+    <section id="przesylka" class="bg-white rounded-2xl border-2 border-gray-100 p-6 shadow-sm mb-8">
+        <h3 class="font-bold text-xl text-gray-900 mb-4 flex items-center"><i data-lucide="package" class="w-5 h-5 mr-2 text-emerald-600"></i>Przesyłka</h3>
+
+        {{if not .Delivery}}<p class="text-sm text-gray-600">To zamówienie jest do odbioru osobistego — wysyłka niepotrzebna.</p>
+        {{else if not .Delivery.IsShipped}}<p class="text-sm text-gray-600">Klient wybrał odbiór osobisty — wysyłka niepotrzebna.</p>{{end}}
+
+        {{if .Shipments}}
+        <div class="space-y-3 mb-6">
+            {{range .Shipments}}
+            <div class="border rounded-xl p-4 {{if .Active}}border-emerald-200 bg-emerald-50/40{{else}}border-gray-200 bg-gray-50 opacity-75{{end}}">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                    <p class="font-bold text-gray-900">{{.ExternalNumber}} <span class="text-gray-500 font-normal">· {{.Carrier}}</span></p>
+                    <span class="text-xs font-bold px-2.5 py-1 rounded-full {{if .Delivered}}bg-emerald-100 text-emerald-800{{else if .Active}}bg-blue-100 text-blue-800{{else}}bg-gray-200 text-gray-600{{end}}">{{.Status}}</span>
+                </div>
+                <p class="text-sm text-gray-600 mt-1">List przewozowy: <strong>{{.Waybill}}</strong> · koszt dla sklepu: {{.Cost}}</p>
+                <div class="flex flex-wrap gap-2 mt-3">
+                    {{if .Active}}
+                    <a href="/admin/shipment/{{.ID}}/label" target="_blank" class="text-xs bg-gray-900 text-white px-3 py-1.5 rounded-lg hover:bg-gray-800">Etykieta (PDF)</a>
+                    {{if .TrackingURL}}<a href="{{.TrackingURL}}" target="_blank" rel="noopener" class="text-xs bg-white border border-gray-300 px-3 py-1.5 rounded-lg hover:border-emerald-400">Śledzenie</a>{{end}}
+                    <form method="post" action="/admin/shipment/{{.ID}}/refresh"><button class="text-xs bg-white border border-gray-300 px-3 py-1.5 rounded-lg hover:border-emerald-400">Odśwież status</button></form>
+                    {{if not .Delivered}}<form method="post" action="/admin/shipment/{{.ID}}/cancel" onsubmit="return confirm('Anulować przesyłkę {{.ExternalNumber}}?');"><button class="text-xs bg-white border border-red-200 text-red-700 px-3 py-1.5 rounded-lg hover:bg-red-50">Anuluj</button></form>{{end}}
+                    {{end}}
+                </div>
+            </div>
+            {{end}}
+        </div>
+        {{end}}
+
+        {{if and .Delivery .Delivery.IsShipped (not .ShippingEnabled)}}
+        <p class="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">Polkurier nie jest skonfigurowany (ustaw POLKURIER_LOGIN i POLKURIER_TOKEN) — nadaj paczkę ręcznie i oznacz zamówienie jako zrealizowane.</p>
+        {{end}}
+
+        {{if .CanShip}}
+        {{with .ShipInput}}
+        {{if $.SenderError}}<p class="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4">{{$.SenderError}}</p>{{end}}
+        {{if $.QuoteError}}<p class="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4">Nie udało się pobrać cen z Polkuriera: {{$.QuoteError}}</p>{{end}}
+
+        <form method="post" action="/admin/order/{{$.Order.ID}}/shipment" class="space-y-5">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <label class="block text-sm font-medium text-gray-700">Przewoźnik
+                    <select name="carrier" class="mt-1 w-full p-3 border border-gray-300 rounded-xl bg-white">
+                        {{if $.Carriers}}
+                        {{range $.Carriers}}<option value="{{.ServiceCode}}" {{if eq .ServiceCode $.ShipInput.Carrier}}selected{{end}}>{{.Name}} ({{.ServiceCode}})</option>{{end}}
+                        {{else}}<option value="{{.Carrier}}">{{.Carrier}}</option>{{end}}
+                    </select>
+                </label>
+                <label class="block text-sm font-medium text-gray-700">Treść przesyłki (do 30 znaków)
+                    <input type="text" name="description" maxlength="30" value="{{.Description}}" class="mt-1 w-full p-3 border border-gray-300 rounded-xl" />
+                </label>
+            </div>
+
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-4">
+                <label class="block text-sm font-medium text-gray-700">Długość (cm)<input type="number" min="1" name="length" value="{{.LengthCm}}" required class="mt-1 w-full p-3 border border-gray-300 rounded-xl" /></label>
+                <label class="block text-sm font-medium text-gray-700">Szerokość (cm)<input type="number" min="1" name="width" value="{{.WidthCm}}" required class="mt-1 w-full p-3 border border-gray-300 rounded-xl" /></label>
+                <label class="block text-sm font-medium text-gray-700">Wysokość (cm)<input type="number" min="1" name="height" value="{{.HeightCm}}" required class="mt-1 w-full p-3 border border-gray-300 rounded-xl" /></label>
+                <label class="block text-sm font-medium text-gray-700">Waga (kg)<input type="text" inputmode="decimal" name="weight" value="{{.WeightKg}}" required class="mt-1 w-full p-3 border border-gray-300 rounded-xl" /></label>
+                <label class="block text-sm font-medium text-gray-700">Ubezpieczenie (zł)<input type="text" inputmode="decimal" name="insurance" value="{{if .Insurance}}{{.Insurance}}{{end}}" class="mt-1 w-full p-3 border border-gray-300 rounded-xl" /></label>
+            </div>
+
+            <fieldset class="border border-gray-200 rounded-xl p-4">
+                <legend class="px-2 text-sm font-bold text-gray-900">Odbiorca</legend>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <label class="block text-sm text-gray-700">Imię i nazwisko<input type="text" name="r_person" value="{{.Recipient.Person}}" required class="mt-1 w-full p-2.5 border border-gray-300 rounded-lg" /></label>
+                    <label class="block text-sm text-gray-700">Firma (opcjonalnie)<input type="text" name="r_company" value="{{.Recipient.Company}}" class="mt-1 w-full p-2.5 border border-gray-300 rounded-lg" /></label>
+                    <label class="block text-sm text-gray-700">E-mail<input type="email" name="r_email" value="{{.Recipient.Email}}" required class="mt-1 w-full p-2.5 border border-gray-300 rounded-lg" /></label>
+                    <label class="block text-sm text-gray-700">Telefon<input type="tel" name="r_phone" value="{{.Recipient.Phone}}" required class="mt-1 w-full p-2.5 border border-gray-300 rounded-lg" /></label>
+                    <label class="block text-sm text-gray-700">Paczkomat / punkt<input type="text" name="r_point" value="{{.Recipient.PointID}}" class="mt-1 w-full p-2.5 border border-gray-300 rounded-lg" /></label>
+                    <label class="block text-sm text-gray-700">Ulica<input type="text" name="r_street" value="{{.Recipient.Street}}" class="mt-1 w-full p-2.5 border border-gray-300 rounded-lg" /></label>
+                    <div class="grid grid-cols-2 gap-4">
+                        <label class="block text-sm text-gray-700">Numer domu<input type="text" name="r_house" value="{{.Recipient.HouseNumber}}" class="mt-1 w-full p-2.5 border border-gray-300 rounded-lg" /></label>
+                        <label class="block text-sm text-gray-700">Mieszkanie<input type="text" name="r_flat" value="{{.Recipient.FlatNumber}}" class="mt-1 w-full p-2.5 border border-gray-300 rounded-lg" /></label>
+                    </div>
+                    <div class="grid grid-cols-2 gap-4">
+                        <label class="block text-sm text-gray-700">Kod pocztowy<input type="text" name="r_postcode" value="{{.Recipient.Postcode}}" class="mt-1 w-full p-2.5 border border-gray-300 rounded-lg" /></label>
+                        <label class="block text-sm text-gray-700">Miasto<input type="text" name="r_city" value="{{.Recipient.City}}" class="mt-1 w-full p-2.5 border border-gray-300 rounded-lg" /></label>
+                    </div>
+                </div>
+            </fieldset>
+
+            <div class="space-y-3 text-sm text-gray-700">
+                <label class="flex items-center gap-3"><input type="checkbox" name="drop_off" value="1" {{if .DropOff}}checked{{end}} class="w-5 h-5 text-emerald-600 rounded" /> Nadam paczkę sam(a) w punkcie / paczkomacie (bez zamawiania kuriera)</label>
+                <label class="flex items-center gap-3"><input type="checkbox" name="handle_with_care" value="1" class="w-5 h-5 text-emerald-600 rounded" /> Usługa „Uwaga, ostrożnie” (jeśli przewoźnik ją obsługuje)</label>
+                <label class="flex items-center gap-3"><input type="checkbox" name="mark_shipped" value="1" {{if $.CanRealize}}checked{{end}} class="w-5 h-5 text-emerald-600 rounded" /> Od razu oznacz zamówienie jako wysłane (zdejmuje towar ze stanu i wysyła klientowi e-mail)</label>
+            </div>
+
+            {{if $.PickupDays}}
+            <label class="block text-sm font-medium text-gray-700">Odbiór kuriera (gdy nie nadajesz sam)
+                <select name="pickup" class="mt-1 w-full p-3 border border-gray-300 rounded-xl bg-white">
+                    {{range $.PickupDays}}{{$date := .Date}}{{range .Windows}}<option value="{{$date}}|{{.From}}|{{.To}}">{{$date}}, {{.From}}–{{.To}}</option>{{end}}{{end}}
+                </select>
+            </label>
+            {{end}}
+
+            <button type="submit" class="font-bold py-3 px-8 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white transition-colors">Nadaj przesyłkę</button>
+        </form>
+
+        {{if $.Quotes}}
+        <details class="mt-6 text-sm">
+            <summary class="cursor-pointer font-semibold text-gray-900">Wycena u przewoźników{{if $.ChosenCost}} — wybrany: {{$.ChosenCost}}, klient zapłacił za dostawę {{$.Delivery.Cost}} (różnica {{$.ShippingMargin}}){{end}}</summary>
+            <ul class="mt-3 divide-y divide-gray-100">
+                {{range $.Quotes}}
+                <li class="py-2 flex justify-between gap-4 {{if not .Available}}text-gray-400{{end}}">
+                    <span>{{.Name}} <span class="text-xs text-gray-400">{{.Code}}</span>{{if .Chosen}} <strong class="text-emerald-700">· wybrany</strong>{{end}}{{if .Message}} — {{.Message}}{{end}}</span>
+                    <span class="font-semibold">{{.Cost}}</span>
+                </li>
+                {{end}}
+            </ul>
+        </details>
+        {{end}}
+        {{end}}
+        {{end}}
+
+        {{if .CanRealize}}
+        <form method="post" action="/admin/order/{{.Order.ID}}/realize" class="mt-6" onsubmit="return confirm('Oznaczyć zamówienie jako zrealizowane (wydane/wysłane)? Towar zejdzie ze stanu.');">
+            <button type="submit" class="text-sm bg-white border border-gray-300 px-4 py-2 rounded-lg hover:border-gray-900">Oznacz jako zrealizowane (bez nadawania przesyłki)</button>
+        </form>
+        {{end}}
+    </section>
+</div>
+{{end}}

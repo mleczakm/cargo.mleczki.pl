@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"strings"
 	"time"
 )
 
@@ -38,6 +39,46 @@ type Order struct {
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 	Version       int
+}
+
+// Delivery is how the goods of an order reach the customer. It is a snapshot
+// taken at checkout: the options and prices in data/shipping.yml may change later.
+// Orders placed before delivery existed (and rental-only orders) have none,
+// which means collection in person.
+type Delivery struct {
+	Method     string `json:"method"`               // code of the shipping option, "pickup" for collection in person
+	Name       string `json:"name,omitempty"`       // option name shown to the customer
+	Carrier    string `json:"carrier,omitempty"`    // Polkurier service code
+	Cost       Money  `json:"cost"`                 // what the customer paid for delivery
+	Person     string `json:"person,omitempty"`     // recipient
+	Phone      string `json:"phone,omitempty"`      //
+	Email      string `json:"email,omitempty"`      //
+	Street     string `json:"street,omitempty"`     // courier: street and house number
+	Postcode   string `json:"postcode,omitempty"`   //
+	City       string `json:"city,omitempty"`       //
+	PointID    string `json:"pointId,omitempty"`    // parcel locker / pickup point code
+	PointLabel string `json:"pointLabel,omitempty"` // its address, for humans
+}
+
+// DeliveryPickup is the method of collection in person.
+const DeliveryPickup = "pickup"
+
+// IsShipped reports whether a parcel has to be sent (as opposed to collected).
+func (d *Delivery) IsShipped() bool { return d != nil && d.Method != "" && d.Method != DeliveryPickup }
+
+// Where describes the destination in one line.
+func (d *Delivery) Where() string {
+	switch {
+	case d == nil || !d.IsShipped():
+		return ""
+	case d.PointID != "":
+		if d.PointLabel != "" {
+			return d.PointLabel
+		}
+		return d.PointID
+	default:
+		return strings.TrimSpace(d.Street + ", " + d.Postcode + " " + d.City)
+	}
 }
 
 // OrderItemKindShop marks an order line that sells a shop item. Lines without a
@@ -110,6 +151,7 @@ type PlaceOrderCommand struct {
 	EndDate       string
 	RentalDays    int
 	IsFirstOrder  bool
+	Delivery      *Delivery
 }
 
 type ConfirmOrderCommand struct {
@@ -137,6 +179,7 @@ type OrderPlacedEvent struct {
 	EndDate       string      `json:"endDate"`
 	RentalDays    int         `json:"rentalDays"`
 	IsFirstOrder  bool        `json:"isFirstOrder"`
+	Delivery      *Delivery   `json:"delivery,omitempty"`
 	Timestamp     time.Time   `json:"timestamp"`
 }
 

@@ -143,6 +143,7 @@ type shopHarness struct {
 	client  *http.Client
 	base    *url.URL
 	adminPW string
+	dir     string // temporary data directory (products, articles, shop)
 }
 
 func newShopHarness(t *testing.T) *shopHarness {
@@ -203,7 +204,7 @@ func newShopHarness(t *testing.T) *shopHarness {
 	jar, _ := cookiejar.New(nil)
 	base, _ := url.Parse(ts.URL)
 	return &shopHarness{
-		t: t, server: server, rm: rm, es: es, http: ts, base: base, adminPW: adminPW,
+		t: t, server: server, rm: rm, es: es, http: ts, base: base, adminPW: adminPW, dir: dir,
 		client: &http.Client{Jar: jar, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 	}
 }

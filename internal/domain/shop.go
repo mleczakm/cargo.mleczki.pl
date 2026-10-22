@@ -46,6 +46,16 @@ type ShopVariant struct {
 	InitialStock int
 }
 
+// ShopShipping describes how an item travels. The zero value means "an ordinary
+// small item": it fits the default box and weighs the default item weight.
+type ShopShipping struct {
+	WeightG    int
+	LengthCm   int
+	WidthCm    int
+	HeightCm   int
+	PickupOnly bool // too big or too awkward to post: only collection in person
+}
+
 // AffiliateLink points at the external offer of an affiliate item.
 type AffiliateLink struct {
 	URL       string
@@ -70,6 +80,7 @@ type ShopItem struct {
 	Variants        []ShopVariant
 	InitialStock    int // seeded once when the SKU is first seen
 	Stock           StockPolicy
+	Shipping        ShopShipping
 	Affiliate       *AffiliateLink
 	RelatedProducts []string // rental product IDs
 	RelatedArticles []string

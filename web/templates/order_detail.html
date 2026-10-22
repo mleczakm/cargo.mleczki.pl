@@ -66,6 +66,27 @@
         </div>
     </div>
 
+    {{with .Delivery}}
+    <div class="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm mb-8">
+        <h3 class="font-bold text-lg text-gray-900 mb-4">Dostawa</h3>
+        <dl class="space-y-3 text-sm">
+            <div class="flex justify-between gap-4"><dt class="text-gray-500">Sposób</dt><dd class="font-semibold text-gray-900 text-right">{{.Name}}</dd></div>
+            {{if .IsShipped}}
+            <div class="flex justify-between gap-4"><dt class="text-gray-500">Dokąd</dt><dd class="font-semibold text-gray-900 text-right">{{.Where}}</dd></div>
+            <div class="flex justify-between gap-4"><dt class="text-gray-500">Koszt dostawy</dt><dd class="font-semibold text-gray-900">{{if .Cost.IsPositive}}{{.Cost}}{{else}}Bezpłatnie{{end}}</dd></div>
+            {{else}}
+            <div class="flex justify-between gap-4"><dt class="text-gray-500">Gdzie</dt><dd class="font-semibold text-gray-900 text-right">Radzymin — szczegóły ustalimy po potwierdzeniu</dd></div>
+            {{end}}
+        </dl>
+        {{range $.Shipments}}{{if .Active}}
+        <div class="mt-4 pt-4 border-t border-gray-100 text-sm">
+            <p class="text-gray-700">Przesyłka <strong>{{.Waybill}}</strong> ({{.Carrier}}): <span class="font-semibold">{{.Status}}</span></p>
+            {{if .TrackingURL}}<a href="{{.TrackingURL}}" target="_blank" rel="noopener" class="inline-block mt-2 text-emerald-700 font-semibold underline">Śledź przesyłkę</a>{{end}}
+        </div>
+        {{end}}{{end}}
+    </div>
+    {{end}}
+
     <div class="bg-white rounded-2xl border border-gray-100 p-6 shadow-sm mb-8">
         <h3 class="font-bold text-lg text-gray-900 mb-4">Zawartość zamówienia</h3>
         <div class="space-y-4">

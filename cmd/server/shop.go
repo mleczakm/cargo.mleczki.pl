@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -610,7 +611,7 @@ func checkoutNotice(code string) string {
 	case "cart":
 		return "Zmieniły się produkty w koszyku. Sprawdź uwagi przy pozycjach i spróbuj ponownie."
 	default:
-		return ""
+		return deliveryNotice(code)
 	}
 }
 
@@ -986,6 +987,36 @@ func (s *Server) handleAdminShopStockAdjust(w http.ResponseWriter, r *http.Reque
 	adminRedirect(w, r, "notice", fmt.Sprintf("Zapisano: %s – %s (%d).", owner.LineName(sku), shop.KindLabel(kind), quantity))
 }
 
+// errOrderNotConfirmed is returned when an order cannot be handed over because the shop has not confirmed it.
+var errOrderNotConfirmed = errors.New("order is not confirmed")
+
+// realizeOrder marks a confirmed order as handed over (or sent). For shop lines
+// this takes the units off the shelf.
+func (s *Server) realizeOrder(ctx context.Context, orderID string) error {
+	var status string
+	if err := s.readModels.GetDB().QueryRowContext(ctx, `SELECT status FROM orders WHERE id = ?`, orderID).Scan(&status); err != nil {
+		return err
+	}
+	if status != string(domain.StatusConfirmed) {
+		return errOrderNotConfirmed
+	}
+	if err := s.readModels.Stock().CanFulfil(ctx, orderID); err != nil {
+		return err
+	}
+
+	event, err := eventstore.ToEvent(orderID, "order", &domain.OrderRealizedEvent{OrderID: orderID, Timestamp: time.Now().UTC()}, 0)
+	if err != nil {
+		return err
+	}
+	if err := s.eventStore.Save(ctx, event); err != nil {
+		return fmt.Errorf("emit OrderRealizedEvent: %w", err)
+	}
+	if err := s.projector.Run(ctx); err != nil {
+		log.Printf("Failed to project order realization: %v", err)
+	}
+	return nil
+}
+
 // handleAdminOrderRealize marks a confirmed order as handed over. For shop
 // lines this takes the units off the shelf.
 func (s *Server) handleAdminOrderRealize(w http.ResponseWriter, r *http.Request) {
@@ -995,37 +1026,18 @@ func (s *Server) handleAdminOrderRealize(w http.ResponseWriter, r *http.Request)
 	}
 
 	orderID := chi.URLParam(r, "id")
-	var status string
-	if err := s.readModels.GetDB().QueryRowContext(r.Context(), `SELECT status FROM orders WHERE id = ?`, orderID).Scan(&status); err != nil {
+	err := s.realizeOrder(r.Context(), orderID)
+	switch {
+	case errors.Is(err, sql.ErrNoRows):
 		http.NotFound(w, r)
-		return
-	}
-	if status != string(domain.StatusConfirmed) {
+	case errors.Is(err, errOrderNotConfirmed):
 		adminRedirect(w, r, "error", "Zrealizować można tylko potwierdzone zamówienie ("+orderID+").")
-		return
-	}
-	if err := s.readModels.Stock().CanFulfil(r.Context(), orderID); err != nil {
-		if errors.Is(err, shop.ErrNotEnoughOnHand) {
-			adminRedirect(w, r, "error", "Zamówienie "+orderID+": brakuje towaru na stanie ("+err.Error()+"). Przyjmij dostawę i spróbuj ponownie.")
-			return
-		}
-		log.Printf("Failed to check stock for %s: %v", orderID, err)
-		http.Error(w, "Failed to check stock", http.StatusInternalServerError)
-		return
-	}
-
-	event, err := eventstore.ToEvent(orderID, "order", &domain.OrderRealizedEvent{OrderID: orderID, Timestamp: time.Now().UTC()}, 0)
-	if err != nil {
+	case errors.Is(err, shop.ErrNotEnoughOnHand):
+		adminRedirect(w, r, "error", "Zamówienie "+orderID+": brakuje towaru na stanie ("+err.Error()+"). Przyjmij dostawę i spróbuj ponownie.")
+	case err != nil:
+		log.Printf("Failed to realize order %s: %v", orderID, err)
 		http.Error(w, "Failed to realize order", http.StatusInternalServerError)
-		return
+	default:
+		adminRedirect(w, r, "notice", "Zamówienie "+orderID+" oznaczone jako zrealizowane.")
 	}
-	if err := s.eventStore.Save(r.Context(), event); err != nil {
-		log.Printf("Failed to emit OrderRealizedEvent: %v", err)
-		http.Error(w, "Failed to realize order", http.StatusInternalServerError)
-		return
-	}
-	if err := s.projector.Run(r.Context()); err != nil {
-		log.Printf("Failed to project order realization: %v", err)
-	}
-	adminRedirect(w, r, "notice", "Zamówienie "+orderID+" oznaczone jako zrealizowane.")
 }

@@ -119,6 +119,11 @@ func main() {
 		go server.RunShopReservationSweeper(ctx, ttl, 10*time.Minute)
 	}
 
+	// Parcels ordered at Polkurier move their orders along.
+	if server.polkurierOn() {
+		go server.RunShipmentSync(ctx, 30*time.Minute)
+	}
+
 	// Create chi router
 	r := chi.NewRouter()
 

@@ -67,6 +67,7 @@ type itemFrontmatter struct {
 	Icon            string                `yaml:"icon"`
 	Tags            []string              `yaml:"tags"`
 	Stock           *stockFrontmatter     `yaml:"stock"`
+	Shipping        *shippingFrontmatter  `yaml:"shipping"`
 	Variants        []variantFrontmatter  `yaml:"variants"`
 	Affiliate       *affiliateFrontmatter `yaml:"affiliate"`
 	RelatedProducts []string              `yaml:"relatedProducts"`
@@ -83,6 +84,14 @@ type stockFrontmatter struct {
 	Backorder    bool   `yaml:"backorder"`
 	LeadTime     string `yaml:"leadTime"`
 	MaxPerOrder  int    `yaml:"maxPerOrder"`
+}
+
+type shippingFrontmatter struct {
+	WeightG    int  `yaml:"weightG"`
+	LengthCm   int  `yaml:"lengthCm"`
+	WidthCm    int  `yaml:"widthCm"`
+	HeightCm   int  `yaml:"heightCm"`
+	PickupOnly bool `yaml:"pickupOnly"`
 }
 
 type variantFrontmatter struct {
@@ -336,6 +345,8 @@ func fillAffiliate(item *domain.ShopItem, fm itemFrontmatter) error {
 		return errors.New("variants are not supported on affiliate items")
 	case fm.Stock != nil:
 		return errors.New("stock is not used by affiliate items")
+	case fm.Shipping != nil:
+		return errors.New("shipping is not used by affiliate items (the seller ships them)")
 	}
 
 	target, err := url.Parse(strings.TrimSpace(fm.Affiliate.URL))
@@ -397,6 +408,13 @@ func fillDirect(item *domain.ShopItem, fm itemFrontmatter) error {
 		MaxPerOrder:  stock.MaxPerOrder,
 	}
 	item.InitialStock = stock.Initial
+
+	if sh := fm.Shipping; sh != nil {
+		if sh.WeightG < 0 || sh.LengthCm < 0 || sh.WidthCm < 0 || sh.HeightCm < 0 {
+			return errors.New("shipping numbers must not be negative")
+		}
+		item.Shipping = domain.ShopShipping{WeightG: sh.WeightG, LengthCm: sh.LengthCm, WidthCm: sh.WidthCm, HeightCm: sh.HeightCm, PickupOnly: sh.PickupOnly}
+	}
 
 	return fillVariants(item, fm)
 }

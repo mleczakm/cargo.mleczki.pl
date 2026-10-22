@@ -105,9 +105,18 @@ func (p *Projector) handleOrderPlaced(event *eventstore.Event) error {
 		status = "paid"
 	}
 
+	deliveryJSON := ""
+	if eventData.Delivery != nil {
+		raw, err := json.Marshal(eventData.Delivery)
+		if err != nil {
+			return err
+		}
+		deliveryJSON = string(raw)
+	}
+
 	query := `
-	INSERT INTO orders (id, user_id, items_json, total_amount, status, payment_method, start_date, end_date, rental_days, created_at, updated_at, is_first_order, payment_code)
-	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	INSERT INTO orders (id, user_id, items_json, total_amount, status, payment_method, start_date, end_date, rental_days, created_at, updated_at, is_first_order, payment_code, delivery_json)
+	VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	ON CONFLICT(id) DO UPDATE SET
 		items_json = excluded.items_json,
 		total_amount = excluded.total_amount,
@@ -118,7 +127,8 @@ func (p *Projector) handleOrderPlaced(event *eventstore.Event) error {
 		rental_days = excluded.rental_days,
 		updated_at = excluded.updated_at,
 		is_first_order = excluded.is_first_order,
-		payment_code = excluded.payment_code
+		payment_code = excluded.payment_code,
+		delivery_json = excluded.delivery_json
 	`
 
 	var paymentCodePtr *string
@@ -140,6 +150,7 @@ func (p *Projector) handleOrderPlaced(event *eventstore.Event) error {
 		eventData.Timestamp.Format("2006-01-02 15:04:05"),
 		isFirstOrderInt,
 		paymentCodePtr,
+		nullIfEmpty(deliveryJSON),
 	)
 	if err != nil {
 		return err
@@ -406,4 +417,11 @@ func (p *Projector) handleTransferLinked(event *eventstore.Event) error {
 
 	_, err := p.readModels.GetDB().Exec(query, e.OrderID, e.Timestamp.UTC().Format(time.RFC3339), e.TransferID)
 	return err
+}
+
+func nullIfEmpty(s string) any {
+	if s == "" {
+		return nil
+	}
+	return s
 }

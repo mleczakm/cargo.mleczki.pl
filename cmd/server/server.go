@@ -29,6 +29,7 @@ import (
 	"cargo.mleczki.pl/internal/notifications"
 	"cargo.mleczki.pl/internal/products"
 	"cargo.mleczki.pl/internal/projections"
+	"cargo.mleczki.pl/internal/shipping"
 	"cargo.mleczki.pl/internal/shop"
 	"cargo.mleczki.pl/internal/transfers"
 )
@@ -50,6 +51,7 @@ type Server struct {
 	adminNotifier   *notifications.AdminNotifier
 	webPushNotifier *notifications.WebPushNotifier
 	mailer          *email.Sender
+	shipping        *shipping.Service
 }
 
 // partialTemplates are HTMX fragments rendered without the site layout.
@@ -123,6 +125,7 @@ func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadMod
 		adminNotifier:   adminNotifier,
 		webPushNotifier: webPushNotifier,
 		mailer:          mailer,
+		shipping:        newShippingService(readModels),
 	}
 
 	if server.bankMail.Configured() {
@@ -156,6 +159,7 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 	r.Get("/shop", s.handleShop)
 	r.Get("/shop/{id}", s.handleShopItem)
 	r.Get("/shop/{id}/go", s.handleShopGo)
+	r.Get("/shipping/points", s.handleShippingPoints)
 	r.Get("/login", s.handleLogin)
 	r.Post("/login", s.handleLogin)
 	r.Post("/logout", s.handleLogout)
@@ -204,6 +208,11 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 		r.Post("/admin/order/{id}/mark-paid", s.handleAdminOrderMarkPaid)
 		r.Post("/admin/order/{id}/confirm", s.handleAdminOrderConfirm)
 		r.Post("/admin/order/{id}/realize", s.handleAdminOrderRealize)
+		r.Get("/admin/order/{id}", s.handleAdminOrder)
+		r.Post("/admin/order/{id}/shipment", s.handleAdminShipmentCreate)
+		r.Get("/admin/shipment/{sid}/label", s.handleAdminShipmentLabel)
+		r.Post("/admin/shipment/{sid}/refresh", s.handleAdminShipmentRefresh)
+		r.Post("/admin/shipment/{sid}/cancel", s.handleAdminShipmentCancel)
 		r.Post("/admin/shop/stock/adjust", s.handleAdminShopStockAdjust)
 		r.Post("/admin/transfer/{id}/link", s.handleAdminTransferLink)
 		r.Post("/admin/reservation/create", s.handleAdminCreateReservation)
@@ -699,6 +708,9 @@ func (s *Server) handleCheckout(w http.ResponseWriter, r *http.Request) {
 		"Notice":         checkoutNotice(r.URL.Query().Get("notice")),
 		"UserDetails":    map[string]string{},
 	}
+	if cartHasShopLines(cart) {
+		data["Delivery"] = s.deliveryChoices(r, cart)
+	}
 
 	s.renderTemplate(w, r, "checkout.html", data)
 }
@@ -987,6 +999,7 @@ func (s *Server) buildOrderPlacedEvent(
 	paymentMethod string,
 	paymentCode *string,
 	isFirstOrder bool,
+	delivery *domain.Delivery,
 ) *domain.OrderPlacedEvent {
 	startDate, endDate, rentalDays := rentalSpan(cart)
 
@@ -1001,6 +1014,7 @@ func (s *Server) buildOrderPlacedEvent(
 		EndDate:       endDate,
 		RentalDays:    rentalDays,
 		IsFirstOrder:  isFirstOrder,
+		Delivery:      delivery,
 		Timestamp:     time.Now().UTC(),
 	}
 }
@@ -1112,6 +1126,16 @@ func (s *Server) handleCheckoutSubmit(w http.ResponseWriter, r *http.Request) {
 
 	// Calculate total
 
+	// How the goods get to the customer. Delivery is part of what is paid.
+	delivery, deliveryProblem := s.resolveDelivery(r.Context(), r, cart, paymentMethod, name, email, phone)
+	if deliveryProblem != "" {
+		redirectToCheckout(w, r, deliveryProblem)
+		return
+	}
+	if delivery != nil {
+		totalAmount = totalAmount.Add(delivery.Cost)
+	}
+
 	// Generate order ID
 	orderID := fmt.Sprintf("ORD-%d", time.Now().UnixNano())
 
@@ -1151,7 +1175,7 @@ func (s *Server) handleCheckoutSubmit(w http.ResponseWriter, r *http.Request) {
 		isFirstOrder = true // Default to requiring confirmation on error
 	}
 
-	orderEvent := s.buildOrderPlacedEvent(orderID, userID, cart, totalAmount, paymentMethod, paymentCode, isFirstOrder)
+	orderEvent := s.buildOrderPlacedEvent(orderID, userID, cart, totalAmount, paymentMethod, paymentCode, isFirstOrder, delivery)
 	if err := s.persistPlacedOrder(ctx, orderID, orderEvent); err != nil {
 		releaseStock()
 		log.Printf("Failed to create order: %v", err)
@@ -1365,6 +1389,12 @@ func (s *Server) handleUserOrderDetail(w http.ResponseWriter, r *http.Request) {
 		"CanCancel":            view.CanCancel,
 		"PaymentView":          view.PaymentView,
 		"IsLoggedIn":           true,
+	}
+	if delivery, ok := order["Delivery"].(*domain.Delivery); ok && delivery != nil {
+		data["Delivery"] = delivery
+		if shipments, err := s.shipments().ForOrder(r.Context(), orderID); err == nil {
+			data["Shipments"] = shipments
+		}
 	}
 
 	s.renderTemplate(w, r, "order_detail.html", data)
@@ -2015,6 +2045,7 @@ func (s *Server) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
 		"Title":                      "Panel Administratora",
 		"Orders":                     orders,
+		"OrdersToShip":               s.ordersToShip(r.Context(), orders),
 		"OrdersAwaitingConfirmation": ordersAwaitingConfirmation,
 		"Transfers":                  transfers,
 		"BankMailAddress":            s.bankMail.Address,

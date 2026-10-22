@@ -2,6 +2,7 @@ package projections
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"strings"
@@ -10,13 +11,15 @@ import (
 	_ "modernc.org/sqlite"
 
 	"cargo.mleczki.pl/internal/domain"
+	"cargo.mleczki.pl/internal/shipping"
 	"cargo.mleczki.pl/internal/shop"
 )
 
 // ReadModelsDB handles the read models database.
 type ReadModelsDB struct {
-	db    *sql.DB
-	stock *shop.Store
+	db        *sql.DB
+	stock     *shop.Store
+	shipments *shipping.Store
 }
 
 // withBusyTimeout makes SQLite wait for a competing writer instead of failing
@@ -40,7 +43,7 @@ func NewReadModelsDB(dbPath string) (*ReadModelsDB, error) {
 		return nil, fmt.Errorf("failed to enable WAL mode: %w", err)
 	}
 
-	rm := &ReadModelsDB{db: db, stock: shop.NewStore(db)}
+	rm := &ReadModelsDB{db: db, stock: shop.NewStore(db), shipments: shipping.NewStore(db)}
 	if err := rm.initSchema(); err != nil {
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
@@ -90,6 +93,7 @@ func (rm *ReadModelsDB) initSchema() error {
 		paid_at TEXT,
 		payment_code TEXT,
 		is_first_order INTEGER DEFAULT 0,
+		delivery_json TEXT,
 		FOREIGN KEY (user_id) REFERENCES users(id)
 	);
 	CREATE INDEX IF NOT EXISTS idx_orders_user ON orders(user_id);
@@ -263,6 +267,7 @@ func (rm *ReadModelsDB) initSchema() error {
 		bankMailTable,
 		passwordResetTokensTable,
 		shop.Schema,
+		shipping.Schema,
 	}
 	for i, schema := range schemas {
 		if _, err := rm.db.Exec(schema); err != nil {
@@ -286,6 +291,7 @@ func (rm *ReadModelsDB) runMigrations() error {
 		def    string
 	}{
 		{"orders", "is_first_order", "INTEGER DEFAULT 0"},
+		{"orders", "delivery_json", "TEXT"},
 	}
 
 	for _, m := range migrations {
@@ -322,6 +328,11 @@ func (rm *ReadModelsDB) GetDB() *sql.DB {
 // Stock returns the shop stock ledger living in this database.
 func (rm *ReadModelsDB) Stock() *shop.Store {
 	return rm.stock
+}
+
+// Shipments returns the parcels ordered at Polkurier, living in this database.
+func (rm *ReadModelsDB) Shipments() *shipping.Store {
+	return rm.shipments
 }
 
 // Close closes the database connection.
@@ -389,7 +400,7 @@ func (rm *ReadModelsDB) GetAllUsers() ([]map[string]interface{}, error) {
 // GetAllOrders retrieves all orders from the database.
 func (rm *ReadModelsDB) GetAllOrders() ([]map[string]interface{}, error) {
 	query := `
-	SELECT o.id, o.user_id, COALESCE(u.name, '') as user_name, o.total_amount, o.status, COALESCE(o.payment_method, ''), COALESCE(o.items_json, ''), o.created_at
+	SELECT o.id, o.user_id, COALESCE(u.name, '') as user_name, o.total_amount, o.status, COALESCE(o.payment_method, ''), COALESCE(o.items_json, ''), o.created_at, COALESCE(o.delivery_json, '')
 	FROM orders o
 	LEFT JOIN users u ON o.user_id = u.id
 	ORDER BY o.created_at DESC
@@ -403,9 +414,9 @@ func (rm *ReadModelsDB) GetAllOrders() ([]map[string]interface{}, error) {
 
 	var orders []map[string]interface{}
 	for rows.Next() {
-		var id, userID, userName, status, paymentMethod, itemsJSON, createdAt string
+		var id, userID, userName, status, paymentMethod, itemsJSON, createdAt, deliveryJSON string
 		var totalAmount float64
-		if err := rows.Scan(&id, &userID, &userName, &totalAmount, &status, &paymentMethod, &itemsJSON, &createdAt); err != nil {
+		if err := rows.Scan(&id, &userID, &userName, &totalAmount, &status, &paymentMethod, &itemsJSON, &createdAt, &deliveryJSON); err != nil {
 			return nil, err
 		}
 		orders = append(orders, map[string]interface{}{
@@ -416,6 +427,8 @@ func (rm *ReadModelsDB) GetAllOrders() ([]map[string]interface{}, error) {
 			"Status":        status,
 			"PaymentMethod": paymentMethod,
 			"Items":         itemsJSON,
+			"CreatedAt":     createdAt,
+			"Delivery":      ParseDelivery(deliveryJSON),
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -469,17 +482,17 @@ func (rm *ReadModelsDB) GetOrdersByUserID(userID string) ([]map[string]interface
 // GetOrderByIDAndUserID retrieves a single order for a user.
 func (rm *ReadModelsDB) GetOrderByIDAndUserID(orderID, userID string) (map[string]interface{}, error) {
 	query := `
-	SELECT id, user_id, total_amount, status, COALESCE(payment_method, ''), COALESCE(items_json, ''), COALESCE(start_date, ''), COALESCE(end_date, ''), COALESCE(rental_days, 0), created_at, payment_code
+	SELECT id, user_id, total_amount, status, COALESCE(payment_method, ''), COALESCE(items_json, ''), COALESCE(start_date, ''), COALESCE(end_date, ''), COALESCE(rental_days, 0), created_at, payment_code, COALESCE(delivery_json, '')
 	FROM orders
 	WHERE id = ? AND user_id = ?
 	`
-	var id, userIDRetrieved, status, paymentMethod, itemsJSON, startDate, endDate, createdAt string
+	var id, userIDRetrieved, status, paymentMethod, itemsJSON, startDate, endDate, createdAt, deliveryJSON string
 	var paymentCode sql.NullString
 	var totalAmount float64
 	var rentalDays int
 	err := rm.db.QueryRow(query, orderID, userID).Scan(
 		&id, &userIDRetrieved, &totalAmount, &status, &paymentMethod, &itemsJSON,
-		&startDate, &endDate, &rentalDays, &createdAt, &paymentCode,
+		&startDate, &endDate, &rentalDays, &createdAt, &paymentCode, &deliveryJSON,
 	)
 	if err == sql.ErrNoRows {
 		return nil, sql.ErrNoRows
@@ -509,6 +522,7 @@ func (rm *ReadModelsDB) GetOrderByIDAndUserID(orderID, userID string) (map[strin
 		"EndDate":       endDate,
 		"RentalDays":    rentalDays,
 		"CreatedAt":     createdAt,
+		"Delivery":      ParseDelivery(deliveryJSON),
 	}
 	if code != "" {
 		order["PaymentCode"] = code
@@ -741,4 +755,50 @@ func (rm *ReadModelsDB) GetOrdersAwaitingConfirmation() ([]map[string]interface{
 		return nil, err
 	}
 	return orders, nil
+}
+
+// ParseDelivery reads the delivery snapshot stored with an order; orders without one return nil.
+func ParseDelivery(raw string) *domain.Delivery {
+	if raw == "" {
+		return nil
+	}
+	var d domain.Delivery
+	if err := json.Unmarshal([]byte(raw), &d); err != nil || d.Method == "" {
+		return nil
+	}
+	return &d
+}
+
+// OrderDetail is one order with everything the admin needs to handle it.
+type OrderDetail struct {
+	ID            string
+	UserID        string
+	UserName      string
+	UserEmail     string
+	UserPhone     string
+	Total         domain.Money
+	Status        string
+	PaymentMethod string
+	ItemsJSON     string
+	Delivery      *domain.Delivery
+	CreatedAt     string
+}
+
+// GetOrderDetail loads an order together with its customer.
+func (rm *ReadModelsDB) GetOrderDetail(orderID string) (*OrderDetail, error) {
+	var d OrderDetail
+	var total float64
+	var deliveryJSON string
+	err := rm.db.QueryRow(`
+		SELECT o.id, o.user_id, COALESCE(u.name, ''), COALESCE(u.email, ''), COALESCE(u.phone, ''), o.total_amount, o.status,
+		       COALESCE(o.payment_method, ''), COALESCE(o.items_json, ''), COALESCE(o.delivery_json, ''), o.created_at
+		FROM orders o LEFT JOIN users u ON o.user_id = u.id
+		WHERE o.id = ?`, orderID).Scan(&d.ID, &d.UserID, &d.UserName, &d.UserEmail, &d.UserPhone, &total, &d.Status,
+		&d.PaymentMethod, &d.ItemsJSON, &deliveryJSON, &d.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	d.Total = domain.MoneyFromZloty(total)
+	d.Delivery = ParseDelivery(deliveryJSON)
+	return &d, nil
 }

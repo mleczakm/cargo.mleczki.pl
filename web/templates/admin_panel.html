@@ -66,6 +66,20 @@
         </div>
         {{end}}
 
+        {{if .OrdersToShip}}
+        <div class="bg-blue-50 border-2 border-blue-200 rounded-2xl p-6 mb-8">
+            <h3 class="font-bold text-xl mb-4 text-blue-900">📦 Do wysłania ({{len .OrdersToShip}})</h3>
+            <div class="space-y-3">
+                {{range .OrdersToShip}}
+                <a href="/admin/order/{{.ID}}" class="block bg-white border border-blue-200 p-4 rounded-xl hover:border-blue-400">
+                    <span class="font-bold text-gray-900">{{.ID}}</span>
+                    <span class="text-sm text-gray-600"> · {{.UserName}} · {{.Delivery.Name}} → {{.Delivery.Where}}</span>
+                </a>
+                {{end}}
+            </div>
+        </div>
+        {{end}}
+
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
             <div id="orders-section" class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
                 <h3 class="font-bold text-xl mb-6 border-b pb-2">Ostatnie zamówienia</h3>
@@ -94,6 +108,7 @@
 
                             <div class="flex justify-between items-center mt-2 pt-2 border-t border-gray-200">
                                 <span class="font-bold text-gray-900">{{.TotalAmount}} ({{.PaymentMethod}})</span>
+                                <a href="/admin/order/{{.ID}}" class="text-xs bg-white border border-gray-300 px-3 py-1.5 rounded-lg hover:border-emerald-400">{{if and .Delivery .Delivery.IsShipped}}📦 Wysyłka{{else}}Szczegóły{{end}}</a>
                                 {{if eq .Status "confirmed"}}
                                     <form method="post" action="/admin/order/{{.ID}}/realize" onsubmit="return confirm('Oznaczyć zamówienie jako zrealizowane (wydane)?');">
                                         <button type="submit" class="text-xs bg-gray-900 text-white px-3 py-1.5 rounded-lg hover:bg-gray-800 shadow-sm transition-colors">Oznacz jako zrealizowane</button>

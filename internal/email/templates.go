@@ -100,3 +100,26 @@ func RenderOrderNotice(notice OrderNotice) (string, error) {
 	}{notice, siteURL + "/admin", fmt.Sprintf("%.2f", notice.Amount)}
 	return renderBody(orderNoticeTemplate, data, "Zamówienie wymaga potwierdzenia", "Zamówienie wymaga potwierdzenia")
 }
+
+var orderShippedTemplate = template.Must(template.New("shipped").Parse(`<p>{{if .Name}}Dzień dobry {{.Name}},{{else}}Dzień dobry,{{end}}</p>
+<p>Twoje zamówienie <strong>{{.OrderID}}</strong> zostało nadane.</p>
+<table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;background:#ecfdf5;border-radius:10px;font-size:15px"><tr><td style="padding:16px">
+{{if .Carrier}}<strong>Przewoźnik:</strong> {{.Carrier}}<br>{{end}}
+{{if .Waybill}}<strong>Numer przesyłki:</strong> {{.Waybill}}<br>{{end}}
+{{if .Where}}<strong>Dostawa do:</strong> {{.Where}}{{end}}
+</td></tr></table>
+{{if .TrackingURL}}<p style="margin:24px 0"><a href="{{.TrackingURL}}" style="display:inline-block;background:#059669;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:999px;font-weight:bold">Śledź przesyłkę</a></p>{{end}}
+<p style="font-size:13px;color:#6b7280">Przy odbiorze z paczkomatu lub punktu zabierz dokument tożsamości i kod z wiadomości od przewoźnika.</p>`))
+
+// OrderShippedSubject is the subject of the "your parcel is on its way" message.
+const OrderShippedSubject = "Twoje zamówienie zostało wysłane — cargo.mleczki.pl"
+
+// OrderShipped describes a parcel that has been handed to the courier.
+type OrderShipped struct {
+	OrderID, Name, Carrier, Waybill, TrackingURL, Where string
+}
+
+// RenderOrderShipped returns the customer message about a shipped order.
+func RenderOrderShipped(shipped OrderShipped) (string, error) {
+	return renderBody(orderShippedTemplate, shipped, OrderShippedSubject, "Zamówienie w drodze")
+}
