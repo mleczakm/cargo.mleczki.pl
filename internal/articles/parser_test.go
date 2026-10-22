@@ -68,7 +68,12 @@ func TestLoadAllArticlesSortsPriorityThenDateAndSkipsNonMarkdown(t *testing.T) {
 		t.Fatalf("unexpected ordering: %+v", got)
 	}
 	writeArticle(t, dir, "broken.md", "no frontmatter")
-	if _, err := articles.NewParser(dir).LoadAllArticles(); err == nil {
-		t.Fatal("invalid article should fail the catalog load")
+	parser := articles.NewParser(dir)
+	got, err = parser.LoadAllArticles()
+	if err != nil || len(got) != 3 {
+		t.Fatalf("one broken file must not hide the others: %d articles, %v", len(got), err)
+	}
+	if problems := parser.Problems(); problems == nil || !strings.Contains(problems.Error(), "broken.md") {
+		t.Fatalf("the broken file must be reported, got %v", problems)
 	}
 }

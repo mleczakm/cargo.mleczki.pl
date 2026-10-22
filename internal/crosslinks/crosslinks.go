@@ -7,9 +7,14 @@
 //	[[article:trekking-bike-guide]] link to an article, labelled with its title
 //	[[shop:dzwonek]]                link to a shop item, labelled with its name
 //	[[shop:dzwonek|ten dzwonek]]    same, with a custom label
+//	[[rent:brompton]]               a card inviting to rent the product, in place of the paragraph it stands in
 //
 // References are expanded on the rendered HTML, so the markdown stays valid
 // and the target's current name is used whenever the label is omitted.
+//
+// A target may carry a Card: the preview shown when the link is hovered or
+// focused (a thumbnail, a price, an "add to cart" button). External targets,
+// such as affiliate offers, open in a new window and say so.
 package crosslinks
 
 import (
@@ -24,16 +29,22 @@ const (
 	KindProduct = "product"
 	KindArticle = "article"
 	KindShop    = "shop"
+	KindRent    = "rent"
 )
 
-var tokenPattern = regexp.MustCompile(`\[\[(product|article|shop):([a-z0-9][a-z0-9-]*)(?:\|([^\]]*))?\]\]`)
+var tokenPattern = regexp.MustCompile(`\[\[(product|article|shop|rent):([a-z0-9][a-z0-9-]*)(?:\|([^\]]*))?\]\]`)
+
+// soleParagraph matches a reference that stands alone in its paragraph.
+var soleParagraph = regexp.MustCompile(`<p>\s*(\[\[rent:[a-z0-9][a-z0-9-]*(?:\|[^\]]*)?\]\])\s*</p>`)
 
 // Target is something a reference can resolve to.
 type Target struct {
-	Kind  string
-	ID    string
-	Title string
-	URL   string
+	Kind     string
+	ID       string
+	Title    string
+	URL      string
+	Card     string // trusted, escaped HTML: the hover preview, or the whole embed for rent references
+	External bool   // leaves the site: opens in a new window
 }
 
 // Index maps (kind, id) to targets. The zero value is ready to use.
@@ -84,25 +95,50 @@ func Expand(htmlText string, lookup func(kind, id string) (Target, bool)) (strin
 		return htmlText, nil
 	}
 	var unresolved []Reference
+
+	// A rent card is a block: take it out of the paragraph markdown wrapped it in.
+	htmlText = soleParagraph.ReplaceAllString(htmlText, "$1")
+
 	out := tokenPattern.ReplaceAllStringFunc(htmlText, func(raw string) string {
 		parts := tokenPattern.FindStringSubmatch(raw)
 		ref := Reference{Kind: parts[1], ID: parts[2], Label: strings.TrimSpace(html.UnescapeString(parts[3])), Raw: raw}
 		target, ok := lookup(ref.Kind, ref.ID)
 		if !ok {
 			unresolved = append(unresolved, ref)
+			if ref.Kind == KindRent {
+				return "" // an embed with nothing to show leaves no trace
+			}
 			if ref.Label != "" {
 				return html.EscapeString(ref.Label)
 			}
 			return html.EscapeString(ref.ID)
 		}
+		if ref.Kind == KindRent {
+			return target.Card
+		}
 		label := ref.Label
 		if label == "" {
 			label = target.Title
 		}
-		return fmt.Sprintf(`<a href="%s" class="text-emerald-700 underline hover:text-emerald-800" data-link-kind="%s">%s</a>`,
-			html.EscapeString(target.URL), html.EscapeString(ref.Kind), html.EscapeString(label))
+		return anchor(target, ref.Kind, label)
 	})
 	return out, unresolved
+}
+
+func anchor(target Target, kind, label string) string {
+	attrs := ""
+	if target.External {
+		attrs = ` target="_blank" rel="sponsored nofollow noopener noreferrer"`
+	}
+	link := fmt.Sprintf(`<a href="%s" class="text-emerald-700 underline hover:text-emerald-800"%s data-link-kind="%s">%s</a>`,
+		html.EscapeString(target.URL), attrs, html.EscapeString(kind), html.EscapeString(label))
+	if target.External {
+		link += `<span class="hc-ext" aria-hidden="true" title="Otwiera się w nowym oknie">&#8599;</span>`
+	}
+	if target.Card == "" {
+		return link
+	}
+	return `<span class="hc">` + link + `<span class="hc-card" role="tooltip">` + target.Card + `</span></span>`
 }
 
 // PlainText replaces references with the label (or the target's title), without

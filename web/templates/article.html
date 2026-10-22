@@ -1,47 +1,57 @@
 {{define "article-content"}}
-<div class="bg-emerald-900 text-white py-12">
-    <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div class="flex items-center space-x-2 mb-4">
-            <span class="px-3 py-1 text-sm font-medium rounded-full bg-emerald-100 text-emerald-900">
-                {{.Article.Category}}
-            </span>
-            <span class="text-emerald-200">{{.Article.PublishedAt.Format "2006-01-02"}}</span>
+{{with .Article}}
+<header class="story-hero" style="--focus:{{if .HeroFocus}}{{.HeroFocus}}{{else}}50% 50%{{end}}">
+    {{if and .Image (not .ImageMissing)}}
+    <img class="story-hero__img" src="{{.Image}}" alt="" fetchpriority="high" />
+    {{else}}
+    <div class="story-hero__img story-hero__img--placeholder" aria-hidden="true"></div>
+    {{end}}
+    <div class="story-hero__inner">
+        <div class="story-hero__meta">
+            {{if .Draft}}<span class="story-hero__badge story-hero__badge--draft">Szkic</span>{{end}}
+            {{if .Category}}<span class="story-hero__badge">{{.Category}}</span>{{end}}
+            <time datetime="{{.PublishedAt.Format "2006-01-02"}}">{{.PublishedAt.Format "2006-01-02"}}</time>
+            <span aria-hidden="true">·</span>
+            <span>{{.ReadingMinutes}} min czytania</span>
         </div>
-        <h1 class="text-4xl md:text-5xl font-black mb-4">{{.Article.Title}}</h1>
-        <p class="text-emerald-200 text-lg">{{.Article.Summary}}</p>
-        <div class="flex items-center space-x-2 mt-4 text-emerald-200">
-            <span class="font-medium">{{.Article.Author}}</span>
-        </div>
+        <h1>{{.Title}}</h1>
+        {{if .Subtitle}}<p class="story-hero__sub">{{.Subtitle}}</p>{{else if .Summary}}<p class="story-hero__sub">{{.Summary}}</p>{{end}}
+        {{if .Author}}<p class="story-hero__by">{{.Author}}</p>{{end}}
+        <span class="story-hero__scroll" aria-hidden="true">↓ czytaj</span>
     </div>
+</header>
+
+{{if and $.IsAdmin (or .Draft .MissingImages)}}
+<div class="max-w-3xl mx-auto px-4 pt-8">
+    {{if .Draft}}
+    <p class="bg-amber-50 border border-amber-200 text-amber-900 rounded-xl px-4 py-3 text-sm mb-3" role="status"><strong>To szkic.</strong> Widzisz go tylko Ty, jako administrator: nie ma go na liście wpisów, w menu, w mapie strony ani w wyszukiwarkach. Aby opublikować, usuń <code>status: draft</code> z pliku.</p>
+    {{end}}
+    {{if .MissingImages}}
+    <p class="bg-gray-50 border border-gray-200 text-gray-800 rounded-xl px-4 py-3 text-sm" role="status"><strong>Brakuje zdjęć</strong> (zastąpione szarym tłem): {{range $i, $m := .MissingImages}}{{if $i}}, {{end}}<code>{{$m}}</code>{{end}}. Wgraj je do <code>data/images/articles/</code>.</p>
+    {{end}}
 </div>
+{{end}}
 
-<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-    <article class="prose prose-lg max-w-none">
-        {{if .Article.Image}}
-        <img src="{{.Article.Image}}" alt="{{.Article.Title}}" class="w-full rounded-2xl mb-8" />
-        {{end}}
-        <div class="text-gray-800 leading-relaxed">
-            {{.Article.Content | safeHTML}}
-        </div>
-    </article>
+<article class="story">
+    {{.Content | safeHTML}}
+</article>
 
-    {{if .Article.Tags}}
-    <div class="mt-8 pt-8 border-t border-gray-200">
-        <h3 class="text-lg font-bold text-gray-900 mb-4">Tagi</h3>
+<div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
+    {{if .Tags}}
+    <div class="pt-8 border-t border-gray-200">
         <div class="flex flex-wrap gap-2">
-            {{range .Article.Tags}}
-            <span class="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm">{{.}}</span>
-            {{end}}
+            {{range .Tags}}<span class="px-3 py-1 bg-gray-100 text-gray-700 rounded-full text-sm">#{{.}}</span>{{end}}
         </div>
     </div>
     {{end}}
+{{end}}
 
     {{if .RelatedProducts}}
     <div class="mt-12 pt-8 border-t border-gray-200">
-        <h3 class="text-2xl font-bold text-gray-900 mb-6">Powiązane produkty</h3>
+        <h3 class="text-2xl font-bold text-gray-900 mb-6">Do wynajęcia u mnie</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {{range .RelatedProducts}}
-            <div class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition-shadow duration-300 cursor-pointer" onclick="window.location='/product/{{.ID}}'">
+            <a href="/product/{{.ID}}" class="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-lg transition-shadow duration-300 block">
                 <div class="h-40 overflow-hidden">
                     <img src="{{.Image}}" alt="{{.Name}}" class="w-full h-full object-contain object-bottom" />
                 </div>
@@ -49,7 +59,7 @@
                     <h4 class="font-bold text-gray-900 mb-1">{{.Name}}</h4>
                     <p class="text-emerald-600 font-medium">{{.BasePrice}} / dobę</p>
                 </div>
-            </div>
+            </a>
             {{end}}
         </div>
     </div>
@@ -57,12 +67,12 @@
 
     {{if .RelatedShop}}{{template "shop-strip" .RelatedShop}}{{end}}
 
-    <div class="mt-8">
+    <div class="mt-10">
         <a href="/articles" class="inline-flex items-center text-emerald-600 hover:text-emerald-700 font-medium">
             <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
             </svg>
-            Powrót do artykułów
+            Wszystkie wpisy
         </a>
     </div>
 </div>

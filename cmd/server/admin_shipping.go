@@ -154,15 +154,6 @@ func (s *Server) addShipmentForm(ctx context.Context, data map[string]interface{
 	}
 }
 
-func firstNonEmpty(values ...string) string {
-	for _, v := range values {
-		if strings.TrimSpace(v) != "" {
-			return v
-		}
-	}
-	return ""
-}
-
 // handleAdminShipmentCreate orders a parcel at Polkurier for an order.
 func (s *Server) handleAdminShipmentCreate(w http.ResponseWriter, r *http.Request) {
 	orderID := chi.URLParam(r, "id")

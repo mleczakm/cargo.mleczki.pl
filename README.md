@@ -32,7 +32,8 @@ Aplikacja wykorzystuje architekturę Event-Sourcing do przechowywania wszystkich
 ## Funkcjonalności
 
 ### Zaimplementowane
-- ✅ Sklep: produkty sprzedawane bezpośrednio (stany, warianty, rezerwacje) i linki afiliacyjne, powiązania z artykułami i wypożyczeniami – patrz [docs/shop.md](docs/shop.md)
+- ✅ Sklep: produkty sprzedawane bezpośrednio (stany, warianty, rezerwacje, wysyłka Polkurier) i linki afiliacyjne – patrz [docs/shop.md](docs/shop.md)
+- ✅ Blog: wpisy w Markdown, układ „opowieść”, karty produktów po najechaniu, ramka wynajmu, SEO i miniatury – patrz [docs/blog.md](docs/blog.md)
 - ✅ Event-Sourcing z SQLite
 - ✅ System projekcji read models
 - ✅ Flat-file CMS dla produktów (Markdown z YAML frontmatter)

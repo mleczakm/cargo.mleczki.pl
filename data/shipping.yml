@@ -1,0 +1,51 @@
+# Dostawa zamówień ze sklepu. Plik jest wczytywany na bieżąco, bez restartu; błąd w pliku
+# nie psuje sklepu (działa poprzednia wersja, a w panelu admina widać ostrzeżenie).
+#
+# Opcje "locker" i "courier" są oferowane klientom dopiero, gdy skonfigurowany jest Polkurier
+# (zmienne POLKURIER_LOGIN i POLKURIER_TOKEN, patrz docs/shop.md). Odbiór osobisty działa zawsze.
+
+# Nadawca: adres na etykietach przesyłek. UZUPEŁNIJ, zanim nadasz pierwszą paczkę.
+sender:
+  person: ""            # imię i nazwisko
+  company: ""           # opcjonalnie
+  street: ""
+  houseNumber: ""
+  flatNumber: ""
+  postcode: ""          # 00-000
+  city: Radzymin
+  email: ""
+  phone: ""
+
+# Domyślna paczka. Waga i wymiary większych produktów ustawiasz w ich plikach (shipping:).
+parcel:
+  lengthCm: 30
+  widthCm: 20
+  heightCm: 10
+  packagingWeightG: 300       # karton i wypełnienie
+  defaultItemWeightG: 500     # produkt bez własnej wagi
+  description: Akcesoria rowerowe   # treść przesyłki na etykiecie (do 30 znaków)
+  insure: false               # ubezpieczaj paczki na wartość towaru
+
+options:
+  - code: pickup
+    name: Odbiór osobisty w Radzyminie
+    description: Razem z wypożyczonym sprzętem albo osobno, po umówieniu terminu.
+    kind: pickup
+
+  # Cena, którą płaci klient (nie koszt przesyłki: ten widzisz w panelu przy zamówieniu).
+  # USTAW ceny. "freeFrom": od jakiej wartości towaru dostawa jest bezpłatna (0 = nigdy).
+  - code: paczkomat
+    name: Paczkomat InPost
+    description: Odbierasz w wybranym paczkomacie, zwykle w 1-2 dni robocze.
+    kind: locker
+    carrier: INPOST_PACZKOMAT   # kod usługi z Polkuriera
+    price: 14.99
+    freeFrom: 300
+
+  - code: kurier
+    name: Kurier DPD
+    description: Dostawa pod wskazany adres.
+    kind: courier
+    carrier: DPD
+    price: 19.99
+    freeFrom: 300

@@ -1,0 +1,29 @@
+{{define "ico-cart"}}<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/><path d="M13 6v5M10.5 8.5h5"/></svg>{{end}}
+{{define "ico-ext"}}<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>{{end}}
+{{define "ico-bike"}}<svg class="ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="18.5" cy="17.5" r="3.5"/><circle cx="5.5" cy="17.5" r="3.5"/><circle cx="15" cy="5" r="1"/><path d="M12 17.5V14l-3-3 4-3 2 3h2"/></svg>{{end}}
+
+{{/* Previews shown when a link in the text is hovered or focused. They sit inside paragraphs, so only phrasing content is allowed here (span, a, button, img). */}}
+
+{{define "hover-card-shop"}}<span class="hc-card__inner"><span class="hc-card__thumb">{{if .Image}}<img src="{{.Image}}" alt="" loading="lazy" decoding="async">{{else}}<span class="hc-card__icon" aria-hidden="true">{{if .Icon}}{{.Icon}}{{else}}🛒{{end}}</span>{{end}}</span><span class="hc-card__body"><strong class="hc-card__title">{{.Name}}</strong>{{if .Summary}}<span class="hc-card__text">{{.Summary}}</span>{{end}}{{if .IsAffiliate}}<span class="hc-card__meta"><span class="hc-card__price">{{if .Affiliate.PriceHint}}{{.Affiliate.PriceHint}}{{else}}Sprawdź cenę{{end}}</span><span class="hc-badge hc-badge--ext">Polecam · {{.Affiliate.Merchant}}</span></span><span class="hc-card__actions"><a class="hc-btn" href="/shop/{{.ID}}/go" target="_blank" rel="sponsored nofollow noopener noreferrer">{{template "ico-ext"}} Zobacz ofertę</a></span><span class="hc-card__note">Kupisz to w zewnętrznym sklepie, otworzy się w nowym oknie. To link polecający.</span>{{else}}<span class="hc-card__meta"><span class="hc-card__price">{{if .PriceFrom}}od {{end}}{{.DisplayPrice}}</span><span class="hc-badge {{.BadgeClass}}">{{.Availability.Label}}</span></span><span class="hc-card__actions">{{if not .Availability.CanBuy}}<span class="hc-btn hc-btn--off">Brak w magazynie</span>{{else if .HasVariants}}<a class="hc-btn" href="/shop/{{.ID}}">Wybierz wersję</a>{{else}}<button type="submit" form="hc-cart" formaction="/cart/add-shop?card=1" name="item_id" value="{{.ID}}" class="hc-btn hc-btn--buy" title="Dodaj do koszyka" aria-label="Dodaj do koszyka: {{.Name}}">{{template "ico-cart"}}<span class="sr-only">Do koszyka</span></button><a class="hc-link2" href="/shop/{{.ID}}">Szczegóły</a>{{end}}</span>{{end}}</span></span>{{end}}
+
+{{define "hover-card-product"}}<span class="hc-card__inner"><span class="hc-card__thumb">{{if .Image}}<img src="{{.Image}}" alt="" loading="lazy" decoding="async">{{else}}<span class="hc-card__icon" aria-hidden="true">{{if .Icon}}{{.Icon}}{{else}}🚲{{end}}</span>{{end}}</span><span class="hc-card__body"><strong class="hc-card__title">{{.Name}}</strong>{{if .Summary}}<span class="hc-card__text">{{.Summary}}</span>{{end}}<span class="hc-card__meta"><span class="hc-card__price">{{.BasePrice}} <small>/ dobę</small></span><span class="hc-badge hc-badge--rent">Do wynajęcia</span></span><span class="hc-card__actions"><a class="hc-btn hc-btn--try" href="/product/{{.ID}}">{{template "ico-bike"}} Wypróbuj mnie!</a></span></span></span>{{end}}
+
+{{/* A block embed for a rental product: [[rent:id]] on a line of its own. */}}
+{{define "rent-embed"}}<aside class="rent-embed">
+<a class="rent-embed__media" href="/product/{{.ID}}" tabindex="-1" aria-hidden="true">{{if .Image}}<img src="{{.Image}}" alt="" loading="lazy" decoding="async">{{else}}<span class="rent-embed__icon">{{if .Icon}}{{.Icon}}{{else}}🚲{{end}}</span>{{end}}</a>
+<div class="rent-embed__body">
+<p class="rent-embed__kicker">Do wynajęcia u mnie</p>
+<h3 class="rent-embed__title"><a class="rent-embed__link" href="/product/{{.ID}}">{{.Name}}</a></h3>
+{{if .Summary}}<p class="rent-embed__text">{{.Summary}}</p>{{end}}
+<p class="rent-embed__price">{{.BasePrice}} <small>/ dobę</small></p>
+<a class="rent-embed__cta" href="/product/{{.ID}}">{{template "ico-bike"}} Wypróbuj mnie! <span aria-hidden="true">→</span></a>
+</div>
+</aside>{{end}}
+
+{{define "cart-toast"}}{{if .CartAddedName}}
+<div id="cart-toast" class="cart-toast" role="status">
+    <span>Dodano do koszyka: <strong>{{.CartAddedName}}</strong></span>
+    <a href="/checkout">Przejdź do koszyka</a>
+    <button type="button" onclick="this.parentNode.remove()" aria-label="Zamknij">×</button>
+</div>
+{{end}}{{end}}

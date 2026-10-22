@@ -387,7 +387,7 @@ func TestShopItemPage(t *testing.T) {
 
 	_, affiliate, _ := app.get(shopper, "/shop/lampka")
 	assertContains(t, affiliate, `href="/shop/lampka/go"`, `rel="sponsored nofollow noopener noreferrer"`, "Zobacz ofertę w serwisie Allegro", "link afiliacyjny")
-	assertNotContains(t, affiliate, "https://allegro.pl/oferta/lampka-123", "/cart/add-shop")
+	assertNotContains(t, affiliate, "https://allegro.pl/oferta/lampka-123", `name="item_id"`) // no buy form (the shared preview form has no fields)
 
 	if status, _, _ := app.get(shopper, "/shop/tajny"); status != http.StatusNotFound {
 		t.Errorf("admin-only item must be a 404 for visitors, got %d", status)
@@ -418,7 +418,7 @@ func TestCrossLinksBetweenShopProductsAndArticles(t *testing.T) {
 
 	// Article page: custom label, and kask is listed because the article declares relatedShop.
 	_, article, _ := app.get(shopper, "/article/guide")
-	assertContains(t, article, `<a href="/shop/lampka"`, ">polecaną lampkę</a>", "Akcesoria i polecane produkty", `href="/shop/kask"`)
+	assertContains(t, article, `<a href="/shop/lampka/go"`, `target="_blank"`, ">polecaną lampkę</a>", "Akcesoria i polecane produkty", `href="/shop/kask"`)
 
 	// The home page cards show plain text, never raw [[...]] tokens or nested links.
 	_, home, _ := app.get(shopper, "/")

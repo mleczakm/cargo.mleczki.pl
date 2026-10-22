@@ -1,6 +1,6 @@
 # Sklep
 
-Sklep sprzedaje akcesoria (**direct**: koszyk, płatność BLIK lub gotówka, odbiór w Radzyminie) i poleca
+Sklep sprzedaje akcesoria (**direct**: koszyk, płatność BLIK lub gotówka przy odbiorze, odbiór w Radzyminie albo wysyłka) i poleca
 produkty z zewnętrznych serwisów (**affiliate**: tylko link). Katalog to pliki Markdown w `data/shop/`,
 tak jak produkty i artykuły. Działa od razu po dodaniu pliku, bez restartu.
 
@@ -104,9 +104,33 @@ Stan żyje w bazie (`shop_stock`, dziennik `shop_stock_movements`), nie w plikac
 * Nieopłacone zamówienia ze sklepu wygasają po `SHOP_RESERVATION_TTL_HOURS` godzin (domyślnie 48, `0` = nie
   wygasają) i oddają towar na półkę. Dotyczy to też wypożyczeń w tym samym zamówieniu.
 
-## Ograniczenia v1
+## Dostawa (Polkurier)
 
-* Tylko odbiór osobisty, bez wysyłki i kosztów dostawy.
+Opcje dostawy i dane nadawcy są w `data/shipping.yml` (wczytywany na bieżąco; błąd w pliku nie psuje
+sklepu, działa poprzednia wersja, a panel pokazuje ostrzeżenie). Odbiór osobisty działa zawsze.
+Paczkomat i kurier pojawiają się w koszyku dopiero, gdy ustawisz dane konta Polkurier:
+
+```
+POLKURIER_LOGIN=<id konta>
+POLKURIER_TOKEN=<token API>
+POLKURIER_SANDBOX=false     # domyślnie true (środowisko testowe)
+```
+
+* Cenę dostawy ustalasz sam (`price`, `freeFrom` = darmowa od tej wartości towaru). Prawdziwy koszt
+  przesyłki widzisz w panelu przy zamówieniu, razem z marżą.
+* Klient wyszukuje paczkomat po mieście, ulicy lub kodzie (podpowiedzi z Polkuriera) albo podaje adres dla
+  kuriera. Przesyłkę opłaca BLIK-iem, gotówka przy odbiorze dotyczy tylko odbioru osobistego.
+* Zamówienie z wypożyczanym sprzętem jest zawsze do odbioru osobistego, tak samo produkty z `shipping:
+  {pickupOnly: true}` (np. duży daszek).
+* Waga i wymiary produktu: `shipping: {weightG: 400, lengthCm: 30, widthCm: 20, heightCm: 8}` w pliku produktu;
+  bez tego liczy się domyślna paczka z `shipping.yml`.
+* Panel admina → Zamówienia: kolejka **Do wysłania** i strona zamówienia (`/admin/order/{id}`): wycena
+  przewoźników, formularz paczki, etykieta PDF, śledzenie, anulowanie. Po nadaniu zamówienie można od
+  razu oznaczyć jako wysłane (towar schodzi ze stanu, klient dostaje e-mail ze śledzeniem).
+* Co 30 minut statusy paczek są odświeżane; paczka „w drodze” oznacza zamówienie jako wysłane.
+
+## Ograniczenia
+
 * Regulamin (`/terms`) opisuje wynajem; zakupy w sklepie wymagają własnych zapisów (odstąpienie od umowy,
   reklamacje).
 
@@ -120,3 +144,10 @@ koszyka i przy składaniu zamówienia – więc zmiana ciasteczka niczego nie ta
 * Każda pozycja wynajmu ma własne terminy i blokuje w kalendarzu tylko swoje dni.
 * Pozycje, które się nakładają (ten sam sprzęt w koszyku), są zajęte lub z przeszłością, są oznaczone na
   czerwono i blokują złożenie zamówienia. Jedna pozycja może trwać najwyżej 90 dni.
+
+## Linki w tekstach
+
+W artykułach, opisach produktów i sklepu `[[shop:ID]]` pokazuje po najechaniu kartę: zdjęcie, opis,
+cenę, dostępność i ikonę „do koszyka”. Produkty z wariantami prowadzą do wyboru wersji. Produkt
+afiliacyjny jest linkiem ze znaczkiem ↗, który otwiera ofertę w nowym oknie. `[[product:ID]]` pokazuje
+kartę z przyciskiem „Wypróbuj mnie!”, a `[[rent:ID]]` w osobnej linii wstawia dużą ramkę wynajmu.

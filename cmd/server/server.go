@@ -52,6 +52,7 @@ type Server struct {
 	webPushNotifier *notifications.WebPushNotifier
 	mailer          *email.Sender
 	shipping        *shipping.Service
+	ogCache         ogCache
 }
 
 // partialTemplates are HTMX fragments rendered without the site layout.
@@ -153,12 +154,15 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 	r.Get("/product/{id}", s.handleProduct)
 	r.Get("/product/{id}/calendar", s.handleProductCalendar)
 	r.Get("/articles", s.handleArticles)
-	r.Get("/articles/porady", s.handleArticlesPorady)
-	r.Get("/articles/recenzje", s.handleArticlesRecenzje)
+	r.Get("/articles/{category}", s.handleArticlesCategory)
 	r.Get("/article/{id}", s.handleArticle)
 	r.Get("/shop", s.handleShop)
 	r.Get("/shop/{id}", s.handleShopItem)
 	r.Get("/shop/{id}/go", s.handleShopGo)
+	r.Get("/og/site.jpg", s.handleOGSite)
+	r.Get("/og/{kind}/{file}", s.handleOG)
+	r.Get("/sitemap.xml", s.handleSitemap)
+	r.Get("/robots.txt", s.handleRobots)
 	r.Get("/shipping/points", s.handleShippingPoints)
 	r.Get("/login", s.handleLogin)
 	r.Post("/login", s.handleLogin)
@@ -251,6 +255,7 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		"Products":  filtered,
 		"CartCount": getCartCount(r),
 		"CartTotal": getCartTotal(r),
+		"SEO":       &pageSEO{Title: "Wynajem rowerów cargo i sprzętu rowerowego w Radzyminie", JSONLD: s.homeJSONLD(siteURL(r))},
 	}
 
 	s.renderTemplate(w, r, "home.html", data)
@@ -283,6 +288,7 @@ func (s *Server) handleProduct(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Error loading related articles: %v", err)
 		relatedArticles = []domain.Article{}
 	}
+	relatedArticles = filterArticlesByVisibility(relatedArticles, r)
 
 	product.Description = string(s.expandLinks(r, product.Description))
 
@@ -297,6 +303,7 @@ func (s *Server) handleProduct(w http.ResponseWriter, r *http.Request) {
 		"CartCount":       getCartCount(r),
 		"CartTotal":       getCartTotal(r),
 	}
+	data["SEO"] = s.productSEO(r, product)
 
 	s.renderTemplate(w, r, "product.html", data)
 }
@@ -2560,6 +2567,15 @@ func (s *Server) renderTemplate(w http.ResponseWriter, r *http.Request, name str
 		return
 	}
 
+	data["MenuNav"] = s.menuLinks(r, domain.MenuNav)
+	data["MenuFooter"] = s.menuLinks(r, domain.MenuFooter)
+	if id := r.URL.Query().Get("cart_added"); id != "" {
+		if item, ok := s.shopItemByID(r, id); ok {
+			data["CartAddedName"] = item.Name
+		}
+	}
+	s.finishSEO(r, data)
+
 	baseName := strings.TrimSuffix(name, ".html")
 	contentName := baseName + "-content"
 
@@ -2761,11 +2777,19 @@ func isItemVisible(visibility domain.Visibility, r *http.Request) bool {
 	}
 }
 
+// articleVisible tells whether the visitor may read an article. Drafts are for the admin only.
+func articleVisible(article domain.Article, r *http.Request) bool {
+	if article.Draft {
+		return isAdmin(r)
+	}
+	return isItemVisible(article.Visibility, r)
+}
+
 // filterArticlesByVisibility filters articles based on visibility settings.
 func filterArticlesByVisibility(articles []domain.Article, r *http.Request) []domain.Article {
 	var filtered []domain.Article
 	for _, article := range articles {
-		if isItemVisible(article.Visibility, r) {
+		if articleVisible(article, r) {
 			filtered = append(filtered, article)
 		}
 	}
@@ -2796,56 +2820,48 @@ func (s *Server) handleArticles(w http.ResponseWriter, r *http.Request) {
 	filtered := filterArticlesByVisibility(articles, r)
 
 	data := map[string]interface{}{
-		"Title":     "Artykuły",
+		"Title":     "Blog",
+		"Active":    "all",
 		"Articles":  filtered,
 		"CartCount": getCartCount(r),
 		"CartTotal": getCartTotal(r),
 	}
+	s.setListSEO(r, data, "blog", "Blog o życiu na rowerze", "Historie z codziennej jazdy rowerem cargo, porady dla rodzin i sprzęt, który się sprawdził.")
 
 	s.renderTemplate(w, r, "articles.html", data)
 }
 
-// handleArticlesPorady renders the porady (tips) articles page.
-func (s *Server) handleArticlesPorady(w http.ResponseWriter, r *http.Request) {
-	articles, err := s.articleParser.LoadArticlesByCategory(domain.CategoryPorady)
-	if err != nil {
-		log.Printf("Error loading porady articles: %v", err)
-		http.Error(w, "Failed to load articles", http.StatusInternalServerError)
-		return
-	}
-
-	// Filter articles based on visibility
-	filtered := filterArticlesByVisibility(articles, r)
-
-	data := map[string]interface{}{
-		"Title":     "Porady",
-		"Articles":  filtered,
-		"CartCount": getCartCount(r),
-		"CartTotal": getCartTotal(r),
-	}
-
-	s.renderTemplate(w, r, "articles.html", data)
+// articleSections are the categories with a page of their own (/articles/{category}).
+var articleSections = map[domain.ArticleCategory]string{
+	domain.CategoryHistorie:   "Historie",
+	domain.CategoryPorady:     "Porady",
+	domain.CategoryRecenzje:   "Recenzje",
+	domain.CategoryPrzewodnik: "Przewodniki",
 }
 
-// handleArticlesRecenzje renders the recenzje (reviews) articles page.
-func (s *Server) handleArticlesRecenzje(w http.ResponseWriter, r *http.Request) {
-	articles, err := s.articleParser.LoadArticlesByCategory(domain.CategoryRecenzje)
+// handleArticlesCategory renders the articles of one category.
+func (s *Server) handleArticlesCategory(w http.ResponseWriter, r *http.Request) {
+	category := domain.ArticleCategory(chi.URLParam(r, "category"))
+	title, ok := articleSections[category]
+	if !ok {
+		http.NotFound(w, r)
+		return
+	}
+	articles, err := s.articleParser.LoadArticlesByCategory(category)
 	if err != nil {
-		log.Printf("Error loading recenzje articles: %v", err)
+		log.Printf("Error loading %s articles: %v", category, err)
 		http.Error(w, "Failed to load articles", http.StatusInternalServerError)
 		return
 	}
 
-	// Filter articles based on visibility
-	filtered := filterArticlesByVisibility(articles, r)
-
 	data := map[string]interface{}{
-		"Title":     "Recenzje",
-		"Articles":  filtered,
+		"Title":     title,
+		"Active":    string(category),
+		"Articles":  filterArticlesByVisibility(articles, r),
 		"CartCount": getCartCount(r),
 		"CartTotal": getCartTotal(r),
 	}
-
+	s.setListSEO(r, data, "blog", title+" — blog o życiu na rowerze", "Historie z codziennej jazdy rowerem cargo, porady dla rodzin i sprzęt, który się sprawdził.")
 	s.renderTemplate(w, r, "articles.html", data)
 }
 
@@ -2861,7 +2877,7 @@ func (s *Server) handleArticle(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Check visibility
-	if !isItemVisible(article.Visibility, r) {
+	if !articleVisible(*article, r) {
 		http.Error(w, "Article not found", http.StatusNotFound)
 		return
 	}
@@ -2887,6 +2903,7 @@ func (s *Server) handleArticle(w http.ResponseWriter, r *http.Request) {
 		"CartCount":       getCartCount(r),
 		"CartTotal":       getCartTotal(r),
 	}
+	data["SEO"] = s.articleSEO(r, article)
 
 	s.renderTemplate(w, r, "article.html", data)
 }

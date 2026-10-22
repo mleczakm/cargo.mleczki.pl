@@ -4,7 +4,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{{.Title}} - cargo.mleczki.pl</title>
+    <title>{{if .PageTitle}}{{.PageTitle}}{{else}}{{.Title}} - cargo.mleczki.pl{{end}}</title>
+    {{with .SEO}}
+    <meta name="description" content="{{.Description}}">
+    <link rel="canonical" href="{{.Canonical}}">
+    {{if .NoIndex}}<meta name="robots" content="noindex, nofollow">{{else}}<meta name="robots" content="index, follow, max-image-preview:large">{{end}}
+    <meta property="og:site_name" content="cargo.mleczki.pl">
+    <meta property="og:locale" content="pl_PL">
+    <meta property="og:type" content="{{.Type}}">
+    <meta property="og:title" content="{{.Title}}">
+    <meta property="og:description" content="{{.Description}}">
+    <meta property="og:url" content="{{.Canonical}}">
+    <meta property="og:image" content="{{.Image}}">
+    <meta property="og:image:type" content="image/jpeg">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="{{.ImageAlt}}">
+    {{if .Published}}<meta property="article:published_time" content="{{.Published}}">{{end}}
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="{{.Title}}">
+    <meta name="twitter:description" content="{{.Description}}">
+    <meta name="twitter:image" content="{{.Image}}">
+    {{if .JSONLD}}<script type="application/ld+json">{{.JSONLD}}</script>{{end}}
+    {{end}}
+    <link rel="stylesheet" href="/static/story.css">
     <link rel="icon" type="image/svg+xml" href="/static/favicon-32.svg" sizes="32x32">
     <link rel="icon" type="image/svg+xml" href="/static/favicon-16.svg" sizes="16x16">
     <link rel="apple-touch-icon" href="/static/apple-touch-icon.svg">
@@ -31,6 +54,12 @@
 {{template "footer" .}}
 {{block "scripts" .}}{{end}}
 <script>if (typeof lucide !== 'undefined') lucide.createIcons();</script>
+
+<!-- Previews of linked products (hover cards in texts) add to the cart through this form. -->
+<form id="hc-cart" method="post" action="/cart/add-shop" hidden></form>
+{{template "cart-toast" .}}
+<script>document.documentElement.classList.add('js');</script>
+<script src="/static/story.js"></script>
 
 <!-- Modal container -->
 <div id="modal-container" class="hidden fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog"
@@ -105,7 +134,9 @@
                 {{if .ShopNav}}<a href="/shop"
                    class="text-gray-600 hover:text-emerald-600 font-medium transition-colors">Sklep</a>{{end}}
                 <a href="/articles"
-                   class="text-gray-600 hover:text-emerald-600 font-medium transition-colors">Artykuły</a>
+                   class="text-gray-600 hover:text-emerald-600 font-medium transition-colors">Blog</a>
+                {{range .MenuNav}}<a href="{{.URL}}"
+                   class="text-gray-600 hover:text-emerald-600 font-medium transition-colors">{{.Label}}</a>{{end}}
                 {{if not .IsLoggedIn}}
                 <a href="/login" hx-get="/login?modal=1" hx-target="#modal-content" hx-trigger="click"
                    onclick="document.getElementById('modal-container').classList.remove('hidden')"
@@ -195,7 +226,9 @@
             {{if .ShopNav}}<a href="/shop"
                class="block w-full text-left px-3 py-3 text-base font-medium text-gray-700 hover:bg-emerald-50 rounded-lg">Sklep</a>{{end}}
             <a href="/articles"
-               class="block w-full text-left px-3 py-3 text-base font-medium text-gray-700 hover:bg-emerald-50 rounded-lg">Artykuły</a>
+               class="block w-full text-left px-3 py-3 text-base font-medium text-gray-700 hover:bg-emerald-50 rounded-lg">Blog</a>
+            {{range .MenuNav}}<a href="{{.URL}}"
+               class="block w-full text-left px-3 py-3 text-base font-medium text-gray-700 hover:bg-emerald-50 rounded-lg">{{.Label}}</a>{{end}}
             {{if .IsLoggedIn}}
             {{if .IsAdmin}}
             <a href="/admin"
@@ -247,7 +280,7 @@
 
 {{define "footer"}}
 <footer class="bg-gray-900 text-gray-400 py-16 border-t border-gray-800 text-sm">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 lg:gap-8">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 grid grid-cols-1 md:grid-cols-3 {{if .MenuFooter}}lg:grid-cols-5{{else}}lg:grid-cols-4{{end}} gap-8">
         <div>
             <div class="flex items-center text-white mb-5">
                 <svg viewBox="0 0 100 100" class="h-9 w-9 text-emerald-500" fill="none"
@@ -294,6 +327,15 @@
                 </div>
                 Znajdź nas w Google Maps</a></div>
         </div>
+        {{if .MenuFooter}}
+        <div>
+            <h4 class="text-white font-bold mb-5">Czytaj</h4>
+            <ul class="space-y-3">
+                {{range .MenuFooter}}<li><a href="{{.URL}}" class="hover:text-emerald-400 transition-colors">{{.Label}}</a></li>{{end}}
+                <li><a href="/articles" class="hover:text-emerald-400 transition-colors">Wszystkie wpisy</a></li>
+            </ul>
+        </div>
+        {{end}}
         <div>
             <h4 class="text-white font-bold mb-5">Informacje Prawne</h4>
             <ul class="space-y-3">

@@ -1,44 +1,42 @@
 {{define "articles-content"}}
-<div class="bg-emerald-900 text-white py-12 text-center">
-    <h1 class="text-4xl md:text-5xl font-black mb-4">{{.Title}}</h1>
-    <p class="text-emerald-200 text-lg">Porady, recenzje i przewodniki dla rowerzystów</p>
+<div class="bg-emerald-900 text-white py-14 text-center">
+    <h1 class="text-4xl md:text-6xl font-black mb-4 tracking-tight">{{.Title}}</h1>
+    <p class="text-emerald-200 text-lg max-w-2xl mx-auto px-4">Historie z codziennej jazdy rowerem cargo, porady dla rodzin i sprzęt, który się sprawdził.</p>
 </div>
 
 <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-    <div class="flex flex-wrap gap-4 mb-8">
-        <a href="/articles" class="px-4 py-2 rounded-full bg-emerald-100 text-emerald-900 hover:bg-emerald-200 transition-colors">Wszystkie</a>
-        <a href="/articles/porady" class="px-4 py-2 rounded-full bg-gray-100 text-gray-900 hover:bg-gray-200 transition-colors">Porady</a>
-        <a href="/articles/recenzje" class="px-4 py-2 rounded-full bg-gray-100 text-gray-900 hover:bg-gray-200 transition-colors">Recenzje</a>
+    <div class="flex flex-wrap gap-3 mb-10">
+        <a href="/articles" class="px-4 py-2 rounded-full transition-colors {{if eq .Active "all"}}bg-gray-900 text-white{{else}}bg-gray-100 text-gray-900 hover:bg-gray-200{{end}}">Wszystkie</a>
+        <a href="/articles/historie" class="px-4 py-2 rounded-full transition-colors {{if eq .Active "historie"}}bg-gray-900 text-white{{else}}bg-gray-100 text-gray-900 hover:bg-gray-200{{end}}">Historie</a>
+        <a href="/articles/porady" class="px-4 py-2 rounded-full transition-colors {{if eq .Active "porady"}}bg-gray-900 text-white{{else}}bg-gray-100 text-gray-900 hover:bg-gray-200{{end}}">Porady</a>
+        <a href="/articles/recenzje" class="px-4 py-2 rounded-full transition-colors {{if eq .Active "recenzje"}}bg-gray-900 text-white{{else}}bg-gray-100 text-gray-900 hover:bg-gray-200{{end}}">Recenzje</a>
+        <a href="/articles/przewodnik" class="px-4 py-2 rounded-full transition-colors {{if eq .Active "przewodnik"}}bg-gray-900 text-white{{else}}bg-gray-100 text-gray-900 hover:bg-gray-200{{end}}">Przewodniki</a>
     </div>
 
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-        {{range .Articles}}
-        <div class="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden hover:shadow-xl transition-shadow duration-300 flex flex-col cursor-pointer" onclick="window.location='/article/{{.ID}}'">
-            {{if .Image}}
-            <div class="h-48 overflow-hidden relative">
-                <img src="{{.Image}}" alt="{{.Title}}" class="w-full h-full object-cover" />
+        {{range $i, $a := .Articles}}
+        <article class="post-card {{if eq $i 0}}post-card--lead{{end}}">
+            <div class="post-card__media" style="--focus:{{if $a.HeroFocus}}{{$a.HeroFocus}}{{else}}50% 50%{{end}}">
+                {{if and $a.Image (not $a.ImageMissing)}}<img src="{{$a.Image}}" alt="" loading="{{if eq $i 0}}eager{{else}}lazy{{end}}" />{{end}}
+                {{if $a.Draft}}<span class="absolute top-3 left-3 px-3 py-1 rounded-full text-xs font-black bg-amber-400 text-gray-900">SZKIC</span>{{end}}
             </div>
-            {{end}}
-            <div class="p-6 flex-grow flex flex-col">
-                <div class="flex items-center space-x-2 mb-3">
-                    <span class="px-2 py-1 text-xs font-medium rounded-full {{if eq .Category "porady"}}bg-emerald-100 text-emerald-900{{else if eq .Category "recenzje"}}bg-blue-100 text-blue-900{{else}}bg-purple-100 text-purple-900{{end}}">
-                        {{.Category}}
-                    </span>
-                    <span class="text-gray-500 text-sm">{{.PublishedAt.Format "2006-01-02"}}</span>
+            <div class="post-card__body">
+                <div class="flex items-center gap-2 text-sm text-gray-500">
+                    <span class="px-2 py-1 text-xs font-medium rounded-full {{if eq $a.Category "porady"}}bg-emerald-100 text-emerald-900{{else if eq $a.Category "recenzje"}}bg-blue-100 text-blue-900{{else if eq $a.Category "historie"}}bg-amber-100 text-amber-900{{else}}bg-purple-100 text-purple-900{{end}}">{{$a.Category}}</span>
+                    <time datetime="{{$a.PublishedAt.Format "2006-01-02"}}">{{$a.PublishedAt.Format "2006-01-02"}}</time>
+                    <span>· {{$a.ReadingMinutes}} min</span>
                 </div>
-                <h3 class="text-xl font-bold text-gray-900 mb-2">{{.Title}}</h3>
-                <p class="text-gray-600 text-sm mb-4 flex-grow line-clamp-3">{{.Summary}}</p>
-                <div class="flex items-center text-gray-500 text-sm">
-                    <span>{{.Author}}</span>
-                </div>
+                <h3><a href="/article/{{$a.ID}}">{{$a.Title}}</a></h3>
+                <p class="text-gray-600 {{if eq $i 0}}text-base{{else}}text-sm line-clamp-3{{end}}">{{if $a.Summary}}{{$a.Summary}}{{else}}{{$a.Excerpt}}{{end}}</p>
+                {{if $a.Author}}<p class="text-sm text-gray-500 mt-auto pt-2">{{$a.Author}}</p>{{end}}
             </div>
-        </div>
+        </article>
         {{end}}
     </div>
 
     {{if eq (len .Articles) 0}}
     <div class="text-center py-12">
-        <p class="text-gray-500 text-lg">Brak artykułów w tej kategorii.</p>
+        <p class="text-gray-500 text-lg">Brak wpisów w tej kategorii.</p>
     </div>
     {{end}}
 </div>

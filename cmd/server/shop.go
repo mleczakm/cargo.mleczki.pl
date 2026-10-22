@@ -183,12 +183,14 @@ func (s *Server) shopViews(r *http.Request, items []domain.ShopItem) []shopItemV
 func (s *Server) linkIndex(r *http.Request) *crosslinks.Index {
 	visible := func(v domain.Visibility) bool { return r == nil || isItemVisible(v, r) }
 	index := &crosslinks.Index{}
+	asker := func(a domain.Article) bool { return r == nil || articleVisible(a, r) }
 
 	if s.productParser != nil {
 		if products, err := s.productParser.LoadAllProducts(); err == nil {
 			for _, p := range products {
 				if visible(p.Visibility) {
 					index.Add(crosslinks.Target{Kind: crosslinks.KindProduct, ID: p.ID, Title: p.Name, URL: "/product/" + p.ID})
+					index.Add(crosslinks.Target{Kind: crosslinks.KindRent, ID: p.ID, Title: p.Name, URL: "/product/" + p.ID})
 				}
 			}
 		}
@@ -196,7 +198,7 @@ func (s *Server) linkIndex(r *http.Request) *crosslinks.Index {
 	if s.articleParser != nil {
 		if articles, err := s.articleParser.LoadAllArticles(); err == nil {
 			for _, a := range articles {
-				if visible(a.Visibility) {
+				if asker(a) {
 					index.Add(crosslinks.Target{Kind: crosslinks.KindArticle, ID: a.ID, Title: a.Title, URL: "/article/" + a.ID})
 				}
 			}
@@ -215,7 +217,7 @@ func (s *Server) expandLinks(r *http.Request, rendered string) template.HTML {
 	if !strings.Contains(rendered, "[[") {
 		return template.HTML(rendered) // #nosec G203 -- trusted markdown rendered by goldmark
 	}
-	out, _ := crosslinks.Expand(rendered, s.linkIndex(r).Lookup)
+	out, _ := crosslinks.Expand(rendered, s.linkLookup(r))
 	return template.HTML(out) // #nosec G203 -- targets and labels are escaped by crosslinks.Expand
 }
 
@@ -330,13 +332,15 @@ func (s *Server) handleShop(w http.ResponseWriter, r *http.Request) {
 	}
 	hasAffiliate := slices.ContainsFunc(items, func(i domain.ShopItem) bool { return i.IsAffiliate() })
 
-	s.renderTemplate(w, r, "shop.html", map[string]interface{}{
+	data := map[string]interface{}{
 		"Title":          "Sklep",
 		"Items":          s.shopViews(r, items),
 		"Categories":     categories,
 		"ActiveCategory": active,
 		"HasAffiliate":   hasAffiliate,
-	})
+	}
+	s.setListSEO(r, data, "shop-list", "Sklep z akcesoriami rowerowymi", "Rzeczy sprawdzone w codziennej jeździe: kupisz je u mnie albo zobaczysz polecane oferty.")
+	s.renderTemplate(w, r, "shop.html", data)
 }
 
 // handleShopItem renders a single shop item.
@@ -360,6 +364,7 @@ func (s *Server) handleShopItem(w http.ResponseWriter, r *http.Request) {
 		"Added":           r.URL.Query().Get("added") == "1",
 		"CartError":       shopCartError(r.URL.Query().Get("error")),
 	}
+	data["SEO"] = s.shopItemSEO(r, item, view)
 	s.renderTemplate(w, r, "shop_item.html", data)
 }
 
@@ -495,6 +500,10 @@ func (s *Server) handleCartAddShop(w http.ResponseWriter, r *http.Request) {
 		back("stock")
 	case !cartFitsCookie(cart):
 		back("full")
+	case r.URL.Query().Get("card") == "1":
+		// Added from a preview card in a text: stay on that page and say so there.
+		setCart(w, r, cart)
+		http.Redirect(w, r, cardReturnPath(r, item.ID), http.StatusSeeOther)
 	default:
 		setCart(w, r, cart)
 		http.Redirect(w, r, "/shop/"+item.ID+"?added=1", http.StatusSeeOther)
@@ -773,6 +782,7 @@ func (s *Server) shopAdminView(ctx context.Context) adminShopView {
 	items, loadErr := s.shopParser.LoadAll()
 	view.ItemsTotal = len(items)
 	view.Problems = append(catalogProblemLines(loadErr), s.brokenReferences(items)...)
+	view.Problems = append(view.Problems, s.articleProblems()...)
 
 	stock := s.readModels.Stock()
 	view.Stock, view.LowCount, view.OutCount = s.adminStockRows(ctx, items)
@@ -1040,4 +1050,45 @@ func (s *Server) handleAdminOrderRealize(w http.ResponseWriter, r *http.Request)
 	default:
 		adminRedirect(w, r, "notice", "Zamówienie "+orderID+" oznaczone jako zrealizowane.")
 	}
+}
+
+// cardReturnPath is the page the visitor added the item from (flagged with
+// cart_added so the page can confirm it), or the item page when that is unknown.
+func cardReturnPath(r *http.Request, itemID string) string {
+	back := safeRedirectPathFromReferer(r)
+	if back == "" {
+		return "/shop/" + itemID + "?added=1"
+	}
+	target, err := url.Parse(back)
+	if err != nil {
+		return "/shop/" + itemID + "?added=1"
+	}
+	query := target.Query()
+	query.Set("cart_added", itemID)
+	target.RawQuery = query.Encode()
+	target.Fragment = ""
+	return target.String()
+}
+
+// articleProblems lists what is wrong in the article files: files that do not
+// parse, and photos that published articles name but that are not uploaded.
+// Drafts are left out of the photo check: their page tells the admin what is missing.
+func (s *Server) articleProblems() []string {
+	if s.articleParser == nil {
+		return nil
+	}
+	problems := catalogProblemLines(s.articleParser.Problems())
+	articles, err := s.articleParser.LoadAllArticles()
+	if err != nil {
+		return problems
+	}
+	for _, a := range articles {
+		if a.Draft {
+			continue
+		}
+		for _, photo := range a.MissingImages {
+			problems = append(problems, fmt.Sprintf("Artykuł „%s”: brakuje zdjęcia %s (wgraj do data/images/articles/)", a.ID, photo))
+		}
+	}
+	return problems
 }
