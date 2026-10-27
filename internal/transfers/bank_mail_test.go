@@ -95,19 +95,19 @@ func TestDiagnosticTransferNeverCreatesTransferOrPaysOrder(t *testing.T) {
 	if err != nil || test == nil || test.ReceivedAt.Valid {
 		t.Fatalf("pending test = %+v, %v", test, err)
 	}
-	p := payload(strings.Repeat("e", 64))
-	p.Body = strings.Replace(p.Body, "JLN4 wynajem", "JLN4 "+test.Reference+" dopisek", 1)
-	diagnosticBody := p.Body
-	for i, id := range []string{p.ID, p.ID, strings.Repeat("f", 64)} {
-		p.ID = id
+	notification := payload(strings.Repeat("e", 64))
+	notification.Body = strings.Replace(notification.Body, "JLN4 wynajem", "JLN4 "+test.Reference+" dopisek", 1)
+	diagnosticBody := notification.Body
+	for i, id := range []string{notification.ID, notification.ID, strings.Repeat("f", 64)} {
+		notification.ID = id
 		if i == 1 {
-			p.ID = strings.ToUpper(id)
-			p.Body = payload(id).Body
+			notification.ID = strings.ToUpper(id)
+			notification.Body = payload(id).Body
 		} else {
-			p.Body = diagnosticBody
+			notification.Body = diagnosticBody
 		}
 		w := httptest.NewRecorder()
-		handler.ServeHTTP(w, signedRequest(t, p, testSecret, time.Now()))
+		handler.ServeHTTP(w, signedRequest(t, notification, testSecret, time.Now()))
 		if w.Code != http.StatusNoContent {
 			t.Fatalf("diagnostic delivery=%d %s", w.Code, w.Body.String())
 		}
