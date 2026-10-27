@@ -801,19 +801,19 @@ type OrderDetail struct {
 
 // GetOrderDetail loads an order together with its customer.
 func (rm *ReadModelsDB) GetOrderDetail(orderID string) (*OrderDetail, error) {
-	var d OrderDetail
+	var details OrderDetail
 	var total float64
 	var deliveryJSON string
 	err := rm.db.QueryRow(`
 		SELECT o.id, o.user_id, COALESCE(u.name, ''), COALESCE(u.email, ''), COALESCE(u.phone, ''), o.total_amount, o.status,
 		       COALESCE(o.payment_method, ''), COALESCE(o.items_json, ''), COALESCE(o.delivery_json, ''), o.created_at
 		FROM orders o LEFT JOIN users u ON o.user_id = u.id
-		WHERE o.id = ?`, orderID).Scan(&d.ID, &d.UserID, &d.UserName, &d.UserEmail, &d.UserPhone, &total, &d.Status,
-		&d.PaymentMethod, &d.ItemsJSON, &deliveryJSON, &d.CreatedAt)
+		WHERE o.id = ?`, orderID).Scan(&details.ID, &details.UserID, &details.UserName, &details.UserEmail, &details.UserPhone, &total, &details.Status,
+		&details.PaymentMethod, &details.ItemsJSON, &deliveryJSON, &details.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
-	d.Total = domain.MoneyFromZloty(total)
-	d.Delivery = ParseDelivery(deliveryJSON)
-	return &d, nil
+	details.Total = domain.MoneyFromZloty(total)
+	details.Delivery = ParseDelivery(deliveryJSON)
+	return &details, nil
 }

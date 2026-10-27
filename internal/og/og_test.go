@@ -1,3 +1,4 @@
+//nolint:testpackage // These tests cover unexported rendering helpers.
 package og
 
 import (
@@ -86,33 +87,34 @@ func TestRenderSurvivesAbsurdText(t *testing.T) {
 
 func TestHashChangesWithTheSpecAndThePhoto(t *testing.T) {
 	photo := writePhoto(t, "p.png", 10, 10, color.RGBA{A: 255})
-	a := Spec{Layout: LayoutProduct, Title: "A", Photos: []string{photo}}
-	if a.Hash() != a.Hash() {
+	item := Spec{Layout: LayoutProduct, Title: "A", Photos: []string{photo}}
+	initialHash := item.Hash()
+	if initialHash != item.Hash() {
 		t.Fatal("hash must be stable")
 	}
-	b := a
+	b := item
 	b.Title = "B"
-	if a.Hash() == b.Hash() {
+	if item.Hash() == b.Hash() {
 		t.Error("a different title must change the hash")
 	}
-	before := a.Hash()
+	before := item.Hash()
 	if err := os.WriteFile(photo, []byte("changed and longer"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if a.Hash() == before {
+	if item.Hash() == before {
 		t.Error("a changed photo must change the hash")
 	}
 }
 
 func TestWrapBreaksLongWordsAndFitShrinks(t *testing.T) {
-	f := face(true, 40)
-	lines := wrap(f, strings.Repeat("W", 80), 300)
+	fontFace := face(true, 40)
+	lines := wrap(fontFace, strings.Repeat("W", 80), 300)
 	if len(lines) < 2 {
 		t.Fatalf("a long word must be cut, got %v", lines)
 	}
 	for _, l := range lines {
-		if textWidth(f, l) > 300 {
-			t.Errorf("%q is %dpx wide", l, textWidth(f, l))
+		if textWidth(fontFace, l) > 300 {
+			t.Errorf("%q is %dpx wide", l, textWidth(fontFace, l))
 		}
 	}
 	_, _, size := fit("krótki", true, 500, 1, 60, 30)

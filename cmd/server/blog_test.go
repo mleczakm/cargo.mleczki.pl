@@ -21,6 +21,7 @@ func writeFile(t *testing.T, app *shopHarness, sub, name, content string) {
 }
 
 func blogHarness(t *testing.T) *shopHarness {
+	t.Helper()
 	app := newShopHarness(t)
 	writeFile(t, app, "articles", "story.md", `---
 id: story
@@ -60,11 +61,11 @@ func TestPreviewCardsAndRentEmbedInArticles(t *testing.T) {
 
 func TestHoverCardCartButtonAddsAndReturnsToTheArticle(t *testing.T) {
 	app := blogHarness(t)
-	c := app.visitor()
+	visitorClient := app.visitor()
 	req, _ := http.NewRequest(http.MethodPost, app.http.URL+"/cart/add-shop?card=1", strings.NewReader(url.Values{"item_id": {"dzwonek"}}.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Referer", app.http.URL+"/article/story")
-	resp, err := c.Do(req)
+	resp, err := visitorClient.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,24 +76,24 @@ func TestHoverCardCartButtonAddsAndReturnsToTheArticle(t *testing.T) {
 	if l := app.level("dzwonek"); l.OnHand != 3 {
 		t.Errorf("adding to the cart must not touch stock: %+v", l)
 	}
-	_, body, _ := app.get(c, "/article/story?cart_added=dzwonek")
+	_, body, _ := app.get(visitorClient, "/article/story?cart_added=dzwonek")
 	assertContains(t, body, "Dodano do koszyka", "Dzwonek", `href="/checkout"`)
 }
 
 func TestDraftsAreAdminOnlyAndOutOfEveryIndex(t *testing.T) {
 	app := blogHarness(t)
-	v := app.visitor()
-	if status, _, _ := app.get(v, "/article/draft"); status != http.StatusNotFound {
+	visitor2 := app.visitor()
+	if status, _, _ := app.get(visitor2, "/article/draft"); status != http.StatusNotFound {
 		t.Errorf("a draft must be a 404 for visitors, got %d", status)
 	}
-	if status, _, _ := app.get(v, "/og/article/draft.jpg"); status != http.StatusNotFound {
+	if status, _, _ := app.get(visitor2, "/og/article/draft.jpg"); status != http.StatusNotFound {
 		t.Errorf("a draft's preview must be a 404 for visitors, got %d", status)
 	}
-	_, list, _ := app.get(v, "/articles")
+	_, list, _ := app.get(visitor2, "/articles")
 	assertNotContains(t, list, "Szkic")
-	_, sitemap, _ := app.get(v, "/sitemap.xml")
+	_, sitemap, _ := app.get(visitor2, "/sitemap.xml")
 	assertNotContains(t, sitemap, "/article/draft")
-	_, home, _ := app.get(v, "/")
+	_, home, _ := app.get(visitor2, "/")
 	assertNotContains(t, home, "/article/draft")
 
 	admin := app.asAdmin()
@@ -126,32 +127,32 @@ func TestOneBrokenArticleDoesNotTakeTheBlogDown(t *testing.T) {
 
 func TestSEOMetaTagsAndStructuredData(t *testing.T) {
 	app := blogHarness(t)
-	v := app.visitor()
+	value := app.visitor()
 
-	_, body, _ := app.get(v, "/article/story")
+	_, body, _ := app.get(value, "/article/story")
 	assertContains(t, body,
 		`<meta name="description" content="Opis do wyszukiwarki">`, `<link rel="canonical" href="`, `/article/story">`,
 		`property="og:type" content="article"`, `/og/article/story.jpg?v=`, `name="twitter:card" content="summary_large_image"`,
 		`application/ld+json`, `BlogPosting`, `content="index, follow, max-image-preview:large"`)
 
-	_, shopPage, _ := app.get(v, "/shop/dzwonek")
+	_, shopPage, _ := app.get(value, "/shop/dzwonek")
 	assertContains(t, shopPage, `"@type":"Product"`, `"priceCurrency":"PLN"`, `"price":"25.00"`, `https://schema.org/InStock`, `/og/shop/dzwonek.jpg`)
 
-	_, product, _ := app.get(v, "/product/cargo")
+	_, product, _ := app.get(value, "/product/cargo")
 	assertContains(t, product, `"unitCode":"DAY"`, `/og/product/cargo.jpg`)
 
-	_, home, _ := app.get(v, "/")
+	_, home, _ := app.get(value, "/")
 	assertContains(t, home, "BikeStore", `/og/site.jpg?v=`)
 
-	_, checkout, _ := app.get(v, "/checkout")
+	_, checkout, _ := app.get(value, "/checkout")
 	assertContains(t, checkout, `content="noindex, nofollow"`)
 }
 
 func TestPreviewImages(t *testing.T) {
 	app := blogHarness(t)
-	v := app.visitor()
+	visitor3 := app.visitor()
 	for _, path := range []string{"/og/site.jpg", "/og/product/cargo.jpg", "/og/shop/dzwonek.jpg", "/og/shop/lampka.jpg", "/og/article/story.jpg", "/og/shop-list/x.jpg", "/og/blog/x.jpg"} {
-		status, body, header := app.get(v, path)
+		status, body, header := app.get(visitor3, path)
 		if status != 200 || header.Get("Content-Type") != "image/jpeg" || !strings.HasPrefix(body, "\xff\xd8") {
 			t.Errorf("%s: %d %q", path, status, header.Get("Content-Type"))
 		}
@@ -160,16 +161,16 @@ func TestPreviewImages(t *testing.T) {
 		}
 	}
 	for _, path := range []string{"/og/shop/tajny.jpg", "/og/product/nie-ma.jpg", "/og/dziwne/x.jpg", "/og/shop/dzwonek.png"} {
-		if status, _, _ := app.get(v, path); status != http.StatusNotFound {
+		if status, _, _ := app.get(visitor3, path); status != http.StatusNotFound {
 			t.Errorf("%s = %d, want 404", path, status)
 		}
 	}
 
 	// A conditional request is answered without drawing again.
-	_, _, header := app.get(v, "/og/shop/dzwonek.jpg")
+	_, _, header := app.get(visitor3, "/og/shop/dzwonek.jpg")
 	req, _ := http.NewRequest(http.MethodGet, app.http.URL+"/og/shop/dzwonek.jpg", nil)
 	req.Header.Set("If-None-Match", header.Get("ETag"))
-	resp, err := v.Do(req)
+	resp, err := visitor3.Do(req)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -187,14 +188,14 @@ func TestPreviewImages(t *testing.T) {
 
 func TestSitemapAndRobots(t *testing.T) {
 	app := blogHarness(t)
-	v := app.visitor()
-	_, sitemap, header := app.get(v, "/sitemap.xml")
+	visitorClient := app.visitor()
+	_, sitemap, header := app.get(visitorClient, "/sitemap.xml")
 	if !strings.Contains(header.Get("Content-Type"), "xml") {
 		t.Errorf("content type = %q", header.Get("Content-Type"))
 	}
 	assertContains(t, sitemap, "/product/cargo", "/shop/dzwonek", "/shop/kask", "/article/story", "<lastmod>2026-01-02</lastmod>", "/articles")
 	assertNotContains(t, sitemap, "/shop/tajny", "/article/draft", "/admin")
 
-	_, robots, _ := app.get(v, "/robots.txt")
+	_, robots, _ := app.get(visitorClient, "/robots.txt")
 	assertContains(t, robots, "Disallow: /admin", "Disallow: /checkout", "Sitemap: ", "/sitemap.xml")
 }

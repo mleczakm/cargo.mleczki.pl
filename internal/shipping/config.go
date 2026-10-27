@@ -37,13 +37,13 @@ var codePattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]*$`)
 
 // Option is a way of getting an order to the customer.
 type Option struct {
-	Code        string       `yaml:"code" json:"code"`
-	Name        string       `yaml:"name" json:"name"`
-	Description string       `yaml:"description" json:"description,omitempty"`
-	Kind        Kind         `yaml:"kind" json:"kind"`
-	Carrier     string       `yaml:"carrier" json:"carrier,omitempty"` // Polkurier service code, e.g. INPOST_PACZKOMAT
-	Price       domain.Money `yaml:"price" json:"-"`
-	FreeFrom    domain.Money `yaml:"freeFrom" json:"-"` // shop total from which the delivery is free; zero = never
+	Code        string       `json:"code"                  yaml:"code"`
+	Name        string       `json:"name"                  yaml:"name"`
+	Description string       `json:"description,omitempty" yaml:"description"`
+	Kind        Kind         `json:"kind"                  yaml:"kind"`
+	Carrier     string       `json:"carrier,omitempty"     yaml:"carrier"` // Polkurier service code, e.g. INPOST_PACZKOMAT
+	Price       domain.Money `json:"-"                     yaml:"price"`
+	FreeFrom    domain.Money `json:"-"                     yaml:"freeFrom"` // shop total from which the delivery is free; zero = never
 }
 
 // NeedsPolkurier reports whether the option can only be offered with Polkurier configured.
@@ -142,34 +142,46 @@ func (c *Config) validate() error {
 	seen := map[string]bool{}
 	hasPickup := false
 	for i := range c.Options {
-		o := &c.Options[i]
-		o.Code = strings.TrimSpace(o.Code)
-		o.Name = strings.TrimSpace(o.Name)
-		o.Carrier = strings.ToUpper(strings.TrimSpace(o.Carrier))
-		if o.Kind == "" {
-			o.Kind = KindPickup
+		option := &c.Options[i]
+		option.Code = strings.TrimSpace(option.Code)
+		option.Name = strings.TrimSpace(option.Name)
+		option.Carrier = strings.ToUpper(strings.TrimSpace(option.Carrier))
+		if option.Kind == "" {
+			option.Kind = KindPickup
 		}
-		switch {
-		case !codePattern.MatchString(o.Code):
-			problems = append(problems, fmt.Errorf("option %d: code %q must be lowercase letters, digits and dashes", i+1, o.Code))
-		case seen[o.Code]:
-			problems = append(problems, fmt.Errorf("option %q is repeated", o.Code))
-		case o.Name == "":
-			problems = append(problems, fmt.Errorf("option %q needs a name", o.Code))
-		case o.Kind != KindPickup && o.Kind != KindLocker && o.Kind != KindCourier:
-			problems = append(problems, fmt.Errorf("option %q: kind %q must be pickup, locker or courier", o.Code, o.Kind))
-		case o.NeedsPolkurier() && o.Carrier == "":
-			problems = append(problems, fmt.Errorf("option %q needs a carrier (Polkurier service code)", o.Code))
-		case o.Price.IsNegative() || o.FreeFrom.IsNegative():
-			problems = append(problems, fmt.Errorf("option %q: price and freeFrom must not be negative", o.Code))
+		if problem := validateOption(*option, i, seen); problem != nil {
+			problems = append(problems, problem)
 		}
-		seen[o.Code] = true
-		hasPickup = hasPickup || o.Kind == KindPickup
+		seen[option.Code] = true
+		hasPickup = hasPickup || option.Kind == KindPickup
 	}
 	if !hasPickup {
 		// Rentals and goods can always be collected, so the checkout never ends up without a way to deliver.
 		c.Options = append([]Option{{Code: PickupCode, Name: "Odbiór osobisty w Radzyminie", Kind: KindPickup}}, c.Options...)
 	}
+	c.normalizeParcel()
+	return errors.Join(problems...)
+}
+
+func validateOption(option Option, index int, seen map[string]bool) error {
+	switch {
+	case !codePattern.MatchString(option.Code):
+		return fmt.Errorf("option %d: code %q must be lowercase letters, digits and dashes", index+1, option.Code)
+	case seen[option.Code]:
+		return fmt.Errorf("option %q is repeated", option.Code)
+	case option.Name == "":
+		return fmt.Errorf("option %q needs a name", option.Code)
+	case option.Kind != KindPickup && option.Kind != KindLocker && option.Kind != KindCourier:
+		return fmt.Errorf("option %q: kind %q must be pickup, locker or courier", option.Code, option.Kind)
+	case option.NeedsPolkurier() && option.Carrier == "":
+		return fmt.Errorf("option %q needs a carrier (Polkurier service code)", option.Code)
+	case option.Price.IsNegative() || option.FreeFrom.IsNegative():
+		return fmt.Errorf("option %q: price and freeFrom must not be negative", option.Code)
+	}
+	return nil
+}
+
+func (c *Config) normalizeParcel() {
 	if c.Parcel.LengthCm <= 0 || c.Parcel.WidthCm <= 0 || c.Parcel.HeightCm <= 0 {
 		def := DefaultConfig().Parcel
 		c.Parcel.LengthCm, c.Parcel.WidthCm, c.Parcel.HeightCm = def.LengthCm, def.WidthCm, def.HeightCm
@@ -184,7 +196,6 @@ func (c *Config) validate() error {
 	if r := []rune(c.Parcel.Description); len(r) > 30 {
 		c.Parcel.Description = string(r[:30])
 	}
-	return errors.Join(problems...)
 }
 
 // Complete reports what is missing for parcels to be ordered, or "" when the sender is filled in.
@@ -209,7 +220,6 @@ type ConfigFile struct {
 	Path string
 
 	mu      sync.Mutex
-	loaded  time.Time
 	modTime time.Time
 	cfg     Config
 	err     error

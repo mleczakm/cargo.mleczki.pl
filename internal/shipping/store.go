@@ -71,7 +71,7 @@ func stamp() string { return time.Now().UTC().Format(time.RFC3339) }
 
 const shipmentColumns = `id, order_id, provider, carrier, external_number, waybill, tracking_url, price_gross, status, status_code, cancelled, created_at, updated_at`
 
-func scanShipment(row interface{ Scan(...any) error }) (*Shipment, error) {
+func scanShipment(row interface{ Scan(dest ...any) error }) (*Shipment, error) {
 	var sh Shipment
 	var cancelled int
 	err := row.Scan(&sh.ID, &sh.OrderID, &sh.Provider, &sh.Carrier, &sh.ExternalNumber, &sh.Waybill, &sh.TrackingURL,

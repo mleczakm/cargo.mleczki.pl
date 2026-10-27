@@ -109,10 +109,10 @@ func (s *Server) addShipmentForm(ctx context.Context, data map[string]interface{
 	ctx, cancel := context.WithTimeout(ctx, 12*time.Second)
 	defer cancel()
 
-	d := order.Delivery
+	details := order.Delivery
 	dest := shipping.Destination{
-		Method: d.Method, Person: firstNonEmpty(d.Person, order.UserName), Email: firstNonEmpty(d.Email, order.UserEmail), Phone: firstNonEmpty(d.Phone, order.UserPhone),
-		Street: d.Street, Postcode: d.Postcode, City: d.City, PointID: d.PointID,
+		Method: details.Method, Person: firstNonEmpty(details.Person, order.UserName), Email: firstNonEmpty(details.Email, order.UserEmail), Phone: firstNonEmpty(details.Phone, order.UserPhone),
+		Street: details.Street, Postcode: details.Postcode, City: details.City, PointID: details.PointID,
 	}
 	in := s.shipping.DefaultInput(ctx, cfg, order.ID, dest, s.goodsOf(items), goodsValue(items))
 	data["ShipInput"] = in
@@ -143,7 +143,7 @@ func (s *Server) addShipmentForm(ctx context.Context, data map[string]interface{
 	for _, row := range rows {
 		if row.Chosen {
 			data["ChosenCost"] = row.Cost
-			data["ShippingMargin"] = d.Cost.Sub(row.Cost)
+			data["ShippingMargin"] = details.Cost.Sub(row.Cost)
 		}
 	}
 
@@ -181,21 +181,21 @@ func (s *Server) handleAdminShipmentCreate(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
-	f := func(name string) string { return strings.TrimSpace(r.FormValue(name)) }
-	atoi := func(name string) int { v, _ := strconv.Atoi(f(name)); return v }
+	formValue := func(name string) string { return strings.TrimSpace(r.FormValue(name)) }
+	atoi := func(name string) int { v, _ := strconv.Atoi(formValue(name)); return v }
 	num := func(name string) float64 {
-		v, _ := strconv.ParseFloat(strings.ReplaceAll(f(name), ",", "."), 64)
+		v, _ := strconv.ParseFloat(strings.ReplaceAll(formValue(name), ",", "."), 64)
 		return v
 	}
 	in := shipping.ShipmentInput{
-		OrderID: orderID, Carrier: f("carrier"), LengthCm: atoi("length"), WidthCm: atoi("width"), HeightCm: atoi("height"), WeightKg: num("weight"),
-		Insurance: num("insurance"), HandleWithCare: r.FormValue("handle_with_care") == "1", Description: f("description"), DropOff: r.FormValue("drop_off") == "1",
+		OrderID: orderID, Carrier: formValue("carrier"), LengthCm: atoi("length"), WidthCm: atoi("width"), HeightCm: atoi("height"), WeightKg: num("weight"),
+		Insurance: num("insurance"), HandleWithCare: r.FormValue("handle_with_care") == "1", Description: formValue("description"), DropOff: r.FormValue("drop_off") == "1",
 		Recipient: polkurier.Address{
-			Company: f("r_company"), Person: f("r_person"), Street: f("r_street"), HouseNumber: f("r_house"), FlatNumber: f("r_flat"),
-			Postcode: f("r_postcode"), City: f("r_city"), Email: f("r_email"), Phone: f("r_phone"), Country: "PL", PointID: strings.ToUpper(f("r_point")),
+			Company: formValue("r_company"), Person: formValue("r_person"), Street: formValue("r_street"), HouseNumber: formValue("r_house"), FlatNumber: formValue("r_flat"),
+			Postcode: formValue("r_postcode"), City: formValue("r_city"), Email: formValue("r_email"), Phone: formValue("r_phone"), Country: "PL", PointID: strings.ToUpper(formValue("r_point")),
 		},
 	}
-	if window := f("pickup"); window != "" && !in.DropOff {
+	if window := formValue("pickup"); window != "" && !in.DropOff {
 		// "2026-09-24|10:00|14:00"
 		if parts := strings.Split(window, "|"); len(parts) == 3 {
 			in.PickupDate, in.PickupFrom, in.PickupTo = parts[0], parts[1], parts[2]
@@ -252,13 +252,13 @@ func (s *Server) handleAdminShipmentLabel(w http.ResponseWriter, r *http.Request
 	_, _ = w.Write(pdf)
 }
 
-func safeFilename(s string) string {
+func safeFilename(filename string) string {
 	return strings.Map(func(r rune) rune {
 		if r == '-' || r == '_' || (r >= '0' && r <= '9') || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') {
 			return r
 		}
 		return '_'
-	}, s)
+	}, filename)
 }
 
 func (s *Server) handleAdminShipmentRefresh(w http.ResponseWriter, r *http.Request) {

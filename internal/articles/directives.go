@@ -137,7 +137,8 @@ type renderer struct {
 
 // RenderBody renders an article body: Markdown plus directives. Photos that do
 // not exist yet are reported through missing, so the admin can see what to add.
-func RenderBody(md goldmark.Markdown, body string, images ImageDir) (rendered string, missing []string, err error) {
+func RenderBody(md goldmark.Markdown, body string, images ImageDir) (string, []string, error) {
+	var missing []string
 	segments, err := splitSegments(body)
 	if err != nil {
 		return "", nil, err
@@ -171,20 +172,20 @@ func (r *renderer) markdown(src string) (string, error) {
 	return out.String(), nil
 }
 
-func (r *renderer) directive(d *directive) (string, []string, error) {
-	switch d.name {
+func (r *renderer) directive(dir *directive) (string, []string, error) {
+	switch dir.name {
 	case "scene":
-		return r.scene(d)
+		return r.scene(dir)
 	case "figure":
-		return r.figure(d)
+		return r.figure(dir)
 	case "gallery":
-		return r.gallery(d)
+		return r.gallery(dir)
 	case "stats":
-		return r.stats(d), nil, nil
+		return r.stats(dir), nil, nil
 	case "note":
-		return r.note(d)
+		return r.note(dir)
 	default:
-		return "", nil, fmt.Errorf("unknown directive %q (use scene, figure, gallery, stats or note)", d.name)
+		return "", nil, fmt.Errorf("unknown directive %q (use scene, figure, gallery, stats or note)", dir.name)
 	}
 }
 
@@ -255,19 +256,19 @@ func (r *renderer) photo(class, name, alt string) (string, bool) {
 	return fmt.Sprintf(`<img class="%s" src="%s" alt="%s" loading="lazy" decoding="async">`, class, esc(src), esc(alt)), false
 }
 
-func (r *renderer) scene(d *directive) (string, []string, error) {
-	tone := choice(d.attrs["tone"], []string{"dark", "light"}, "dark")
-	align := choice(d.attrs["align"], []string{"left", "center", "right"}, "left")
-	alt := d.attrs["alt"]
+func (r *renderer) scene(dir *directive) (string, []string, error) {
+	tone := choice(dir.attrs["tone"], []string{"dark", "light"}, "dark")
+	align := choice(dir.attrs["align"], []string{"left", "center", "right"}, "left")
+	alt := dir.attrs["alt"]
 
-	bg, absent := r.photo("scene__bg", d.attrs["image"], alt)
+	bg, absent := r.photo("scene__bg", dir.attrs["image"], alt)
 	var missing []string
 	if absent {
-		missing = append(missing, d.attrs["image"])
+		missing = append(missing, dir.attrs["image"])
 	}
 
 	var cards strings.Builder
-	for _, part := range strings.Split(d.body, "\n+++\n") {
+	for _, part := range strings.Split(dir.body, "\n+++\n") {
 		if strings.TrimSpace(part) == "" {
 			continue
 		}
@@ -279,25 +280,25 @@ func (r *renderer) scene(d *directive) (string, []string, error) {
 	}
 
 	credit := ""
-	if c, err := r.caption(d.attrs["credit"]); err != nil {
+	if c, err := r.caption(dir.attrs["credit"]); err != nil {
 		return "", nil, err
 	} else if c != "" {
 		credit = `<p class="scene__credit">` + c + `</p>`
 	}
 	return fmt.Sprintf(`<section class="scene scene--%s scene--%s" style="--focus:%s">%s<div class="scene__cards">%s</div>%s</section>`+"\n",
-		tone, align, focus(d.attrs["focus"]), bg, cards.String(), credit), missing, nil
+		tone, align, focus(dir.attrs["focus"]), bg, cards.String(), credit), missing, nil
 }
 
-func (r *renderer) figure(d *directive) (string, []string, error) {
-	size := choice(d.attrs["size"], []string{"wide", "tall", "inline"}, "wide")
-	capSrc := d.attrs["caption"]
-	if strings.TrimSpace(d.body) != "" {
-		capSrc = d.body
+func (r *renderer) figure(dir *directive) (string, []string, error) {
+	size := choice(dir.attrs["size"], []string{"wide", "tall", "inline"}, "wide")
+	capSrc := dir.attrs["caption"]
+	if strings.TrimSpace(dir.body) != "" {
+		capSrc = dir.body
 	}
-	img, absent := r.photo("figure__img", d.attrs["image"], firstNonEmpty(d.attrs["alt"], stripMarkdown(capSrc)))
+	img, absent := r.photo("figure__img", dir.attrs["image"], firstNonEmpty(dir.attrs["alt"], stripMarkdown(capSrc)))
 	var missing []string
 	if absent {
-		missing = append(missing, d.attrs["image"])
+		missing = append(missing, dir.attrs["image"])
 	}
 	caption, err := r.caption(capSrc)
 	if err != nil {
@@ -307,14 +308,14 @@ func (r *renderer) figure(d *directive) (string, []string, error) {
 	if caption != "" {
 		figcaption = "<figcaption>" + caption + "</figcaption>"
 	}
-	return fmt.Sprintf(`<figure class="figure figure--%s" style="--focus:%s">%s%s</figure>`+"\n", size, focus(d.attrs["focus"]), img, figcaption), missing, nil
+	return fmt.Sprintf(`<figure class="figure figure--%s" style="--focus:%s">%s%s</figure>`+"\n", size, focus(dir.attrs["focus"]), img, figcaption), missing, nil
 }
 
-func (r *renderer) gallery(d *directive) (string, []string, error) {
+func (r *renderer) gallery(dir3 *directive) (string, []string, error) {
 	var items strings.Builder
 	var missing []string
 	count := 0
-	for _, name := range strings.Split(d.attrs["images"], ",") {
+	for _, name := range strings.Split(dir3.attrs["images"], ",") {
 		name = strings.TrimSpace(name)
 		if name == "" {
 			continue
@@ -329,7 +330,7 @@ func (r *renderer) gallery(d *directive) (string, []string, error) {
 	if count == 0 {
 		return "", nil, fmt.Errorf("gallery needs images=a.jpg,b.jpg")
 	}
-	caption, err := r.caption(firstNonEmpty(d.body, d.attrs["caption"]))
+	caption, err := r.caption(firstNonEmpty(dir3.body, dir3.attrs["caption"]))
 	if err != nil {
 		return "", nil, err
 	}
@@ -353,13 +354,13 @@ func (r *renderer) stats(d *directive) string {
 	return `<ul class="stats">` + items.String() + "</ul>\n"
 }
 
-func (r *renderer) note(d *directive) (string, []string, error) {
-	rendered, err := r.markdown(d.body)
+func (r *renderer) note(dir2 *directive) (string, []string, error) {
+	rendered, err := r.markdown(dir2.body)
 	if err != nil {
 		return "", nil, err
 	}
 	title := ""
-	if t := strings.TrimSpace(d.attrs["title"]); t != "" {
+	if t := strings.TrimSpace(dir2.attrs["title"]); t != "" {
 		title = `<p class="note__title">` + esc(t) + "</p>"
 	}
 	return `<aside class="note">` + title + rendered + "</aside>\n", nil, nil

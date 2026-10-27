@@ -10,10 +10,10 @@ import (
 )
 
 // storyDir writes an article next to an images directory holding the given photos.
-func storyDir(t *testing.T, photos ...string) (articlesDir string) {
+func storyDir(t *testing.T, photos ...string) string {
 	t.Helper()
 	root := t.TempDir()
-	articlesDir = filepath.Join(root, "articles")
+	articlesDir := filepath.Join(root, "articles")
 	images := filepath.Join(root, "images", "articles")
 	for _, d := range []string{articlesDir, images} {
 		if err := os.MkdirAll(d, 0o750); err != nil {
@@ -28,7 +28,7 @@ func storyDir(t *testing.T, photos ...string) (articlesDir string) {
 	return articlesDir
 }
 
-func load(t *testing.T, dir, body string) (html string, missing []string) {
+func load(t *testing.T, dir, body string) (string, []string) {
 	t.Helper()
 	writeArticle(t, dir, "a.md", "---\nid: a\ntitle: A\n---\n"+body)
 	article, err := articles.NewParser(dir).LoadArticle("a.md")
@@ -157,21 +157,21 @@ seo:
   noindex: true
 ---
 `+strings.Repeat("słowo ", 450))
-	a, err := articles.NewParser(dir).LoadArticle("a.md")
+	item, err := articles.NewParser(dir).LoadArticle("a.md")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !a.Draft || a.Subtitle != "Podtytuł" || a.SEO.Title != "Tytuł SEO" || a.SEO.Description != "Opis SEO" || !a.SEO.NoIndex {
-		t.Errorf("metadata: %+v", a)
+	if !item.Draft || item.Subtitle != "Podtytuł" || item.SEO.Title != "Tytuł SEO" || item.SEO.Description != "Opis SEO" || !item.SEO.NoIndex {
+		t.Errorf("metadata: %+v", item)
 	}
-	if len(a.Menu) != 2 || !a.InMenu("nav") || !a.InMenu("footer") || a.MenuText() != "Blog" || a.MenuOrder != 5 {
-		t.Errorf("menu: %+v", a.Menu)
+	if len(item.Menu) != 2 || !item.InMenu("nav") || !item.InMenu("footer") || item.MenuText() != "Blog" || item.MenuOrder != 5 {
+		t.Errorf("menu: %+v", item.Menu)
 	}
-	if a.ReadingMinutes != 3 {
-		t.Errorf("450 words should take 3 minutes, got %d", a.ReadingMinutes)
+	if item.ReadingMinutes != 3 {
+		t.Errorf("450 words should take 3 minutes, got %d", item.ReadingMinutes)
 	}
-	if !strings.HasSuffix(a.Excerpt, "…") || len([]rune(a.Excerpt)) > 200 {
-		t.Errorf("excerpt = %q", a.Excerpt)
+	if !strings.HasSuffix(item.Excerpt, "…") || len([]rune(item.Excerpt)) > 200 {
+		t.Errorf("excerpt = %q", item.Excerpt)
 	}
 
 	for name, front := range map[string]string{"status": "status: later", "menu": "menu: [sidebar]"} {
@@ -185,27 +185,27 @@ seo:
 func TestParsedArticlesAreCachedUntilAFileChanges(t *testing.T) {
 	dir := storyDir(t)
 	writeArticle(t, dir, "a.md", "---\nid: a\ntitle: Pierwszy\n---\nx")
-	p := articles.NewParser(dir)
-	first, _ := p.LoadAllArticles()
+	parser := articles.NewParser(dir)
+	first, _ := parser.LoadAllArticles()
 	if len(first) != 1 || first[0].Title != "Pierwszy" {
 		t.Fatalf("first load: %+v", first)
 	}
 
 	writeArticle(t, dir, "a.md", "---\nid: a\ntitle: Drugi, dłuższy tytuł\n---\nx")
-	second, _ := p.LoadAllArticles()
+	second, _ := parser.LoadAllArticles()
 	if second[0].Title != "Drugi, dłuższy tytuł" {
 		t.Errorf("a changed file must be reloaded, got %q", second[0].Title)
 	}
 
 	// A photo that appears later turns a missing-image warning into a picture.
 	writeArticle(t, dir, "a.md", "---\nid: a\ntitle: Foto\nimage: hero.jpg\n---\nx")
-	if a, _ := p.LoadAllArticles(); !a[0].ImageMissing {
+	if a, _ := parser.LoadAllArticles(); !a[0].ImageMissing {
 		t.Fatal("hero.jpg does not exist yet")
 	}
 	if err := os.WriteFile(filepath.Join(filepath.Dir(dir), "images", "articles", "hero.jpg"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if a, _ := p.LoadAllArticles(); a[0].ImageMissing {
+	if a, _ := parser.LoadAllArticles(); a[0].ImageMissing {
 		t.Error("adding the photo must clear the warning")
 	}
 }

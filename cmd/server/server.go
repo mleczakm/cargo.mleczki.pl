@@ -1115,20 +1115,8 @@ func (s *Server) handleCheckoutSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get cart. Shop lines are re-priced from the catalog: the cookie is not trusted.
-	cart, problems := s.normalizeCart(r, getCart(r))
-	totalAmount := calculateFinalTotal(cart)
-	if len(cart) == 0 || !totalAmount.IsPositive() {
-		http.Error(w, "Cart is empty", http.StatusBadRequest)
-		return
-	}
-	if len(problems) > 0 {
-		redirectToCheckout(w, r, "cart")
-		return
-	}
-
-	if err := s.validateCartAvailability(cart); err != nil {
-		http.Error(w, err.Error(), http.StatusConflict)
+	cart, totalAmount, validCart := s.checkoutCart(w, r)
+	if !validCart {
 		return
 	}
 
@@ -1208,6 +1196,25 @@ func (s *Server) handleCheckoutSubmit(w http.ResponseWriter, r *http.Request) {
 	// Redirect to payment
 	redirectURL := fmt.Sprintf("/payment/%s?method=%s", orderID, paymentMethod)
 	http.Redirect(w, r, redirectURL, http.StatusFound)
+}
+
+// checkoutCart reprices cookie lines and refuses empty or unavailable carts.
+func (s *Server) checkoutCart(w http.ResponseWriter, r *http.Request) ([]CartItem, domain.Money, bool) {
+	cart, problems := s.normalizeCart(r, getCart(r))
+	total := calculateFinalTotal(cart)
+	if len(cart) == 0 || !total.IsPositive() {
+		http.Error(w, "Cart is empty", http.StatusBadRequest)
+		return nil, domain.Money{}, false
+	}
+	if len(problems) > 0 {
+		redirectToCheckout(w, r, "cart")
+		return nil, domain.Money{}, false
+	}
+	if err := s.validateCartAvailability(cart); err != nil {
+		http.Error(w, err.Error(), http.StatusConflict)
+		return nil, domain.Money{}, false
+	}
+	return cart, total, true
 }
 
 // handlePaymentConfirm confirms payment (HTMX). Pickup orders are confirmed by admin only.

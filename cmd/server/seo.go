@@ -170,101 +170,120 @@ var articleBadges = map[domain.ArticleCategory]string{
 func (s *Server) ogSpec(r *http.Request, kind, id string) (og.Spec, bool, bool) {
 	switch kind {
 	case "site":
-		spec := og.Spec{
-			Layout: og.LayoutProduct, Badge: "Radzymin", Title: "Wypożyczalnia rowerów cargo i sprzętu rowerowego",
-			Subtitle: "Rowery cargo, przyczepki i bagażniki do wynajęcia. A do tego sklep z akcesoriami sprawdzonymi na co dzień.",
-			CTA:      "Zarezerwuj online",
-		}
-		for _, p := range s.publicProducts() {
-			spec.Photos = append(spec.Photos, photoFiles(p.Image)...)
-			if len(spec.Photos) >= 3 {
-				break
-			}
-		}
-		return spec, true, true
-
+		return s.ogSpecSite()
 	case "product":
-		if s.productParser == nil {
-			return og.Spec{}, false, false
-		}
-		product, err := s.productParser.LoadProductByID(id)
-		if err != nil || !isItemVisible(product.Visibility, r) {
-			return og.Spec{}, false, false
-		}
-		return og.Spec{
-			Layout: og.LayoutProduct, Badge: "Do wynajęcia", Title: product.Name, Subtitle: plainSummary(product.Description, 130),
-			Price: product.BasePrice.String() + " / dobę", CTA: "Wypróbuj mnie!", Photos: photoFiles(append([]string{product.Image}, product.Images...)...),
-		}, isPublic(product.Visibility), true
-
+		return s.ogSpecProduct(r, id)
 	case "shop":
-		item, ok := s.shopItemByID(r, id)
-		if !ok {
-			return og.Spec{}, false, false
-		}
-		spec := og.Spec{Layout: og.LayoutProduct, Title: item.Name, Subtitle: plainSummary(item.Summary, 130), Photos: photoFiles(append([]string{item.Image}, item.Images...)...)}
-		if item.IsAffiliate() {
-			spec.Badge, spec.CTA, spec.Price = "Polecam · "+item.Affiliate.Merchant, "Zobacz ofertę", item.Affiliate.PriceHint
-		} else {
-			view := s.shopViews(r, []domain.ShopItem{item})[0]
-			spec.Badge, spec.CTA, spec.Price = "Sklep", "Do koszyka", view.DisplayPrice.String()
-			if view.PriceFrom {
-				spec.Price = "od " + spec.Price
-			}
-			if !view.Availability.CanBuy {
-				spec.CTA = "Wkrótce"
-			}
-		}
-		return spec, isPublic(item.Visibility), true
-
+		return s.ogSpecShop(r, id)
 	case "article":
-		if s.articleParser == nil {
-			return og.Spec{}, false, false
-		}
-		article, err := s.articleParser.LoadArticleByID(id)
-		if err != nil || !articleVisible(*article, r) {
-			return og.Spec{}, false, false
-		}
-		spec := og.Spec{
-			Layout: og.LayoutCover, Badge: articleBadges[article.Category], Title: article.Title,
-			Subtitle: firstNonEmpty(article.Subtitle, article.Summary), CTA: fmt.Sprintf("%d min czytania", article.ReadingMinutes),
-		}
-		if article.Draft {
-			spec.Badge = "Szkic"
-		}
-		if !article.ImageMissing {
-			spec.Photos = photoFiles(article.Image)
-		}
-		return spec, !article.Draft && isPublic(article.Visibility), true
-
+		return s.ogSpecArticle(r, id)
 	case "shop-list":
-		spec := og.Spec{Layout: og.LayoutProduct, Badge: "Sklep", Title: "Sklep z akcesoriami rowerowymi", Subtitle: "Rzeczy sprawdzone w codziennej jeździe: kupisz je u mnie albo zobaczysz polecane oferty."}
-		for _, item := range s.visibleShopItems(r) {
-			if isPublic(item.Visibility) {
-				spec.Photos = append(spec.Photos, photoFiles(item.Image)...)
-			}
-			if len(spec.Photos) >= 3 {
-				break
-			}
-		}
-		return spec, true, true
-
+		return s.ogSpecShopList(r)
 	case "blog":
-		spec := og.Spec{Layout: og.LayoutProduct, Badge: "Blog", Title: "Blog o życiu na rowerze", Subtitle: "Historie z codziennej jazdy rowerem cargo, porady dla rodzin i sprzęt, który się sprawdził."}
-		if s.articleParser != nil {
-			if all, err := s.articleParser.LoadAllArticles(); err == nil {
-				for _, a := range all {
-					if !a.Draft && isPublic(a.Visibility) && !a.ImageMissing {
-						spec.Photos = append(spec.Photos, photoFiles(a.Image)...)
-					}
-					if len(spec.Photos) >= 3 {
-						break
-					}
+		return s.ogSpecBlog()
+	}
+	return og.Spec{}, false, false
+}
+
+func (s *Server) ogSpecSite() (og.Spec, bool, bool) {
+	spec := og.Spec{
+		Layout: og.LayoutProduct, Badge: "Radzymin", Title: "Wypożyczalnia rowerów cargo i sprzętu rowerowego",
+		Subtitle: "Rowery cargo, przyczepki i bagażniki do wynajęcia. A do tego sklep z akcesoriami sprawdzonymi na co dzień.",
+		CTA:      "Zarezerwuj online",
+	}
+	for _, p := range s.publicProducts() {
+		spec.Photos = append(spec.Photos, photoFiles(p.Image)...)
+		if len(spec.Photos) >= 3 {
+			break
+		}
+	}
+	return spec, true, true
+}
+
+func (s *Server) ogSpecProduct(r *http.Request, id string) (og.Spec, bool, bool) {
+	if s.productParser == nil {
+		return og.Spec{}, false, false
+	}
+	product, err := s.productParser.LoadProductByID(id)
+	if err != nil || !isItemVisible(product.Visibility, r) {
+		return og.Spec{}, false, false
+	}
+	return og.Spec{
+		Layout: og.LayoutProduct, Badge: "Do wynajęcia", Title: product.Name, Subtitle: plainSummary(product.Description, 130),
+		Price: product.BasePrice.String() + " / dobę", CTA: "Wypróbuj mnie!", Photos: photoFiles(append([]string{product.Image}, product.Images...)...),
+	}, isPublic(product.Visibility), true
+}
+
+func (s *Server) ogSpecShop(r *http.Request, id string) (og.Spec, bool, bool) {
+	item, ok := s.shopItemByID(r, id)
+	if !ok {
+		return og.Spec{}, false, false
+	}
+	spec := og.Spec{Layout: og.LayoutProduct, Title: item.Name, Subtitle: plainSummary(item.Summary, 130), Photos: photoFiles(append([]string{item.Image}, item.Images...)...)}
+	if item.IsAffiliate() {
+		spec.Badge, spec.CTA, spec.Price = "Polecam · "+item.Affiliate.Merchant, "Zobacz ofertę", item.Affiliate.PriceHint
+	} else {
+		view := s.shopViews(r, []domain.ShopItem{item})[0]
+		spec.Badge, spec.CTA, spec.Price = "Sklep", "Do koszyka", view.DisplayPrice.String()
+		if view.PriceFrom {
+			spec.Price = "od " + spec.Price
+		}
+		if !view.Availability.CanBuy {
+			spec.CTA = "Wkrótce"
+		}
+	}
+	return spec, isPublic(item.Visibility), true
+}
+
+func (s *Server) ogSpecArticle(r *http.Request, id string) (og.Spec, bool, bool) {
+	if s.articleParser == nil {
+		return og.Spec{}, false, false
+	}
+	article, err := s.articleParser.LoadArticleByID(id)
+	if err != nil || !articleVisible(*article, r) {
+		return og.Spec{}, false, false
+	}
+	spec := og.Spec{
+		Layout: og.LayoutCover, Badge: articleBadges[article.Category], Title: article.Title,
+		Subtitle: firstNonEmpty(article.Subtitle, article.Summary), CTA: fmt.Sprintf("%d min czytania", article.ReadingMinutes),
+	}
+	if article.Draft {
+		spec.Badge = "Szkic"
+	}
+	if !article.ImageMissing {
+		spec.Photos = photoFiles(article.Image)
+	}
+	return spec, !article.Draft && isPublic(article.Visibility), true
+}
+
+func (s *Server) ogSpecShopList(r *http.Request) (og.Spec, bool, bool) {
+	spec := og.Spec{Layout: og.LayoutProduct, Badge: "Sklep", Title: "Sklep z akcesoriami rowerowymi", Subtitle: "Rzeczy sprawdzone w codziennej jeździe: kupisz je u mnie albo zobaczysz polecane oferty."}
+	for _, item := range s.visibleShopItems(r) {
+		if isPublic(item.Visibility) {
+			spec.Photos = append(spec.Photos, photoFiles(item.Image)...)
+		}
+		if len(spec.Photos) >= 3 {
+			break
+		}
+	}
+	return spec, true, true
+}
+
+func (s *Server) ogSpecBlog() (og.Spec, bool, bool) {
+	spec := og.Spec{Layout: og.LayoutProduct, Badge: "Blog", Title: "Blog o życiu na rowerze", Subtitle: "Historie z codziennej jazdy rowerem cargo, porady dla rodzin i sprzęt, który się sprawdził."}
+	if s.articleParser != nil {
+		if all, err := s.articleParser.LoadAllArticles(); err == nil {
+			for _, a := range all {
+				if !a.Draft && isPublic(a.Visibility) && !a.ImageMissing {
+					spec.Photos = append(spec.Photos, photoFiles(a.Image)...)
+				}
+				if len(spec.Photos) >= 3 {
+					break
 				}
 			}
 		}
-		return spec, true, true
 	}
-	return og.Spec{}, false, false
+	return spec, true, true
 }
 
 // publicProducts lists the rentals anybody can see.
@@ -394,18 +413,18 @@ func (s *Server) homeJSONLD(base string) template.JS {
 	})
 }
 
-func (s *Server) productJSONLD(base string, p *domain.Product, image string) template.JS {
+func (s *Server) productJSONLD(base string, rental *domain.Product, image string) template.JS {
 	product := map[string]any{
-		"@type": "Product", "name": p.Name, "description": plainSummary(p.Description, 300), "url": base + "/product/" + p.ID,
+		"@type": "Product", "name": rental.Name, "description": plainSummary(rental.Description, 300), "url": base + "/product/" + rental.ID,
 		"offers": map[string]any{
-			"@type": "Offer", "price": money(p.BasePrice), "priceCurrency": "PLN", "availability": "https://schema.org/InStock", "url": base + "/product/" + p.ID,
-			"priceSpecification": map[string]any{"@type": "UnitPriceSpecification", "price": money(p.BasePrice), "priceCurrency": "PLN", "unitCode": "DAY"},
+			"@type": "Offer", "price": money(rental.BasePrice), "priceCurrency": "PLN", "availability": "https://schema.org/InStock", "url": base + "/product/" + rental.ID,
+			"priceSpecification": map[string]any{"@type": "UnitPriceSpecification", "price": money(rental.BasePrice), "priceCurrency": "PLN", "unitCode": "DAY"},
 		},
 	}
 	if image != "" {
 		product["image"] = image
 	}
-	return jsonLD(product, breadcrumbs(base, [2]string{"Oferta", "/"}, [2]string{p.Name, "/product/" + p.ID}))
+	return jsonLD(product, breadcrumbs(base, [2]string{"Oferta", "/"}, [2]string{rental.Name, "/product/" + rental.ID}))
 }
 
 func (s *Server) shopItemJSONLD(base string, view shopItemView, image string) template.JS {
@@ -416,6 +435,8 @@ func (s *Server) shopItemJSONLD(base string, view shopItemView, image string) te
 	if view.IsDirect() {
 		availability := "https://schema.org/InStock"
 		switch view.Availability.State {
+		case shop.StateInStock, shop.StateLow:
+			availability = "https://schema.org/InStock"
 		case shop.StateOut:
 			availability = "https://schema.org/OutOfStock"
 		case shop.StateBackorder:
@@ -428,19 +449,19 @@ func (s *Server) shopItemJSONLD(base string, view shopItemView, image string) te
 	return jsonLD(product, breadcrumbs(base, [2]string{"Sklep", "/shop"}, [2]string{view.Name, "/shop/" + view.ID}))
 }
 
-func (s *Server) articleJSONLD(base string, a *domain.Article, image string) template.JS {
+func (s *Server) articleJSONLD(base string, article *domain.Article, image string) template.JS {
 	post := map[string]any{
-		"@type": "BlogPosting", "headline": a.Title, "description": firstNonEmpty(a.SEO.Description, a.Summary, a.Excerpt),
-		"datePublished": a.PublishedAt.Format("2006-01-02"), "mainEntityOfPage": base + "/article/" + a.ID,
+		"@type": "BlogPosting", "headline": article.Title, "description": firstNonEmpty(article.SEO.Description, article.Summary, article.Excerpt),
+		"datePublished": article.PublishedAt.Format("2006-01-02"), "mainEntityOfPage": base + "/article/" + article.ID,
 		"publisher": map[string]any{"@type": "Organization", "name": siteName, "url": base + "/"},
 	}
-	if a.Author != "" {
-		post["author"] = map[string]any{"@type": "Person", "name": a.Author}
+	if article.Author != "" {
+		post["author"] = map[string]any{"@type": "Person", "name": article.Author}
 	}
 	if image != "" {
 		post["image"] = image
 	}
-	return jsonLD(post, breadcrumbs(base, [2]string{"Blog", "/articles"}, [2]string{a.Title, "/article/" + a.ID}))
+	return jsonLD(post, breadcrumbs(base, [2]string{"Blog", "/articles"}, [2]string{article.Title, "/article/" + article.ID}))
 }
 
 // ---------------------------------------------------------------------------
@@ -465,6 +486,7 @@ func anonymous(r *http.Request) *http.Request {
 	return clean
 }
 
+//nolint:contextcheck // The anonymous view intentionally removes session context.
 func (s *Server) handleSitemap(w http.ResponseWriter, r *http.Request) {
 	base := siteURL(r)
 	visitor := anonymous(r)
@@ -516,17 +538,17 @@ func (s *Server) handleSitemap(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleRobots(w http.ResponseWriter, r *http.Request) {
-	var b strings.Builder
-	b.WriteString("User-agent: *\n")
+	var builder strings.Builder
+	builder.WriteString("User-agent: *\n")
 	for _, prefix := range privatePrefixes {
-		b.WriteString("Disallow: " + prefix + "\n")
+		builder.WriteString("Disallow: " + prefix + "\n")
 	}
-	b.WriteString("Disallow: /shop/*/go\n")
-	b.WriteString("Disallow: /shipping/\n")
-	b.WriteString("\nSitemap: " + siteURL(r) + "/sitemap.xml\n")
+	builder.WriteString("Disallow: /shop/*/go\n")
+	builder.WriteString("Disallow: /shipping/\n")
+	builder.WriteString("\nSitemap: " + siteURL(r) + "/sitemap.xml\n")
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "public, max-age=3600")
-	_, _ = w.Write([]byte(b.String()))
+	_, _ = w.Write([]byte(builder.String()))
 }
 
 // ---------------------------------------------------------------------------
@@ -586,16 +608,16 @@ func (s *Server) setListSEO(r *http.Request, data map[string]interface{}, kind, 
 	data["SEO"] = seo
 }
 
-func (s *Server) productSEO(r *http.Request, p *domain.Product) *pageSEO {
+func (s *Server) productSEO(r *http.Request, rental *domain.Product) *pageSEO {
 	base := siteURL(r)
-	image, alt := s.ogRef(r, "product", p.ID)
+	image, alt := s.ogRef(r, "product", rental.ID)
 	return &pageSEO{
-		Title:       "Wynajem: " + p.Name,
-		Description: fmt.Sprintf("Wynajem %s w Radzyminie: %s za dobę. %s", p.Name, p.BasePrice, plainSummary(p.Description, 110)),
-		Canonical:   base + "/product/" + p.ID,
+		Title:       "Wynajem: " + rental.Name,
+		Description: fmt.Sprintf("Wynajem %s w Radzyminie: %s za dobę. %s", rental.Name, rental.BasePrice, plainSummary(rental.Description, 110)),
+		Canonical:   base + "/product/" + rental.ID,
 		Image:       image, ImageAlt: alt, Type: "product",
-		NoIndex: !isPublic(p.Visibility),
-		JSONLD:  s.productJSONLD(base, p, image),
+		NoIndex: !isPublic(rental.Visibility),
+		JSONLD:  s.productJSONLD(base, rental, image),
 	}
 }
 
@@ -613,15 +635,15 @@ func (s *Server) shopItemSEO(r *http.Request, item domain.ShopItem, view shopIte
 	}
 }
 
-func (s *Server) articleSEO(r *http.Request, a *domain.Article) *pageSEO {
+func (s *Server) articleSEO(r *http.Request, article *domain.Article) *pageSEO {
 	base := siteURL(r)
-	image, alt := s.ogRef(r, "article", a.ID)
+	image, alt := s.ogRef(r, "article", article.ID)
 	return &pageSEO{
-		Title:       firstNonEmpty(a.SEO.Title, a.Title),
-		Description: firstNonEmpty(a.SEO.Description, a.Summary, a.Subtitle, a.Excerpt),
-		Canonical:   base + "/article/" + a.ID,
-		Image:       image, ImageAlt: alt, Type: "article", Published: a.PublishedAt.Format(time.RFC3339),
-		NoIndex: a.Draft || a.SEO.NoIndex || !isPublic(a.Visibility),
-		JSONLD:  s.articleJSONLD(base, a, image),
+		Title:       firstNonEmpty(article.SEO.Title, article.Title),
+		Description: firstNonEmpty(article.SEO.Description, article.Summary, article.Subtitle, article.Excerpt),
+		Canonical:   base + "/article/" + article.ID,
+		Image:       image, ImageAlt: alt, Type: "article", Published: article.PublishedAt.Format(time.RFC3339),
+		NoIndex: article.Draft || article.SEO.NoIndex || !isPublic(article.Visibility),
+		JSONLD:  s.articleJSONLD(base, article, image),
 	}
 }

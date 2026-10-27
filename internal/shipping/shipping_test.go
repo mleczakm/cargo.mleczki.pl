@@ -1,8 +1,10 @@
+//nolint:testpackage // These tests cover internal carrier and store behavior.
 package shipping
 
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -133,9 +135,9 @@ func TestParseConfigAddsPickupAndRejectsMistakes(t *testing.T) {
 
 func TestConfigFileFallsBackAndReloads(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "shipping.yml")
-	f := &ConfigFile{Path: path}
+	configFile := &ConfigFile{Path: path}
 
-	cfg, err := f.Load()
+	cfg, err := configFile.Load()
 	if err != nil || len(cfg.Options) != 1 || cfg.Options[0].Code != PickupCode {
 		t.Fatalf("missing file should mean pickup only: %+v, %v", cfg, err)
 	}
@@ -143,7 +145,7 @@ func TestConfigFileFallsBackAndReloads(t *testing.T) {
 	if err := os.WriteFile(path, []byte(sampleConfig), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if cfg, err = f.Load(); err != nil || len(cfg.Options) != 3 {
+	if cfg, err = configFile.Load(); err != nil || len(cfg.Options) != 3 {
 		t.Fatalf("after writing: %d options, %v", len(cfg.Options), err)
 	}
 
@@ -153,7 +155,7 @@ func TestConfigFileFallsBackAndReloads(t *testing.T) {
 	}
 	future := time.Now().Add(time.Hour)
 	_ = os.Chtimes(path, future, future)
-	cfg, err = f.Load()
+	cfg, err = configFile.Load()
 	if err == nil || len(cfg.Options) != 3 {
 		t.Fatalf("broken file: %d options, err %v", len(cfg.Options), err)
 	}
@@ -189,7 +191,7 @@ func newStore(t *testing.T) *Store {
 }
 
 func TestStoreLifecycle(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	store := newStore(t)
 
 	sh, err := store.Insert(ctx, Shipment{OrderID: "ORD-1", Carrier: "DPD", ExternalNumber: "PK1", Waybill: "W1", PriceGross: 1234, Status: "Utworzona", StatusCode: "P"})
@@ -227,7 +229,7 @@ func TestStoreLifecycle(t *testing.T) {
 	if len(list) != 2 || list[0].ExternalNumber != "PK2" {
 		t.Errorf("for order = %+v", list)
 	}
-	if _, err := store.ByID(ctx, 999); err != ErrShipmentNotFound {
+	if _, err := store.ByID(ctx, 999); !errors.Is(err, ErrShipmentNotFound) {
 		t.Errorf("unknown id error = %v", err)
 	}
 }
@@ -269,18 +271,18 @@ func fakeAPI(t *testing.T, calls *[]string) *httptest.Server {
 }
 
 func TestServiceWithoutCredentialsIsOff(t *testing.T) {
-	s := &Service{}
-	s.Configure(" ", "token", true, "", "test")
-	if s.Configured() {
+	service := &Service{}
+	service.Configure(" ", "token", true, "", "test")
+	if service.Configured() {
 		t.Fatal("a missing login must leave Polkurier off")
 	}
-	if _, err := s.SearchPoints(context.Background(), "X", "Radzymin"); err != ErrNotConfigured {
+	if _, err := service.SearchPoints(t.Context(), "X", "Radzymin"); !errors.Is(err, ErrNotConfigured) {
 		t.Errorf("SearchPoints error = %v", err)
 	}
-	if _, err := s.CreateShipment(context.Background(), DefaultConfig(), ShipmentInput{}); err != ErrNotConfigured {
+	if _, err := service.CreateShipment(t.Context(), DefaultConfig(), ShipmentInput{}); !errors.Is(err, ErrNotConfigured) {
 		t.Errorf("CreateShipment error = %v", err)
 	}
-	s.SyncOnce(context.Background(), nil) // must not panic or call anything
+	service.SyncOnce(t.Context(), nil) // must not panic or call anything
 }
 
 func TestServiceQuotesFindsPointsAndShips(t *testing.T) {
@@ -288,16 +290,16 @@ func TestServiceQuotesFindsPointsAndShips(t *testing.T) {
 	api := fakeAPI(t, &calls)
 	defer api.Close()
 
-	ctx := context.Background()
-	s := &Service{Store: newStore(t)}
-	s.Configure("acct", "tok", true, api.URL, "test")
+	ctx := t.Context()
+	service := &Service{Store: newStore(t)}
+	service.Configure("acct", "tok", true, api.URL, "test")
 	cfg, _ := ParseConfig([]byte(sampleConfig))
 
-	quotes, err := s.Quote(ctx, cfg.Sender, PackFor(cfg, nil), "00-001", 0)
+	quotes, err := service.Quote(ctx, cfg.Sender, PackFor(cfg, nil), "00-001", 0)
 	if err != nil || len(quotes) != 2 || quotes[0].ServiceCode != "INPOST_PACZKOMAT" {
 		t.Fatalf("quotes sorted by price: %+v, %v", quotes, err)
 	}
-	if _, err := s.Quote(ctx, cfg.Sender, PackFor(cfg, nil), "00-001", 0); err != nil {
+	if _, err := service.Quote(ctx, cfg.Sender, PackFor(cfg, nil), "00-001", 0); err != nil {
 		t.Fatal(err)
 	}
 	if n := count(calls, "quote"); n != 1 {
@@ -307,18 +309,18 @@ func TestServiceQuotesFindsPointsAndShips(t *testing.T) {
 		t.Errorf("PriceFor = %+v %v", v, ok)
 	}
 
-	points, err := s.SearchPoints(ctx, "INPOST_PACZKOMAT", "Radzymin")
+	points, err := service.SearchPoints(ctx, "INPOST_PACZKOMAT", "Radzymin")
 	if err != nil || len(points) != 1 || points[0].ID != "RDZ01M" {
 		t.Fatalf("unavailable points must be left out: %+v, %v", points, err)
 	}
-	if pt, err := s.LookupPoint(ctx, "INPOST_PACZKOMAT", "rdz01m"); err != nil || pt.Postcode != "05-250" {
+	if pt, err := service.LookupPoint(ctx, "INPOST_PACZKOMAT", "rdz01m"); err != nil || pt.Postcode != "05-250" {
 		t.Errorf("LookupPoint = %+v, %v", pt, err)
 	}
-	if _, err := s.LookupPoint(ctx, "INPOST_PACZKOMAT", "ZZZ99"); err != ErrPointNotFound {
+	if _, err := service.LookupPoint(ctx, "INPOST_PACZKOMAT", "ZZZ99"); !errors.Is(err, ErrPointNotFound) {
 		t.Errorf("unknown locker error = %v", err)
 	}
 
-	in := s.DefaultInput(ctx, cfg, "ORD-9", Destination{Method: "inpost", Person: "Jan Kowalski", Email: "j@example.com", Phone: "600", PointID: "RDZ01M"},
+	in := service.DefaultInput(ctx, cfg, "ORD-9", Destination{Method: "inpost", Person: "Jan Kowalski", Email: "j@example.com", Phone: "600", PointID: "RDZ01M"},
 		[]Good{{Quantity: 1, WeightG: 700}}, domain.Zloty(80))
 	if in.Carrier != "INPOST_PACZKOMAT" || !in.DropOff || in.Recipient.PointID != "RDZ01M" || in.Recipient.Postcode != "05-250" || in.Recipient.Street != "Konstytucji 3 Maja" {
 		t.Fatalf("default input = %+v", in)
@@ -327,26 +329,26 @@ func TestServiceQuotesFindsPointsAndShips(t *testing.T) {
 		t.Errorf("weight = %v", in.WeightKg)
 	}
 
-	sh, err := s.CreateShipment(ctx, cfg, in)
+	sh, err := service.CreateShipment(ctx, cfg, in)
 	if err != nil || sh.ExternalNumber != "PK-77" || sh.Waybill != "WB123" || sh.PriceGross != 1150 {
 		t.Fatalf("shipment = %+v, %v", sh, err)
 	}
 
 	var changed []string
-	s.SyncOnce(ctx, func(_ context.Context, before, after *Shipment) {
+	service.SyncOnce(ctx, func(_ context.Context, before, after *Shipment) {
 		changed = append(changed, before.StatusCode+">"+after.StatusCode)
 	})
 	if len(changed) != 1 || changed[0] != "P>WP" {
 		t.Errorf("status changes = %v", changed)
 	}
-	if got, _ := s.Store.ByID(ctx, sh.ID); !InTransit(got) || Problem(got) {
+	if got, _ := service.Store.ByID(ctx, sh.ID); !InTransit(got) || Problem(got) {
 		t.Errorf("after sync: %+v", got)
 	}
 
-	if err := s.Cancel(ctx, sh); err != nil {
+	if err := service.Cancel(ctx, sh); err != nil {
 		t.Fatal(err)
 	}
-	if got, _ := s.Store.ByID(ctx, sh.ID); got.Active() {
+	if got, _ := service.Store.ByID(ctx, sh.ID); got.Active() {
 		t.Errorf("cancelled shipment is active: %+v", got)
 	}
 }
@@ -355,8 +357,8 @@ func TestCreateShipmentValidatesBeforeCallingTheAPI(t *testing.T) {
 	var calls []string
 	api := fakeAPI(t, &calls)
 	defer api.Close()
-	s := &Service{Store: newStore(t)}
-	s.Configure("acct", "tok", true, api.URL, "test")
+	service := &Service{Store: newStore(t)}
+	service.Configure("acct", "tok", true, api.URL, "test")
 	cfg, _ := ParseConfig([]byte(sampleConfig))
 
 	good := ShipmentInput{OrderID: "ORD-1", Carrier: "DPD", LengthCm: 10, WidthCm: 10, HeightCm: 10, WeightKg: 1,
@@ -372,13 +374,13 @@ func TestCreateShipmentValidatesBeforeCallingTheAPI(t *testing.T) {
 	for name, mutate := range bad {
 		in := good
 		mutate(&in)
-		if _, err := s.CreateShipment(context.Background(), cfg, in); err == nil {
+		if _, err := service.CreateShipment(t.Context(), cfg, in); err == nil {
 			t.Errorf("%s: expected an error", name)
 		}
 	}
 	noSender := cfg
 	noSender.Sender = Sender{}
-	if _, err := s.CreateShipment(context.Background(), noSender, good); err == nil || !strings.Contains(err.Error(), "nadawc") {
+	if _, err := service.CreateShipment(t.Context(), noSender, good); err == nil || !strings.Contains(err.Error(), "nadawc") {
 		t.Errorf("missing sender error = %v", err)
 	}
 	if len(calls) != 0 {
@@ -387,11 +389,11 @@ func TestCreateShipmentValidatesBeforeCallingTheAPI(t *testing.T) {
 }
 
 func count(list []string, what string) int {
-	n := 0
+	count2 := 0
 	for _, s := range list {
 		if s == what {
-			n++
+			count2++
 		}
 	}
-	return n
+	return count2
 }

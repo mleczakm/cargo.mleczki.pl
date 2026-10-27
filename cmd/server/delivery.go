@@ -208,47 +208,56 @@ func (s *Server) resolveDelivery(ctx context.Context, r *http.Request, cart []Ca
 		return nil, noticeDeliveryMethod
 	}
 
-	d := &domain.Delivery{
+	details := &domain.Delivery{
 		Method: chosen.Code, Name: chosen.Name, Carrier: chosen.Carrier, Cost: chosen.Cost,
 		Person: strings.TrimSpace(name), Phone: strings.TrimSpace(phone), Email: strings.TrimSpace(email),
 	}
 	if chosen.Kind == shipping.KindPickup {
-		d.Cost = domain.Money{}
-		return d, ""
+		details.Cost = domain.Money{}
+		return details, ""
 	}
 	if paymentMethod != domain.PaymentMethodBlik {
 		return nil, noticeDeliveryPayment
 	}
 
 	switch chosen.Kind {
+	case shipping.KindPickup:
+		return details, ""
 	case shipping.KindLocker:
-		point := strings.ToUpper(strings.TrimSpace(r.FormValue("locker")))
-		if point == "" {
-			return nil, noticeDeliveryLocker
-		}
-		d.PointID, d.PointLabel = point, point
-		lookup, cancel := context.WithTimeout(ctx, 6*time.Second)
-		defer cancel()
-		found, err := s.shipping.LookupPoint(lookup, chosen.Carrier, point)
-		switch {
-		case errors.Is(err, shipping.ErrPointNotFound):
-			return nil, noticeDeliveryUnknown
-		case err != nil:
-			// An outage of the courier API never blocks a sale: the admin sees the code on the order.
-			log.Printf("Could not verify %s locker %s: %v", chosen.Carrier, point, err)
-		default:
-			d.PointLabel = found.Label
-			d.Street, d.Postcode, d.City = found.Street, found.Postcode, found.City
+		if problem := s.resolveLocker(ctx, r, chosen.Carrier, details); problem != "" {
+			return nil, problem
 		}
 	case shipping.KindCourier:
-		d.Street = strings.TrimSpace(r.FormValue("ship_street"))
-		d.Postcode = strings.TrimSpace(r.FormValue("ship_postcode"))
-		d.City = strings.TrimSpace(r.FormValue("ship_city"))
-		if d.Street == "" || d.City == "" || !shipping.ValidPostcode(d.Postcode) {
+		details.Street = strings.TrimSpace(r.FormValue("ship_street"))
+		details.Postcode = strings.TrimSpace(r.FormValue("ship_postcode"))
+		details.City = strings.TrimSpace(r.FormValue("ship_city"))
+		if details.Street == "" || details.City == "" || !shipping.ValidPostcode(details.Postcode) {
 			return nil, noticeDeliveryAddress
 		}
 	}
-	return d, ""
+	return details, ""
+}
+
+func (s *Server) resolveLocker(ctx context.Context, r *http.Request, carrier string, details *domain.Delivery) string {
+	point := strings.ToUpper(strings.TrimSpace(r.FormValue("locker")))
+	if point == "" {
+		return noticeDeliveryLocker
+	}
+	details.PointID, details.PointLabel = point, point
+	lookup, cancel := context.WithTimeout(ctx, 6*time.Second)
+	defer cancel()
+	found, err := s.shipping.LookupPoint(lookup, carrier, point)
+	switch {
+	case errors.Is(err, shipping.ErrPointNotFound):
+		return noticeDeliveryUnknown
+	case err != nil:
+		// An outage does not block the sale; the admin sees the code on the order.
+		log.Printf("Could not verify %s locker %s: %v", carrier, point, err)
+	default:
+		details.PointLabel = found.Label
+		details.Street, details.Postcode, details.City = found.Street, found.Postcode, found.City
+	}
+	return ""
 }
 
 // handleShippingPoints powers the parcel locker search in the checkout.

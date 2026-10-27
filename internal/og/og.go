@@ -58,15 +58,15 @@ type Spec struct {
 // Hash identifies the picture a spec produces, including the photos' versions,
 // so it can serve as a cache key, an ETag and a cache-busting query.
 func (s Spec) Hash() string {
-	h := sha256.New()
+	hasher := sha256.New()
 	raw, _ := json.Marshal(s)
-	h.Write(raw)
+	hasher.Write(raw)
 	for _, p := range s.Photos {
 		if info, err := os.Stat(p); err == nil {
-			fmt.Fprintf(h, "|%s|%d|%d", p, info.Size(), info.ModTime().UnixNano())
+			fmt.Fprintf(hasher, "|%s|%d|%d", p, info.Size(), info.ModTime().UnixNano())
 		}
 	}
-	return hex.EncodeToString(h.Sum(nil))[:16]
+	return hex.EncodeToString(hasher.Sum(nil))[:16]
 }
 
 var (
@@ -85,6 +85,7 @@ func init() {
 	}
 }
 
+//nolint:ireturn // The image/font API exposes font faces through this interface.
 func face(bold bool, size float64) font.Face {
 	key := fmt.Sprintf("%t/%.1f", bold, size)
 	faceMu.Lock()
@@ -107,7 +108,7 @@ func face(bold bool, size float64) font.Face {
 func textWidth(f font.Face, s string) int { return font.MeasureString(f, s).Ceil() }
 
 // wrap breaks text into lines no wider than width. Words wider than a line are cut.
-func wrap(f font.Face, text string, width int) []string {
+func wrap(typeFace font.Face, text string, width int) []string {
 	var lines []string
 	line := ""
 	flush := func() {
@@ -117,9 +118,9 @@ func wrap(f font.Face, text string, width int) []string {
 		}
 	}
 	for _, word := range strings.Fields(text) {
-		for textWidth(f, word) > width { // a single word longer than the line
+		for textWidth(typeFace, word) > width { // a single word longer than the line
 			cut := len([]rune(word))
-			for cut > 1 && textWidth(f, string([]rune(word)[:cut])) > width {
+			for cut > 1 && textWidth(typeFace, string([]rune(word)[:cut])) > width {
 				cut--
 			}
 			flush()
@@ -130,7 +131,7 @@ func wrap(f font.Face, text string, width int) []string {
 		if line != "" {
 			candidate = line + " " + word
 		}
-		if textWidth(f, candidate) <= width {
+		if textWidth(typeFace, candidate) <= width {
 			line = candidate
 			continue
 		}
@@ -143,6 +144,8 @@ func wrap(f font.Face, text string, width int) []string {
 
 // fit finds the largest size at which text fits in maxLines lines; at the
 // smallest size it cuts the text with an ellipsis instead.
+//
+//nolint:ireturn // Callers render through the font.Face interface.
 func fit(text string, bold bool, width, maxLines int, start, minimum float64) ([]string, font.Face, float64) {
 	for size := start; size >= minimum; size -= 2 {
 		f := face(bold, size)
@@ -150,17 +153,17 @@ func fit(text string, bold bool, width, maxLines int, start, minimum float64) ([
 			return lines, f, size
 		}
 	}
-	f := face(bold, minimum)
-	lines := wrap(f, text, width)
+	fontFace := face(bold, minimum)
+	lines := wrap(fontFace, text, width)
 	if len(lines) > maxLines {
 		lines = lines[:maxLines]
 		last := []rune(lines[maxLines-1])
-		for len(last) > 1 && textWidth(f, string(last)+"…") > width {
+		for len(last) > 1 && textWidth(fontFace, string(last)+"…") > width {
 			last = last[:len(last)-1]
 		}
 		lines[maxLines-1] = strings.TrimSpace(string(last)) + "…"
 	}
-	return lines, f, minimum
+	return lines, fontFace, minimum
 }
 
 func drawText(img *image.RGBA, f font.Face, x, baseline int, s string, c color.RGBA) {
@@ -169,24 +172,23 @@ func drawText(img *image.RGBA, f font.Face, x, baseline int, s string, c color.R
 }
 
 // drawLines paints lines starting at top and returns the y below the last one.
-func drawLines(img *image.RGBA, f font.Face, x, top int, lines []string, lineHeight float64, c color.RGBA) int {
+func drawLines(img *image.RGBA, f font.Face, top int, lines []string, lineHeight float64, c color.RGBA) int {
 	ascent := f.Metrics().Ascent.Ceil()
 	y := top
 	for _, line := range lines {
-		drawText(img, f, x, y+ascent, line, c)
+		drawText(img, f, 64, y+ascent, line, c)
 		y += int(lineHeight)
 	}
 	return y
 }
 
-func pill(img *image.RGBA, x, y int, label string, f font.Face, bg, fg color.RGBA, padX, height int) int {
-	w := textWidth(f, label) + 2*padX
-	r := image.Rect(x, y, x+w, y+height)
+func pill(img *image.RGBA, xPos, yPos int, label string, typeFace font.Face, bg, fg color.RGBA, padX, height int) {
+	w := textWidth(typeFace, label) + 2*padX
+	r := image.Rect(xPos, yPos, xPos+w, yPos+height)
 	fillRounded(img, r, float64(height)/2, bg)
-	metrics := f.Metrics()
-	baseline := y + (height+metrics.Ascent.Ceil()-metrics.Descent.Ceil())/2
-	drawText(img, f, x+padX, baseline, label, fg)
-	return w
+	metrics := typeFace.Metrics()
+	baseline := yPos + (height+metrics.Ascent.Ceil()-metrics.Descent.Ceil())/2
+	drawText(img, typeFace, xPos+padX, baseline, label, fg)
 }
 
 func loadPhoto(path string) (image.Image, error) {
@@ -304,31 +306,31 @@ func renderProduct(img *image.RGBA, spec Spec, photos []image.Image) {
 	}
 	bottom := 566
 	rowTop := bottom - 44 - 28 - 62 - 24
-	y := 60
+	yPos2 := 60
 	if free := rowTop - 60 - block; free > 0 {
-		y += free / 2
+		yPos2 += free / 2
 	}
 
 	if spec.Badge != "" {
-		pill(img, left, y, strings.ToUpper(spec.Badge), face(true, 22), amber, ink, 22, 44)
-		y += 44 + 26
+		pill(img, left, yPos2, strings.ToUpper(spec.Badge), face(true, 22), amber, ink, 22, 44)
+		yPos2 += 44 + 26
 	}
-	y = drawLines(img, titleFace, left, y, titleLines, titleSize*1.12, white)
+	yPos2 = drawLines(img, titleFace, yPos2, titleLines, titleSize*1.12, white)
 	if len(subLines) > 0 {
-		drawLines(img, subFace, left, y+14, subLines, subSize*1.35, mintDim)
+		drawLines(img, subFace, yPos2+14, subLines, subSize*1.35, mintDim)
 	}
 
 	// Price and call to action pinned to the bottom.
 	brand(img, spec, left, bottom-44, mint)
 	rowY := bottom - 44 - 28 - 62
-	x := left
+	xPos2 := left
 	if spec.Price != "" {
 		pf := face(true, 46)
-		drawText(img, pf, x, rowY+46, spec.Price, white)
-		x += textWidth(pf, spec.Price) + 28
+		drawText(img, pf, xPos2, rowY+46, spec.Price, white)
+		xPos2 += textWidth(pf, spec.Price) + 28
 	}
 	if spec.CTA != "" {
-		pill(img, x, rowY-2, spec.CTA, face(true, 26), amber, ink, 26, 62)
+		pill(img, xPos2, rowY-2, spec.CTA, face(true, 26), amber, ink, 26, 62)
 	}
 }
 
@@ -339,20 +341,7 @@ func renderCover(img *image.RGBA, spec Spec, photos []image.Image) {
 		background(img)
 		drawLogo(img, 820, 90, 330, withAlpha(mint, 0.16))
 	}
-	// Darken the bottom so the title is readable on any photo.
-	for y := 0; y < Height; y++ {
-		t := clamp01(float64(y-Height/5) / float64(Height*4/5))
-		a := 0.88 * t * t
-		for x := 0; x < Width; x++ {
-			blend(img, x, y, rgb(0x011a14), a)
-		}
-	}
-	for y := 0; y < 170; y++ { // and a little at the top for the brand
-		a := 0.5 * (1 - float64(y)/170)
-		for x := 0; x < Width; x++ {
-			blend(img, x, y, rgb(0x011a14), a)
-		}
-	}
+	darkenCover(img)
 
 	const left, textWidthPx = 64, 1000
 	brand(img, spec, left, 44, white)
@@ -378,22 +367,39 @@ func renderCover(img *image.RGBA, spec Spec, photos []image.Image) {
 	if spec.CTA != "" || spec.Price != "" {
 		total += 22 + 54
 	}
-	y := bottom - total
-	y = drawLines(img, titleFace, left, y, titleLines, titleSize*1.1, white)
+	yPos := bottom - total
+	yPos = drawLines(img, titleFace, yPos, titleLines, titleSize*1.1, white)
 	if len(subLines) > 0 {
-		y += 18
-		y = drawLines(img, subFace, left, y, subLines, subSize*1.35, rgb(0xd1fae5))
+		yPos += 18
+		yPos = drawLines(img, subFace, yPos, subLines, subSize*1.35, rgb(0xd1fae5))
 	}
-	x := left
+	xPos := left
 	if spec.Price != "" || spec.CTA != "" {
-		y += 22
+		yPos += 22
 		if spec.Price != "" {
 			pf := face(true, 34)
-			drawText(img, pf, x, y+40, spec.Price, white)
-			x += textWidth(pf, spec.Price) + 24
+			drawText(img, pf, xPos, yPos+40, spec.Price, white)
+			xPos += textWidth(pf, spec.Price) + 24
 		}
 		if spec.CTA != "" {
-			pill(img, x, y, spec.CTA, face(true, 24), amber, ink, 24, 54)
+			pill(img, xPos, yPos, spec.CTA, face(true, 24), amber, ink, 24, 54)
+		}
+	}
+}
+
+// darkenCover keeps overlaid text legible on any background.
+func darkenCover(img *image.RGBA) {
+	for y := 0; y < Height; y++ {
+		t := clamp01(float64(y-Height/5) / float64(Height*4/5))
+		a := 0.88 * t * t
+		for x := 0; x < Width; x++ {
+			blend(img, x, y, rgb(0x011a14), a)
+		}
+	}
+	for y := 0; y < 170; y++ { // and a little at the top for the brand
+		a := 0.5 * (1 - float64(y)/170)
+		for x := 0; x < Width; x++ {
+			blend(img, x, y, rgb(0x011a14), a)
 		}
 	}
 }

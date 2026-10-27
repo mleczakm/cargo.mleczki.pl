@@ -59,6 +59,7 @@ type fakePolkurier struct {
 }
 
 func (f *fakePolkurier) handler(t *testing.T) http.Handler {
+	t.Helper()
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		raw, _ := io.ReadAll(r.Body)
 		body := string(raw)
@@ -110,13 +111,13 @@ func (f *fakePolkurier) handler(t *testing.T) http.Handler {
 func (f *fakePolkurier) called(method string) int {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	n := 0
+	count := 0
 	for _, c := range f.calls {
 		if c == method {
-			n++
+			count++
 		}
 	}
-	return n
+	return count
 }
 
 // withDelivery gives the harness a shipping config and (optionally) a Polkurier account.
@@ -144,7 +145,7 @@ func withDelivery(t *testing.T, app *shopHarness, polkurier bool) *fakePolkurier
 	return fake
 }
 
-func (app *shopHarness) checkoutWith(c *http.Client, form url.Values) (int, string, string) {
+func (app *shopHarness) checkoutWith(client *http.Client, form url.Values) (int, string, string) {
 	app.t.Helper()
 	base := url.Values{
 		"payment_method": {"blik"}, "name": {"Jan Test"}, "email": {"jan@example.com"}, "phone": {"500100200"},
@@ -153,7 +154,7 @@ func (app *shopHarness) checkoutWith(c *http.Client, form url.Values) (int, stri
 	for k, v := range form {
 		base[k] = v
 	}
-	status, header := app.post(c, "/checkout/submit", base, true)
+	status, header := app.post(client, "/checkout/submit", base, true)
 	location := header.Get("Location")
 	if location == "" {
 		location = header.Get("HX-Redirect")
@@ -292,15 +293,15 @@ func TestRentalsAndHeavyGoodsAreCollectedInPerson(t *testing.T) {
 func TestLockerSearchEndpoint(t *testing.T) {
 	app := newShopHarness(t)
 	fake := withDelivery(t, app, true)
-	v := app.visitor()
+	value := app.visitor()
 
-	_, body, header := app.get(v, "/shipping/points?method=inpost&q=Radzymin")
+	_, body, header := app.get(value, "/shipping/points?method=inpost&q=Radzymin")
 	assertContains(t, body, "RDZ01M")
 	if !strings.Contains(header.Get("Content-Type"), "json") {
 		t.Errorf("content type = %q", header.Get("Content-Type"))
 	}
 	for _, path := range []string{"/shipping/points?method=pickup&q=Radzymin", "/shipping/points?method=dron&q=Radzymin", "/shipping/points?method=kurier&q=Radzymin", "/shipping/points?method=inpost&q=R"} {
-		if _, body, _ := app.get(v, path); strings.TrimSpace(body) != "[]" {
+		if _, body, _ := app.get(value, path); strings.TrimSpace(body) != "[]" {
 			t.Errorf("%s = %q, want an empty list", path, body)
 		}
 	}
@@ -394,13 +395,13 @@ func TestAdminShipsAnOrderThroughPolkurier(t *testing.T) {
 	}
 }
 
-func (app *shopHarness) loginAs(c *http.Client, email, password string) {
+func (app *shopHarness) loginAs(client *http.Client, email, password string) {
 	app.t.Helper()
 	token, _, err := app.server.authManager.Login(app.t.Context(), email, password)
 	if err != nil {
 		app.t.Fatalf("login %s: %v", email, err)
 	}
-	c.Jar.SetCookies(app.base, []*http.Cookie{{Name: "session_token", Value: token, Path: "/"}})
+	client.Jar.SetCookies(app.base, []*http.Cookie{{Name: "session_token", Value: token, Path: "/"}})
 }
 
 func TestShipmentSyncMovesTheOrderAlong(t *testing.T) {

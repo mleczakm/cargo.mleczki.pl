@@ -39,17 +39,10 @@ func shopReservationTTL() time.Duration {
 
 func main() {
 	// Ensure data directories exist
-	if err := os.MkdirAll("data/products", 0755); err != nil {
-		log.Fatalf("Failed to create data/products directory: %v", err)
-	}
-	if err := os.MkdirAll("data/articles", 0755); err != nil {
-		log.Fatalf("Failed to create data/articles directory: %v", err)
-	}
-	if err := os.MkdirAll("data/shop", 0755); err != nil {
-		log.Fatalf("Failed to create data/shop directory: %v", err)
-	}
-	if err := os.MkdirAll("db", 0755); err != nil {
-		log.Fatalf("Failed to create db directory: %v", err)
+	for _, dir := range []string{"data/products", "data/articles", "data/shop", "db"} {
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			log.Fatalf("Failed to create %s directory: %v", dir, err)
+		}
 	}
 
 	// Initialize databases

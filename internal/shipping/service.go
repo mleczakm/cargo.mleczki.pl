@@ -132,13 +132,13 @@ type Good struct {
 func PackFor(cfg Config, goods []Good) polkurier.Pack {
 	grams := cfg.Parcel.PackagingWeightG
 	length, width, height := cfg.Parcel.LengthCm, cfg.Parcel.WidthCm, cfg.Parcel.HeightCm
-	for _, g := range goods {
-		w := g.WeightG
+	for _, good := range goods {
+		w := good.WeightG
 		if w <= 0 {
 			w = cfg.Parcel.DefaultItemWeightG
 		}
-		grams += w * max(g.Quantity, 1)
-		length, width, height = max(length, g.LengthCm), max(width, g.WidthCm), max(height, g.HeightCm)
+		grams += w * max(good.Quantity, 1)
+		length, width, height = max(length, good.LengthCm), max(width, good.WidthCm), max(height, good.HeightCm)
 	}
 	if grams <= 0 {
 		grams = 1000
@@ -152,12 +152,12 @@ func PackFor(cfg Config, goods []Good) polkurier.Pack {
 
 // Quote prices a parcel with every courier (cached for an hour per parcel and postcodes).
 // Valuations are sorted by final gross price.
-func (s *Service) Quote(ctx context.Context, sender Sender, p polkurier.Pack, recipientPostcode string, insurance float64) ([]polkurier.Valuation, error) {
+func (s *Service) Quote(ctx context.Context, sender Sender, pack polkurier.Pack, recipientPostcode string, insurance float64) ([]polkurier.Valuation, error) {
 	client := s.api()
 	if client == nil {
 		return nil, ErrNotConfigured
 	}
-	key := fmt.Sprintf("%d/%d/%d/%.1f/%s/%s/%.0f", p.Length, p.Width, p.Height, p.Weight, sender.Postcode, recipientPostcode, insurance)
+	key := fmt.Sprintf("%d/%d/%d/%.1f/%s/%s/%.0f", pack.Length, pack.Width, pack.Height, pack.Weight, sender.Postcode, recipientPostcode, insurance)
 	s.mu.Lock()
 	if e, ok := s.quotes[key]; ok && time.Since(e.at) < time.Hour {
 		s.mu.Unlock()
@@ -165,7 +165,7 @@ func (s *Service) Quote(ctx context.Context, sender Sender, p polkurier.Pack, re
 	}
 	s.mu.Unlock()
 	req := polkurier.ValuationRequest{OrderRequest: polkurier.OrderRequest{
-		ShipmentType: polkurier.ShipmentBox, Packs: []polkurier.Pack{p}, Insurance: insurance,
+		ShipmentType: polkurier.ShipmentBox, Packs: []polkurier.Pack{pack}, Insurance: insurance,
 	}}
 	if sender.Postcode != "" {
 		req.Sender = &polkurier.Address{Postcode: sender.Postcode, Country: "PL"}
@@ -306,6 +306,7 @@ func (in ShipmentInput) validate() error {
 	return nil
 }
 
+//nolint:nilnil // A nil service map means no optional services were requested.
 func (s *Service) selectedServices(ctx context.Context, carrierCode string, handleWithCare bool) (map[polkurier.Service]bool, error) {
 	if !handleWithCare {
 		return nil, nil
@@ -323,30 +324,30 @@ func (s *Service) selectedServices(ctx context.Context, carrierCode string, hand
 }
 
 // DefaultInput prepares a shipment from the configuration and the delivery the customer chose.
-func (s *Service) DefaultInput(ctx context.Context, cfg Config, orderID string, d Destination, goods []Good, insurance domain.Money) ShipmentInput {
-	opt, _ := cfg.Option(d.Method)
+func (s *Service) DefaultInput(ctx context.Context, cfg Config, orderID string, destination Destination, goods []Good, insurance domain.Money) ShipmentInput {
+	opt, _ := cfg.Option(destination.Method)
 	pack := PackFor(cfg, goods)
 	in := ShipmentInput{
 		OrderID: orderID, Carrier: opt.Carrier, LengthCm: pack.Length, WidthCm: pack.Width, HeightCm: pack.Height, WeightKg: pack.Weight,
 		Description: cfg.Parcel.Description, DropOff: opt.NeedsLocker(),
-		Recipient: polkurier.Address{Person: d.Person, Email: d.Email, Phone: d.Phone, Country: "PL"},
+		Recipient: polkurier.Address{Person: destination.Person, Email: destination.Email, Phone: destination.Phone, Country: "PL"},
 	}
 	if cfg.Parcel.Insure {
 		in.Insurance = insurance.Zloty()
 	}
-	if d.PointID != "" {
-		in.Recipient.PointID = d.PointID
-		in.Recipient.Street, in.Recipient.HouseNumber, in.Recipient.FlatNumber = SplitStreet(d.Street)
-		in.Recipient.Postcode, in.Recipient.City = d.Postcode, d.City
-		if opt.Carrier != "" && s.Configured() && (d.Street == "" || d.Postcode == "") {
-			if pt, err := s.LookupPoint(ctx, opt.Carrier, d.PointID); err == nil {
+	if destination.PointID != "" {
+		in.Recipient.PointID = destination.PointID
+		in.Recipient.Street, in.Recipient.HouseNumber, in.Recipient.FlatNumber = SplitStreet(destination.Street)
+		in.Recipient.Postcode, in.Recipient.City = destination.Postcode, destination.City
+		if opt.Carrier != "" && s.Configured() && (destination.Street == "" || destination.Postcode == "") {
+			if pt, err := s.LookupPoint(ctx, opt.Carrier, destination.PointID); err == nil {
 				in.Recipient.Street, in.Recipient.HouseNumber, in.Recipient.FlatNumber = SplitStreet(pt.Street)
 				in.Recipient.Postcode, in.Recipient.City = pt.Postcode, pt.City
 			}
 		}
 	} else {
-		in.Recipient.Street, in.Recipient.HouseNumber, in.Recipient.FlatNumber = SplitStreet(d.Street)
-		in.Recipient.Postcode, in.Recipient.City = d.Postcode, d.City
+		in.Recipient.Street, in.Recipient.HouseNumber, in.Recipient.FlatNumber = SplitStreet(destination.Street)
+		in.Recipient.Postcode, in.Recipient.City = destination.Postcode, destination.City
 	}
 	if in.Recipient.HouseNumber == "" {
 		in.Recipient.HouseNumber = "1"
@@ -471,13 +472,13 @@ func Problem(sh *Shipment) bool {
 // RunSync refreshes the parcels that are still on their way every interval and
 // calls changed with each parcel whose status changed.
 func (s *Service) RunSync(ctx context.Context, every time.Duration, changed func(ctx context.Context, before, after *Shipment)) {
-	t := time.NewTicker(every)
-	defer t.Stop()
+	ticker := time.NewTicker(every)
+	defer ticker.Stop()
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-t.C:
+		case <-ticker.C:
 			s.SyncOnce(ctx, changed)
 		}
 	}

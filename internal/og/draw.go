@@ -12,7 +12,7 @@ import (
 func clamp01(v float64) float64 { return math.Max(0, math.Min(1, v)) }
 
 func rgb(hex uint32) color.RGBA {
-	return color.RGBA{R: uint8(hex >> 16), G: uint8(hex >> 8), B: uint8(hex), A: 255}
+	return color.RGBA{R: uint8((hex >> 16) & 0xff), G: uint8((hex >> 8) & 0xff), B: uint8(hex & 0xff), A: 255} // #nosec G115 -- every component is masked to one byte
 }
 
 func withAlpha(c color.RGBA, a float64) color.RGBA {
@@ -20,20 +20,20 @@ func withAlpha(c color.RGBA, a float64) color.RGBA {
 }
 
 // blend composites c with coverage cov (0..1) over the pixel at x, y.
-func blend(img *image.RGBA, x, y int, c color.RGBA, cov float64) {
-	if cov <= 0 || !image.Pt(x, y).In(img.Rect) {
+func blend(img *image.RGBA, xPos, yPos int, paintColor color.RGBA, cov float64) {
+	if cov <= 0 || !image.Pt(xPos, yPos).In(img.Rect) {
 		return
 	}
-	a := cov * float64(c.A) / 255
-	if a <= 0 {
+	alpha := cov * float64(paintColor.A) / 255
+	if alpha <= 0 {
 		return
 	}
-	i := img.PixOffset(x, y)
+	i := img.PixOffset(xPos, yPos)
 	p := img.Pix[i : i+4 : i+4]
-	inv := 1 - a
-	p[0] = uint8(float64(c.R)*a + float64(p[0])*inv)
-	p[1] = uint8(float64(c.G)*a + float64(p[1])*inv)
-	p[2] = uint8(float64(c.B)*a + float64(p[2])*inv)
+	inv := 1 - alpha
+	p[0] = uint8(float64(paintColor.R)*alpha + float64(p[0])*inv)
+	p[1] = uint8(float64(paintColor.G)*alpha + float64(p[1])*inv)
+	p[2] = uint8(float64(paintColor.B)*alpha + float64(p[2])*inv)
 	p[3] = 255
 }
 
@@ -53,13 +53,13 @@ func fillGradient(img *image.RGBA, r image.Rectangle, c0, c1 color.RGBA) {
 }
 
 // glow adds a soft radial highlight.
-func glow(img *image.RGBA, cx, cy, radius float64, c color.RGBA, strength float64) {
+func glow(img *image.RGBA, cx, cy, radius float64, config color.RGBA, strength float64) {
 	b := img.Bounds()
 	for y := max(b.Min.Y, int(cy-radius)); y < min(b.Max.Y, int(cy+radius)+1); y++ {
 		for x := max(b.Min.X, int(cx-radius)); x < min(b.Max.X, int(cx+radius)+1); x++ {
 			d := math.Hypot(float64(x)-cx, float64(y)-cy) / radius
 			if d < 1 {
-				blend(img, x, y, c, strength*(1-d)*(1-d))
+				blend(img, x, y, config, strength*(1-d)*(1-d))
 			}
 		}
 	}
@@ -120,6 +120,8 @@ func drawPhoto(dst *image.RGBA, r image.Rectangle, radius float64, src image.Ima
 				blend(dst, x, y, color.RGBA{R: c.R, G: c.G, B: c.B, A: 255}, cov)
 			}
 		}
+	case fitContain:
+		fallthrough
 	default:
 		scale := math.Min(scaleX, scaleY)
 		w, h := int(float64(sb.Dx())*scale), int(float64(sb.Dy())*scale)
@@ -134,25 +136,21 @@ func drawPhoto(dst *image.RGBA, r image.Rectangle, radius float64, src image.Ima
 // paintFunc receives the coverage (0..1) of a pixel.
 type paintFunc func(x, y int, cov float64)
 
-func onImage(img *image.RGBA, c color.RGBA) paintFunc {
-	return func(x, y int, cov float64) { blend(img, x, y, c, cov) }
-}
-
 // strokeLine draws an anti-aliased line with round caps.
 func strokeLine(paint paintFunc, x0, y0, x1, y1, width float64) {
 	minX, maxX := math.Min(x0, x1)-width, math.Max(x0, x1)+width
 	minY, maxY := math.Min(y0, y1)-width, math.Max(y0, y1)+width
 	dx, dy := x1-x0, y1-y0
 	l2 := dx*dx + dy*dy
-	for y := int(minY); y <= int(maxY); y++ {
-		for x := int(minX); x <= int(maxX); x++ {
-			px, py := float64(x)+0.5-x0, float64(y)+0.5-y0
+	for yPos := int(minY); yPos <= int(maxY); yPos++ {
+		for xPos := int(minX); xPos <= int(maxX); xPos++ {
+			px, py := float64(xPos)+0.5-x0, float64(yPos)+0.5-y0
 			t := 0.0
 			if l2 > 0 {
 				t = clamp01((px*dx + py*dy) / l2)
 			}
 			d := math.Hypot(px-t*dx, py-t*dy) - width/2
-			paint(x, y, clamp01(0.5-d))
+			paint(xPos, yPos, clamp01(0.5-d))
 		}
 	}
 }
@@ -169,14 +167,14 @@ func strokeCircle(paint paintFunc, cx, cy, r, width float64) {
 
 // drawLogo paints the site's cargo bike mark (the same drawing as the header)
 // into a size×size box. Strokes overlap without doubling up, so c may be translucent.
-func drawLogo(img *image.RGBA, x, y, size float64, c color.RGBA) {
-	f := size / 100
-	w := 5 * f
+func drawLogo(img *image.RGBA, xPos, yPos, size float64, paintColor color.RGBA) {
+	scale := size / 100
+	w := 5 * scale
 
 	// Collect the coverage first so translucent logos do not get bright joints.
 	side := int(size) + 2
 	cover := make([]float64, side*side)
-	ox, oy := int(x), int(y)
+	ox, oy := int(xPos), int(yPos)
 	paint := func(px, py int, cov float64) {
 		px, py = px-ox, py-oy
 		if px >= 0 && py >= 0 && px < side && py < side && cov > cover[py*side+px] {
@@ -184,16 +182,16 @@ func drawLogo(img *image.RGBA, x, y, size float64, c color.RGBA) {
 		}
 	}
 	pt := func(px, py float64) (float64, float64) {
-		return x - float64(ox) + px*f + float64(ox), y - float64(oy) + py*f + float64(oy)
+		return xPos - float64(ox) + px*scale + float64(ox), yPos - float64(oy) + py*scale + float64(oy)
 	}
 	circle := func(cx, cy, r float64) {
 		ax, ay := pt(cx, cy)
-		strokeCircle(paint, ax, ay, r*f, w)
+		strokeCircle(paint, ax, ay, r*scale, w)
 	}
 	line := func(x0, y0, x1, y1, lw float64) {
 		ax, ay := pt(x0, y0)
 		bx, by := pt(x1, y1)
-		strokeLine(paint, ax, ay, bx, by, lw*f)
+		strokeLine(paint, ax, ay, bx, by, lw*scale)
 	}
 	circle(18, 75, 14)
 	circle(86, 79, 10)
@@ -209,7 +207,7 @@ func drawLogo(img *image.RGBA, x, y, size float64, c color.RGBA) {
 
 	for py := 0; py < side; py++ {
 		for px := 0; px < side; px++ {
-			blend(img, ox+px, oy+py, c, cover[py*side+px])
+			blend(img, ox+px, oy+py, paintColor, cover[py*side+px])
 		}
 	}
 }

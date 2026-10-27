@@ -182,7 +182,7 @@ func (p *Parser) LoadArticlesByCategory(category domain.ArticleCategory) ([]doma
 	return filtered, nil
 }
 
-func splitFrontmatter(content string) (front, body string, err error) {
+func splitFrontmatter(content string) (string, string, error) {
 	content = strings.ReplaceAll(strings.TrimPrefix(content, "\xef\xbb\xbf"), "\r\n", "\n")
 	rest, ok := strings.CutPrefix(strings.TrimLeft(content, "\n"), "---\n")
 	if !ok {

@@ -382,7 +382,22 @@ func fillDirect(item *domain.ShopItem, fm itemFrontmatter) error {
 	}
 	item.Price = fm.Price
 
-	stock := fm.Stock
+	if err := fillStock(item, fm.Stock); err != nil {
+		return err
+	}
+
+	if sh := fm.Shipping; sh != nil {
+		if sh.WeightG < 0 || sh.LengthCm < 0 || sh.WidthCm < 0 || sh.HeightCm < 0 {
+			return errors.New("shipping numbers must not be negative")
+		}
+		item.Shipping = domain.ShopShipping{WeightG: sh.WeightG, LengthCm: sh.LengthCm, WidthCm: sh.WidthCm, HeightCm: sh.HeightCm, PickupOnly: sh.PickupOnly}
+	}
+
+	return fillVariants(item, fm)
+}
+
+func fillStock(item *domain.ShopItem, source *stockFrontmatter) error {
+	stock := source
 	if stock == nil {
 		stock = &stockFrontmatter{}
 	}
@@ -409,14 +424,7 @@ func fillDirect(item *domain.ShopItem, fm itemFrontmatter) error {
 	}
 	item.InitialStock = stock.Initial
 
-	if sh := fm.Shipping; sh != nil {
-		if sh.WeightG < 0 || sh.LengthCm < 0 || sh.WidthCm < 0 || sh.HeightCm < 0 {
-			return errors.New("shipping numbers must not be negative")
-		}
-		item.Shipping = domain.ShopShipping{WeightG: sh.WeightG, LengthCm: sh.LengthCm, WidthCm: sh.WidthCm, HeightCm: sh.HeightCm, PickupOnly: sh.PickupOnly}
-	}
-
-	return fillVariants(item, fm)
+	return nil
 }
 
 func fillVariants(item *domain.ShopItem, fm itemFrontmatter) error {
