@@ -205,6 +205,7 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 	r.Group(func(r chi.Router) {
 		r.Use(s.adminAuthMiddleware)
 		r.Get("/admin", s.handleAdminPanel)
+		r.Post("/admin/bank-test", s.handleAdminBankTestCreate)
 		r.Get("/admin/users", s.handleAdminUsers)
 		r.Get("/admin/user/{id}", s.handleAdminUserDetail)
 		r.Post("/admin/user/{id}", s.handleAdminUserUpdate)
@@ -2005,6 +2006,12 @@ func (s *Server) handleAdminUserResetPassword(w http.ResponseWriter, r *http.Req
 
 // handleAdminPanel renders the admin panel.
 func (s *Server) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
+	bankTest, err := transfers.LatestBankTest(r.Context(), s.readModels.GetDB())
+	if err != nil {
+		log.Printf("Error loading bank test: %v", err)
+		http.Error(w, "Błąd odczytu testu", http.StatusInternalServerError)
+		return
+	}
 	// Fetch products
 	products, err := s.productParser.LoadAllProducts()
 	if err != nil {
@@ -2056,6 +2063,8 @@ func (s *Server) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		"OrdersAwaitingConfirmation": ordersAwaitingConfirmation,
 		"Transfers":                  transfers,
 		"BankMailAddress":            s.bankMail.Address,
+		"BankMailTest":               bankTest,
+		"BankMailTestAvailable":      s.bankMail.Configured(),
 		"Users":                      users,
 		"Products":                   products,
 		"GlobalBlockedDates":         globalBlockedDates,
@@ -2067,6 +2076,19 @@ func (s *Server) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 
 	data["IsAdmin"] = true
 	s.renderTemplate(w, r, "admin_panel.html", data)
+}
+
+func (s *Server) handleAdminBankTestCreate(w http.ResponseWriter, r *http.Request) {
+	if !s.bankMail.Configured() {
+		http.Error(w, "Powiadomienia bankowe nie są skonfigurowane", http.StatusServiceUnavailable)
+		return
+	}
+	if err := transfers.CreateBankTest(r.Context(), s.readModels.GetDB()); err != nil {
+		log.Printf("Error creating bank test: %v", err)
+		http.Error(w, "Błąd tworzenia testu", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/admin#settings", http.StatusSeeOther)
 }
 
 // handleAdminUserDetail renders admin user detail page.

@@ -35,6 +35,8 @@ func newTestHandler(t *testing.T) (*BankMailHandler, *sql.DB) {
 		`CREATE TABLE transfers (id TEXT PRIMARY KEY, sender_name TEXT, sender_email TEXT, amount REAL NOT NULL, order_title TEXT, order_id TEXT, status TEXT DEFAULT 'unmatched', received_at TEXT NOT NULL, linked_at TEXT, raw_email_body TEXT)`,
 		`CREATE TABLE email_import_metadata (id INTEGER PRIMARY KEY AUTOINCREMENT, last_import_at TEXT, last_import_count INTEGER DEFAULT 0, updated_at TEXT)`,
 		`CREATE TABLE bank_mail_messages (id TEXT PRIMARY KEY, received_at TEXT NOT NULL, mail_from TEXT NOT NULL, subject TEXT NOT NULL, body TEXT NOT NULL, parsed INTEGER NOT NULL DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP)`,
+		`CREATE TABLE bank_mail_tests (reference TEXT PRIMARY KEY, created_at TEXT NOT NULL, received_at TEXT, message_id TEXT)`,
+		`CREATE TABLE bank_mail_test_deliveries (message_id TEXT PRIMARY KEY, reference TEXT NOT NULL)`,
 		`INSERT INTO orders VALUES ('ORD-1', 150, 'awaiting_payment', 'blik')`,
 		`INSERT INTO payment_codes VALUES ('pc1', 'JLN4', 'ORD-1')`,
 	} {
@@ -81,6 +83,49 @@ func TestBankMailRejectsBadSignature(t *testing.T) {
 	handler.ServeHTTP(w, signedRequest(t, payload(strings.Repeat("a", 64)), testSecret, time.Now().Add(-time.Hour)))
 	if w.Code != http.StatusUnauthorized {
 		t.Fatalf("stale timestamp got %d", w.Code)
+	}
+}
+
+func TestDiagnosticTransferNeverCreatesTransferOrPaysOrder(t *testing.T) {
+	handler, db := newTestHandler(t)
+	if err := CreateBankTest(t.Context(), db); err != nil {
+		t.Fatal(err)
+	}
+	test, err := LatestBankTest(t.Context(), db)
+	if err != nil || test == nil || test.ReceivedAt.Valid {
+		t.Fatalf("pending test = %+v, %v", test, err)
+	}
+	p := payload(strings.Repeat("e", 64))
+	p.Body = strings.Replace(p.Body, "JLN4 wynajem", "JLN4 "+test.Reference+" dopisek", 1)
+	diagnosticBody := p.Body
+	for i, id := range []string{p.ID, p.ID, strings.Repeat("f", 64)} {
+		p.ID = id
+		if i == 1 {
+			p.ID = strings.ToUpper(id)
+			p.Body = payload(id).Body
+		} else {
+			p.Body = diagnosticBody
+		}
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, signedRequest(t, p, testSecret, time.Now()))
+		if w.Code != http.StatusNoContent {
+			t.Fatalf("diagnostic delivery=%d %s", w.Code, w.Body.String())
+		}
+	}
+	test, err = LatestBankTest(t.Context(), db)
+	if err != nil || !test.ReceivedAt.Valid {
+		t.Fatalf("test did not succeed: %+v %v", test, err)
+	}
+	var count int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM transfers`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("transfers=%d err=%v", count, err)
+	}
+	if err := db.QueryRow(`SELECT COUNT(*) FROM bank_mail_messages`).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("bank messages=%d err=%v", count, err)
+	}
+	events, err := handler.EventStore.GetEvents(t.Context(), "ORD-1")
+	if err != nil || len(events) != 0 {
+		t.Fatalf("test paid an order: %v %v", events, err)
 	}
 }
 

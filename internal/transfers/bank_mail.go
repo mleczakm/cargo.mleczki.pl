@@ -135,6 +135,33 @@ func (h *BankMailHandler) save(ctx context.Context, payload bankMailPayload, rec
 		return "", false, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	var diagnostic int
+	if err := tx.QueryRowContext(ctx, `SELECT COUNT(*) FROM bank_mail_test_deliveries WHERE message_id = ?`, strings.ToLower(payload.ID)).Scan(&diagnostic); err != nil {
+		return "", false, err
+	}
+	if diagnostic > 0 {
+		return "", false, nil
+	}
+	if parsed {
+		for _, ref := range bankTestReference.FindAllString(notification.Title, -1) {
+			result, err := tx.ExecContext(ctx, `UPDATE bank_mail_tests SET received_at = COALESCE(received_at, ?), message_id = COALESCE(message_id, ?) WHERE reference = ?`,
+				received.UTC().Format(time.RFC3339), payload.ID, strings.ToUpper(ref))
+			if err != nil {
+				return "", false, err
+			}
+			if n, err := result.RowsAffected(); err != nil {
+				return "", false, err
+			} else if n > 0 {
+				if _, err := tx.ExecContext(ctx, `INSERT INTO bank_mail_test_deliveries(message_id, reference) VALUES (?, ?)`, strings.ToLower(payload.ID), strings.ToUpper(ref)); err != nil {
+					return "", false, err
+				}
+				if err := tx.Commit(); err != nil {
+					return "", false, err
+				}
+				return "", false, nil
+			}
+		}
+	}
 
 	res, err := tx.ExecContext(ctx, `
 		INSERT OR IGNORE INTO bank_mail_messages (id, received_at, mail_from, subject, body, parsed)

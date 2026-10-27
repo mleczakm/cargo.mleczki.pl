@@ -252,6 +252,20 @@ func (rm *ReadModelsDB) initSchema() error {
 	);
 	`
 
+	// References are retained so delayed and repeat diagnostics never become orders.
+	bankMailTestsTable := `
+	CREATE TABLE IF NOT EXISTS bank_mail_tests (
+		reference TEXT PRIMARY KEY,
+		created_at TEXT NOT NULL,
+		received_at TEXT,
+		message_id TEXT
+	);
+	CREATE TABLE IF NOT EXISTS bank_mail_test_deliveries (
+		message_id TEXT PRIMARY KEY,
+		reference TEXT NOT NULL REFERENCES bank_mail_tests(reference)
+	);
+	`
+
 	schemas := []string{
 		usersTable,
 		ordersTable,
@@ -265,6 +279,7 @@ func (rm *ReadModelsDB) initSchema() error {
 		paymentCodesTable,
 		emailImportTable,
 		bankMailTable,
+		bankMailTestsTable,
 		passwordResetTokensTable,
 		shop.Schema,
 		shipping.Schema,

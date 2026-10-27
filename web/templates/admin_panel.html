@@ -19,7 +19,7 @@
         <button onclick="showTab('users')" id="tab-users" class="px-4 py-2 font-bold rounded-t-lg text-gray-600 hover:bg-gray-100">Klienci (CRM)</button>
         <button onclick="showTab('fleet')" id="tab-fleet" class="px-4 py-2 font-bold rounded-t-lg text-gray-600 hover:bg-gray-100">Zarządzanie Flotą</button>
         <button onclick="showTab('shop')" id="tab-shop" class="px-4 py-2 font-bold rounded-t-lg text-gray-600 hover:bg-gray-100">Sklep{{with .Shop}}{{if .Problems}} <span class="ml-1 text-xs bg-red-600 text-white rounded-full px-1.5 py-0.5">{{len .Problems}}</span>{{end}}{{end}}</button>
-        <button onclick="showTab('settings')" id="tab-settings" class="px-4 py-2 font-bold rounded-t-lg text-gray-600 hover:bg-gray-100">Globalne Zamknięcia Sklepu</button>
+        <button onclick="showTab('settings')" id="tab-settings" class="px-4 py-2 font-bold rounded-t-lg text-gray-600 hover:bg-gray-100">Ustawienia</button>
     </div>
 
     <!-- Orders & Payments Tab -->
@@ -377,6 +377,17 @@
 
     <!-- Global Store Closures Tab -->
     <div id="content-settings" class="tab-content hidden">
+        <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-6">
+            <h3 class="font-bold text-xl mb-2">Test powiadomień o przelewach</h3>
+            <p class="text-gray-600 mb-4">Wygeneruj tytuł, a następnie samodzielnie wyślij niewielki prawdziwy przelew na swój numer BLIK. Wpisz dokładnie ten tytuł. Pieniądze trafią na Twój rachunek, ale aplikacja nie przypisze wpłaty do zamówienia ani nie uwzględni jej w rozliczeniach.</p>
+            {{if .BankMailTestAvailable}}
+            <form method="post" action="/admin/bank-test"><button type="submit" class="bg-emerald-600 text-white px-4 py-2 rounded-lg">Utwórz test przelewu</button></form>
+            {{with .BankMailTest}}
+            <div class="mt-3"><label for="bank-test-reference">Tytuł przelewu</label> <input id="bank-test-reference" readonly value="{{.Reference}}" class="font-mono border rounded px-2 py-1"> <button type="button" data-copy-target="bank-test-reference" onclick="copyBankMailAddress(this)">Kopiuj</button></div>
+            {{if .ReceivedAt.Valid}}<p role="status">Powiadomienie odebrano: {{.ReceivedAt.String}}. Test zakończony powodzeniem.</p>{{else}}<p role="status">Oczekiwanie na powiadomienie bankowe. Odśwież tę stronę, aby sprawdzić wynik.</p>{{end}}
+            {{end}}
+            {{else}}<p>Najpierw skonfiguruj powiadomienia bankowe.</p>{{end}}
+        </div>
         <div class="bg-white rounded-2xl shadow-sm border border-gray-200 p-6">
             <h3 class="font-bold text-2xl mb-2 text-red-600 flex items-center">
                 <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
