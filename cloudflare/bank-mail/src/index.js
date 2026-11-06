@@ -1,4 +1,6 @@
 import PostalMime from "postal-mime";
+import { mailForMimeParsing } from "../shared/mime.js";
+import { readBankMail, postSignedBankMail } from "../shared/transport.js";
 
 const encoder = new TextEncoder();
 const maxRawSize = 1024 * 1024;
@@ -13,12 +15,6 @@ async function sha256Hex(buffer) {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
-async function signature(secret, timestamp, body) {
-  const key = await crypto.subtle.importKey("raw", encoder.encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
-  const bytes = await crypto.subtle.sign("HMAC", key, encoder.encode(`${timestamp}\n${body}`));
-  return [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
 export async function acceptEmail(message, env) {
   if (exactAddress(message.to) !== exactAddress(env.BANK_MAIL_ADDRESS)) {
     message.setReject("Unknown recipient");
@@ -28,8 +24,9 @@ export async function acceptEmail(message, env) {
     message.setReject("Bank notification too large");
     return;
   }
-  const raw = await new Response(message.raw).arrayBuffer();
-  const parsed = await PostalMime.parse(raw);
+  const raw = await readBankMail(message, { maxSize: maxRawSize, sizeReason: "Bank notification too large" });
+  if (!raw) return;
+  const parsed = await PostalMime.parse(mailForMimeParsing(raw));
   // The switch is only for controlled tests. Production defaults to checking both
   // the SMTP envelope sender and the visible From header.
   if (env.BANK_MAIL_CHECK_FROM !== "0") {
@@ -59,17 +56,7 @@ export async function deliverQueue(batch, env) {
     const body = JSON.stringify(message.body);
     const timestamp = new Date().toISOString();
     try {
-      const response = await fetch(`${env.APP_URL}/api/bank-mail`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Cargo-Bank-Timestamp": timestamp,
-          "X-Cargo-Bank-Signature": await signature(env.BANK_MAIL_WEBHOOK_SECRET, timestamp, body),
-        },
-        body,
-        signal: AbortSignal.timeout(15000),
-      });
-      if (!response.ok) throw new Error(`Application returned HTTP ${response.status}`);
+      await postSignedBankMail({ url: `${env.APP_URL}/api/bank-mail`, secret: env.BANK_MAIL_WEBHOOK_SECRET, body, contentType: "application/json", timestamp, timestampHeader: "X-Cargo-Bank-Timestamp", signatureHeader: "X-Cargo-Bank-Signature" });
       message.ack();
     } catch (error) {
       console.error("Bank notification delivery failed", message.body.id, String(error));
