@@ -283,6 +283,7 @@ func (rm *ReadModelsDB) initSchema() error {
 		passwordResetTokensTable,
 		shop.Schema,
 		shipping.Schema,
+		`CREATE TABLE IF NOT EXISTS business_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);`,
 	}
 	for i, schema := range schemas {
 		if _, err := rm.db.Exec(schema); err != nil {
@@ -616,7 +617,7 @@ func (rm *ReadModelsDB) OrderExists(orderID string) (bool, error) {
 
 // AddGlobalBlockedDate adds a date to the global blocked dates.
 func (rm *ReadModelsDB) AddGlobalBlockedDate(date string, createdBy string) error {
-	query := `INSERT INTO global_blocked_dates (date, created_by) VALUES (?, ?)`
+	query := `INSERT OR IGNORE INTO global_blocked_dates (date, created_by) VALUES (?, ?)`
 	_, err := rm.db.Exec(query, date, createdBy)
 	return err
 }
@@ -738,7 +739,7 @@ func (rm *ReadModelsDB) GetOrdersAwaitingConfirmation() ([]map[string]interface{
 	SELECT o.id, o.user_id, COALESCE(u.name, '') as user_name, COALESCE(u.email, '') as user_email, o.total_amount, o.status, COALESCE(o.payment_method, ''), COALESCE(o.items_json, ''), o.created_at
 	FROM orders o
 	LEFT JOIN users u ON o.user_id = u.id
-	WHERE o.status = 'paid' AND (o.payment_method = 'cash_pickup' OR o.payment_method = 'blik_pickup')
+	WHERE o.status = 'paid' AND (o.payment_method = 'cash_pickup' OR o.payment_method = 'blik_pickup' OR o.payment_method = 'cod')
 	ORDER BY o.created_at DESC
 	`
 	rows, err := rm.db.Query(query)
@@ -751,7 +752,7 @@ func (rm *ReadModelsDB) GetOrdersAwaitingConfirmation() ([]map[string]interface{
 	for rows.Next() {
 		var id, userID, userName, userEmail, status, paymentMethod, itemsJSON, createdAt string
 		var totalAmount float64
-		if err := rows.Scan(&id, &userID, &userName, &totalAmount, &status, &paymentMethod, &itemsJSON, &createdAt, &userEmail); err != nil {
+		if err := rows.Scan(&id, &userID, &userName, &userEmail, &totalAmount, &status, &paymentMethod, &itemsJSON, &createdAt); err != nil {
 			return nil, err
 		}
 		orders = append(orders, map[string]interface{}{
@@ -816,4 +817,49 @@ func (rm *ReadModelsDB) GetOrderDetail(orderID string) (*OrderDetail, error) {
 	details.Total = domain.MoneyFromZloty(total)
 	details.Delivery = ParseDelivery(deliveryJSON)
 	return &details, nil
+}
+
+// GetUserByID returns one user, or sql.ErrNoRows.
+func (rm *ReadModelsDB) GetUserByID(userID string) (map[string]interface{}, error) {
+	var id, email, name, phone, address, createdAt string
+	var isAdmin int
+	err := rm.db.QueryRow(`
+		SELECT id, email, name, COALESCE(phone, ''), COALESCE(address, ''), is_admin, COALESCE(created_at, '')
+		FROM users WHERE id = ? AND deletion_requested = 0`, userID,
+	).Scan(&id, &email, &name, &phone, &address, &isAdmin, &createdAt)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]interface{}{
+		"ID": id, "Email": email, "Name": name, "Phone": phone, "Address": address,
+		"IsAdmin": isAdmin == 1, "CreatedAt": createdAt,
+	}, nil
+}
+
+// AdminBlockPrefix marks product_bookings rows created by the admin's manual blocks.
+const AdminBlockPrefix = "ADMIN-BLOCK-"
+
+// GetAdminBlockedDates returns the dates the admin blocked by hand, per product.
+func (rm *ReadModelsDB) GetAdminBlockedDates() (map[string][]string, error) {
+	rows, err := rm.db.Query(`SELECT product_id, booked_date FROM product_bookings WHERE order_id LIKE ? ORDER BY booked_date ASC`, AdminBlockPrefix+"%")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[string][]string{}
+	for rows.Next() {
+		var productID, date string
+		if err := rows.Scan(&productID, &date); err != nil {
+			return nil, err
+		}
+		out[productID] = append(out[productID], date)
+	}
+	return out, rows.Err()
+}
+
+// CountCustomerBookings counts booked product days within [from, to], ignoring the admin's manual blocks.
+func (rm *ReadModelsDB) CountCustomerBookings(from, to string) (int, error) {
+	var n int
+	err := rm.db.QueryRow(`SELECT COUNT(*) FROM product_bookings WHERE booked_date BETWEEN ? AND ? AND order_id NOT LIKE ?`, from, to, AdminBlockPrefix+"%").Scan(&n)
+	return n, err
 }

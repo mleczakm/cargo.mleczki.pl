@@ -18,9 +18,10 @@ const (
 )
 
 const (
-	PaymentMethodBlik       = "blik"
-	PaymentMethodCashPickup = "cash_pickup"
-	PaymentMethodBlikPickup = "blik_pickup"
+	PaymentMethodBankTransfer = "bank_transfer"
+	PaymentMethodBlik         = "blik"
+	PaymentMethodCashPickup   = "cash_pickup"
+	PaymentMethodBlikPickup   = "blik_pickup"
 )
 
 // Order Aggregate.

@@ -941,10 +941,6 @@ func (s *Server) brokenReferences(items []domain.ShopItem) []string {
 	return broken
 }
 
-func adminRedirect(w http.ResponseWriter, r *http.Request, kind, message string) {
-	http.Redirect(w, r, "/admin?"+kind+"="+url.QueryEscape(message)+"#shop", http.StatusSeeOther)
-}
-
 func adminActor(r *http.Request) string {
 	if user, ok := middleware.GetUser(r).(*domain.User); ok && user != nil {
 		return user.Email
@@ -968,18 +964,18 @@ func (s *Server) handleAdminShopStockAdjust(w http.ResponseWriter, r *http.Reque
 		}
 	}
 	if owner == nil {
-		adminRedirect(w, r, "error", "Nieznany lub nieśledzony SKU: "+sku)
+		s.adminBack(w, r, "shop", "error", "Nieznany lub nieśledzony SKU: "+sku)
 		return
 	}
 
 	quantity, err := strconv.Atoi(strings.TrimSpace(r.FormValue("quantity")))
 	if err != nil {
-		adminRedirect(w, r, "error", "Podaj ilość jako liczbę całkowitą.")
+		s.adminBack(w, r, "shop", "error", "Podaj ilość jako liczbę całkowitą.")
 		return
 	}
 	kind := r.FormValue("kind")
 	if !slices.Contains([]string{shop.KindReceive, shop.KindReturn, shop.KindLoss, shop.KindCount}, kind) {
-		adminRedirect(w, r, "error", "Nieznany rodzaj operacji.")
+		s.adminBack(w, r, "shop", "error", "Nieznany rodzaj operacji.")
 		return
 	}
 	note := strings.TrimSpace(r.FormValue("note"))
@@ -991,10 +987,10 @@ func (s *Server) handleAdminShopStockAdjust(w http.ResponseWriter, r *http.Reque
 		SKU: sku, ItemID: owner.ID, Kind: kind, Quantity: quantity, Note: note, Actor: adminActor(r),
 	})
 	if err != nil {
-		adminRedirect(w, r, "error", err.Error())
+		s.adminBack(w, r, "shop", "error", err.Error())
 		return
 	}
-	adminRedirect(w, r, "notice", fmt.Sprintf("Zapisano: %s – %s (%d).", owner.LineName(sku), shop.KindLabel(kind), quantity))
+	s.adminBack(w, r, "shop", "notice", fmt.Sprintf("Zapisano: %s – %s (%d).", owner.LineName(sku), shop.KindLabel(kind), quantity))
 }
 
 // errOrderNotConfirmed is returned when an order cannot be handed over because the shop has not confirmed it.
@@ -1041,14 +1037,14 @@ func (s *Server) handleAdminOrderRealize(w http.ResponseWriter, r *http.Request)
 	case errors.Is(err, sql.ErrNoRows):
 		http.NotFound(w, r)
 	case errors.Is(err, errOrderNotConfirmed):
-		adminRedirect(w, r, "error", "Zrealizować można tylko potwierdzone zamówienie ("+orderID+").")
+		s.adminBack(w, r, "orders", "error", "Zrealizować można tylko potwierdzone zamówienie ("+orderID+").")
 	case errors.Is(err, shop.ErrNotEnoughOnHand):
-		adminRedirect(w, r, "error", "Zamówienie "+orderID+": brakuje towaru na stanie ("+err.Error()+"). Przyjmij dostawę i spróbuj ponownie.")
+		s.adminBack(w, r, "orders", "error", "Zamówienie "+orderID+": brakuje towaru na stanie ("+err.Error()+"). Przyjmij dostawę i spróbuj ponownie.")
 	case err != nil:
 		log.Printf("Failed to realize order %s: %v", orderID, err)
 		http.Error(w, "Failed to realize order", http.StatusInternalServerError)
 	default:
-		adminRedirect(w, r, "notice", "Zamówienie "+orderID+" oznaczone jako zrealizowane.")
+		s.adminBack(w, r, "orders", "notice", "Zamówienie "+orderID+" oznaczone jako zrealizowane.")
 	}
 }
 

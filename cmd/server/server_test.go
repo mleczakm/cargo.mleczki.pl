@@ -1032,3 +1032,34 @@ func TestHandleLoginPOSTInvalidCredentials(t *testing.T) {
 		t.Errorf("Expected error message in response body, got: %s", body)
 	}
 }
+
+func TestCheckoutPaymentMethodsFollowSettingsAndDelivery(t *testing.T) {
+	t.Setenv("PAYMENT_BANK_TRANSFER_ENABLED", "true")
+	t.Setenv("PAYMENT_PICKUP_ENABLED", "true")
+	t.Setenv("PAYMENT_BLIK_ENABLED", "false")
+	st := defaultFulfillmentSettings()
+	ids := func(shipped bool) string {
+		var out []string
+		for _, m := range st.methods(shipped) {
+			out = append(out, m.ID)
+		}
+		return strings.Join(out, ",")
+	}
+	if got := ids(false); got != "bank_transfer,cash_pickup" {
+		t.Errorf("collection in person = %s", got)
+	}
+	if got := ids(true); got != "bank_transfer" {
+		t.Errorf("a shipped parcel is paid up front, got %s", got)
+	}
+	st.Blik = true
+	if got := ids(false); got != "bank_transfer,blik,cash_pickup" {
+		t.Errorf("enabled BLIK = %s", got)
+	}
+	if !st.allows("blik", true) || st.allows("cash_pickup", true) {
+		t.Error("shipping allows BLIK but never payment on collection")
+	}
+	st.BankTransfer, st.PickupPayment, st.Blik = false, false, false
+	if got := ids(false); got != "" {
+		t.Errorf("everything disabled = %s", got)
+	}
+}

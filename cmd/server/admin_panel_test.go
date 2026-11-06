@@ -19,7 +19,10 @@ func renderAdminPanel(t *testing.T, address string) string {
 		t.Fatal(err)
 	}
 	var out bytes.Buffer
-	data := map[string]interface{}{"BankMailAddress": address, "Transfers": []map[string]interface{}{}}
+	data := map[string]interface{}{
+		"BankMailAddress": address, "Transfers": []map[string]interface{}{},
+		"OrdersAwaitingConfirmation": []map[string]interface{}{}, "Users": []map[string]interface{}{}, "UpcomingClosures": []closureView{},
+	}
 	if err := tmpl.ExecuteTemplate(&out, "admin_panel-content", data); err != nil {
 		t.Fatal(err)
 	}

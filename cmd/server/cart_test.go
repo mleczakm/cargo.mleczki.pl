@@ -233,11 +233,11 @@ func TestShopPricesWithGroszeAreSummedExactly(t *testing.T) {
 	_, page, _ := app.get(shopper, "/checkout")
 	assertContains(t, page, "12,34 zł / szt.", "37,02 zł", "<span>37,02 zł</span>")
 
-	_, _, orderID := app.checkout(shopper, "blik")
+	_, _, orderID := app.checkout(shopper, "bank_transfer")
 	if _, _, total := app.orderRow(orderID); total != 37.02 {
 		t.Errorf("3 × 12.34 = 37.02, got %v", total)
 	}
-	_, payment, _ := app.get(shopper, "/payment/"+orderID+"?method=blik")
+	_, payment, _ := app.get(shopper, "/payment/"+orderID)
 	assertContains(t, payment, "37,02 zł")
 
 	events, err := app.es.GetEvents(t.Context(), orderID)
@@ -264,7 +264,7 @@ func TestManualReservationAcceptsDecimalPricesAndRejectsBadOnes(t *testing.T) {
 			t.Errorf("price %q: status %d, want 400", bad, status)
 		}
 	}
-	if status, _ := app.post(admin, "/admin/reservation/create", form("99,50"), false); status != http.StatusOK {
+	if status, _ := app.post(admin, "/admin/reservation/create", form("99,50"), false); status != http.StatusSeeOther {
 		t.Fatalf("a valid manual reservation: %d", status)
 	}
 	var total float64

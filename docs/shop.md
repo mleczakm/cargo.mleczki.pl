@@ -1,6 +1,6 @@
 # Sklep
 
-Sklep sprzedaje akcesoria (**direct**: koszyk, płatność BLIK lub gotówka przy odbiorze, odbiór w Radzyminie albo wysyłka) i poleca
+Sklep sprzedaje akcesoria (**direct**: koszyk, płatność przelewem tradycyjnym, BLIK-iem (domyślnie wyłączony) lub przy odbiorze, odbiór w Radzyminie albo wysyłka) i poleca
 produkty z zewnętrznych serwisów (**affiliate**: tylko link). Katalog to pliki Markdown w `data/shop/`,
 tak jak produkty i artykuły. Działa od razu po dodaniu pliku, bez restartu.
 
@@ -119,7 +119,7 @@ POLKURIER_SANDBOX=false     # domyślnie true (środowisko testowe)
 * Cenę dostawy ustalasz sam (`price`, `freeFrom` = darmowa od tej wartości towaru). Prawdziwy koszt
   przesyłki widzisz w panelu przy zamówieniu, razem z marżą.
 * Klient wyszukuje paczkomat po mieście, ulicy lub kodzie (podpowiedzi z Polkuriera) albo podaje adres dla
-  kuriera. Przesyłkę opłaca BLIK-iem, gotówka przy odbiorze dotyczy tylko odbioru osobistego.
+  kuriera. Przesyłkę opłaca przelewem lub BLIK-iem (z góry), gotówka przy odbiorze dotyczy tylko odbioru osobistego.
 * Zamówienie z wypożyczanym sprzętem jest zawsze do odbioru osobistego, tak samo produkty z `shipping:
   {pickupOnly: true}` (np. duży daszek).
 * Waga i wymiary produktu: `shipping: {weightG: 400, lengthCm: 30, widthCm: 20, heightCm: 8}` w pliku produktu;

@@ -5,7 +5,7 @@
     </svg>
     <h3 class="text-2xl font-black mb-3">Rezerwacja złożona</h3>
     <p class="text-gray-600 mb-4">Twoje zamówienie oczekuje na potwierdzenie przez wypożyczalnię.</p>
-    <p class="text-gray-600 mb-6">Przy odbiorze w Radzyminie zapłacisz <span class="font-bold text-gray-900">{{.FinalTotal}}</span> gotówką lub BLIK-iem.</p>
+    <p class="text-gray-600 mb-6">Przy odbiorze w Radzyminie zapłacisz <span class="font-bold text-gray-900">{{.FinalTotal}}</span> na miejscu.</p>
     {{if .OrderID}}
     <a href="/user/order/{{.OrderID}}" class="inline-flex items-center bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 rounded-xl font-bold shadow-lg transition-colors">
         Zobacz status rezerwacji
@@ -25,7 +25,7 @@
         </h3>
         <ol class="list-decimal list-inside space-y-4 text-gray-700">
             <li>Zaloguj się do aplikacji banku i wybierz "Przelew BLIK na telefon".</li>
-            <li>Odbiorca: <span class="font-black text-gray-900">732 575 375</span></li>
+            <li>Odbiorca: <span class="font-black text-gray-900">{{.BlikPhone}}</span></li>
             <li>Kwota: <span class="font-black text-emerald-700">{{.FinalTotal}}</span></li>
             <li>Tytuł (BARDZO WAŻNE):<br/>
                 {{if .PaymentCode}}
@@ -47,5 +47,20 @@
         </div>
     </div>
     {{end}}
+</div>
+{{end}}
+
+{{define "payment-bank-transfer"}}
+<div class="bg-emerald-50 border-2 border-emerald-100 rounded-2xl p-6 text-left">
+    <h3 class="font-bold text-gray-900 mb-4">Przelew tradycyjny</h3>
+    {{if .BankAccount}}
+    <p>Numer rachunku: <strong>{{.BankAccount}}</strong></p>
+    {{if .BankRecipient}}<p>Odbiorca: <strong>{{.BankRecipient}}</strong></p>{{end}}
+    {{else}}
+    <p>Skontaktuj się z nami, aby otrzymać dane do przelewu.</p>
+    {{end}}
+    <p>Kwota: <strong>{{.FinalTotal}}</strong></p>
+    <p>Tytuł przelewu: <strong>{{.OrderID}}</strong></p>
+    <p class="mt-4 text-sm">Płatność zostanie potwierdzona po zaksięgowaniu przelewu.</p>
 </div>
 {{end}}

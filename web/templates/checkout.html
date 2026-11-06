@@ -88,6 +88,7 @@
                     </a>
                 {{end}}
             </div>
+            <div id="checkout-error" class="hidden mb-4 bg-red-50 border border-red-200 text-red-800 rounded-xl px-4 py-3 text-sm" role="alert" tabindex="-1"></div>
             <form id="checkout-form" hx-post="/checkout/submit" hx-target="#checkout-form">
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
                     <div class="md:col-span-2">
@@ -170,30 +171,22 @@
                 <label class="md:col-span-2 block text-sm font-medium text-gray-700">Miasto
                     <input type="text" name="ship_city" form="checkout-form" autocomplete="address-level2" class="mt-1 w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none" /></label>
             </div>
-            <p id="delivery-payment-note" class="hidden mt-4 text-xs text-gray-500">Przesyłkę opłacasz BLIK-iem przed wysyłką — płatność przy odbiorze jest wtedy niedostępna.</p>
+            <p id="delivery-payment-note" class="hidden mt-4 text-xs text-gray-500">Przesyłkę opłacasz przed wysyłką — płatność przy odbiorze dotyczy tylko odbioru osobistego.</p>
         </div>
         {{end}}
 
         <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
             <h3 class="text-xl font-bold text-gray-900 mb-4">Metoda płatności</h3>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <label class="payment-method-label flex flex-col items-center p-6 border-2 rounded-2xl cursor-pointer transition-all border-emerald-500 bg-emerald-50" data-method="blik">
-                    <input type="radio" name="payment_method" value="blik" form="checkout-form" class="hidden" checked />
-                    <svg class="w-8 h-8 mb-2 text-emerald-600 payment-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
-                    </svg>
-                    <span class="font-bold text-gray-900">Szybki Przelew BLIK</span>
-                    <span class="text-xs text-center mt-1 text-gray-500">Bezpiecznie i bez prowizji.</span>
+                {{range .PaymentMethods}}
+                <label class="payment-method-label flex flex-col items-center p-6 border-2 rounded-2xl cursor-pointer transition-all {{if .Selected}}border-emerald-500 bg-emerald-50{{else}}border-gray-200 hover:border-emerald-300{{end}}" data-method="{{.ID}}" data-shippings="{{.ShippingCodes}}">
+                    <input type="radio" name="payment_method" value="{{.ID}}" form="checkout-form" class="hidden" required {{if .Selected}}checked{{end}} />
+                    <span class="font-bold text-gray-900">{{.Label}}</span>
+                    <span class="text-xs text-center mt-1 text-gray-500">{{.Description}}</span>
                 </label>
-
-                <label class="payment-method-label flex flex-col items-center p-6 border-2 rounded-2xl cursor-pointer transition-all border-gray-200 hover:border-emerald-300" data-method="cash_pickup">
-                    <input type="radio" name="payment_method" value="cash_pickup" form="checkout-form" class="hidden" />
-                    <svg class="w-8 h-8 mb-2 text-gray-400 payment-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
-                    </svg>
-                    <span class="font-bold text-gray-900">Gotówka/BLIK przy odbiorze</span>
-                    <span class="text-xs text-center mt-1 text-gray-500">Płatność na miejscu (Radzymin).</span>
-                </label>
+                {{else}}
+                <p class="text-red-700">Brak dostępnych metod płatności. Skontaktuj się z nami.</p>
+                {{end}}
             </div>
         </div>
     </div>
@@ -256,8 +249,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 l.classList.add('border-gray-200');
                 const icon = l.querySelector('.payment-icon');
                 if (icon) {
-                    icon.classList.remove('text-emerald-600');
-                    icon.classList.add('text-gray-400');
+                    icon?.classList.remove('text-emerald-600');
+                    icon?.classList.add('text-gray-400');
                 }
             });
 
@@ -266,8 +259,8 @@ document.addEventListener('DOMContentLoaded', function() {
             this.classList.add('border-emerald-500', 'bg-emerald-50');
             const icon = this.querySelector('.payment-icon');
             if (icon) {
-                icon.classList.remove('text-gray-400');
-                icon.classList.add('text-emerald-600');
+                icon?.classList.remove('text-gray-400');
+                icon?.classList.add('text-emerald-600');
             }
 
             // Check the radio button
@@ -292,8 +285,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const paymentNote = document.getElementById('delivery-payment-note');
     const costEl = document.getElementById('delivery-cost');
     const totalEl = document.getElementById('final-total');
-    const cash = document.querySelector('.payment-method-label[data-method="cash_pickup"]');
-    const blik = document.querySelector('.payment-method-label[data-method="blik"]');
+    const payments = document.querySelectorAll('.payment-method-label');
     let method = '';
 
     function current() { return section.querySelector('input[name="shipping_method"]:checked'); }
@@ -317,12 +309,18 @@ document.addEventListener('DOMContentLoaded', function() {
         paymentNote.classList.toggle('hidden', !shipped);
         if (costEl) costEl.textContent = label.dataset.cost;
         if (totalEl) totalEl.textContent = label.dataset.total;
-        if (cash) {
-            cash.classList.toggle('opacity-40', shipped);
-            cash.classList.toggle('pointer-events-none', shipped);
-            cash.querySelector('input').disabled = shipped;
-            if (shipped && cash.querySelector('input').checked && blik) blik.click();
-        }
+        // Offer only the payment methods valid for this delivery option.
+        let selectedVisible = false;
+        let firstVisible = null;
+        payments.forEach(p => {
+            const ok = (p.dataset.shippings || '').split(' ').includes(method);
+            p.classList.toggle('hidden', !ok);
+            const input = p.querySelector('input[type="radio"]');
+            input.disabled = !ok;
+            if (ok && !firstVisible) firstVisible = p;
+            if (ok && input.checked) selectedVisible = true;
+        });
+        if (!selectedVisible && firstVisible) firstVisible.click();
     }
 
     function render(points) {
@@ -379,6 +377,16 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }, true);
     apply();
+});
+</script>
+<script>
+// HTMX does not swap error responses, so show the server's message instead of doing nothing.
+document.body.addEventListener('htmx:responseError', function (event) {
+    const box = document.getElementById('checkout-error');
+    if (!box || event.detail.target?.id !== 'checkout-form') { return; }
+    box.textContent = (event.detail.xhr.responseText || 'Nie udało się złożyć zamówienia.').trim().slice(0, 300);
+    box.classList.remove('hidden');
+    box.scrollIntoView({behavior: 'smooth', block: 'center'});
 });
 </script>
 {{end}}

@@ -262,21 +262,7 @@ func (app *shopHarness) addToCart(c *http.Client, itemID, sku string, qty string
 // checkout submits the checkout form and returns the status, the Location (or HX-Redirect) and the order ID if one was created.
 func (app *shopHarness) checkout(c *http.Client, method string) (int, string, string) {
 	app.t.Helper()
-	status, header := app.post(c, "/checkout/submit", url.Values{
-		"payment_method": {method}, "name": {"Jan Test"}, "email": {"jan@example.com"}, "phone": {"500100200"},
-		"address": {"Radzymin"}, "is_adult": {"on"}, "accept_tos": {"on"}, "password": {"haslo12345"},
-	}, true)
-	location := header.Get("Location")
-	if location == "" {
-		location = header.Get("HX-Redirect")
-	}
-	orderID := ""
-	for _, prefix := range []string{"/payment/", "/user/order/"} {
-		if rest, ok := strings.CutPrefix(location, prefix); ok {
-			orderID, _, _ = strings.Cut(rest, "?")
-		}
-	}
-	return status, location, orderID
+	return app.checkoutWith(c, url.Values{"payment_method": {method}})
 }
 
 func (app *shopHarness) level(sku string) shop.Level {
@@ -442,7 +428,7 @@ func TestCheckoutReservesStockAndStopsOverselling(t *testing.T) {
 	}
 	app.addToCart(second, "dzwonek", "", "2")
 
-	status, location, orderID := app.checkout(first, "blik")
+	status, location, orderID := app.checkout(first, "bank_transfer")
 	if orderID == "" || !strings.HasPrefix(location, "/payment/") {
 		t.Fatalf("first checkout should succeed, got %d %q", status, location)
 	}
@@ -451,7 +437,7 @@ func TestCheckoutReservesStockAndStopsOverselling(t *testing.T) {
 	}
 
 	// The second shopper is told to review the cart; no order, no extra reservation.
-	status, location, orderID2 := app.checkout(second, "blik")
+	status, location, orderID2 := app.checkout(second, "bank_transfer")
 	if status != http.StatusConflict || location != "/checkout?notice=cart" {
 		t.Fatalf("second checkout should bounce back to the cart, got %d %q", status, location)
 	}
@@ -512,7 +498,7 @@ func TestSimultaneousCheckoutsOfTheLastUnitHaveOneWinner(t *testing.T) {
 	results := make(chan result, shoppers)
 	for _, c := range clients {
 		go func() {
-			_, _, id := app.checkout(c, "blik")
+			_, _, id := app.checkout(c, "bank_transfer")
 			results <- result{id}
 		}()
 	}
@@ -542,7 +528,7 @@ func TestCartPricesComeFromTheCatalogNotTheCookie(t *testing.T) {
 	assertContains(t, page, "<span>50 zł</span>") // the header badge counts shop lines too
 	assertNotContains(t, page, "Gratis")
 
-	_, _, orderID := app.checkout(shopper, "cash_pickup")
+	_, _, orderID := app.checkout(shopper, "bank_transfer")
 	if orderID == "" {
 		t.Fatal("checkout failed")
 	}
@@ -639,7 +625,7 @@ func TestMixedOrderBooksTheRentalButOnlyHoldsShopStock(t *testing.T) {
 	data, _ := json.Marshal(cart)
 	shopper.Jar.SetCookies(app.base, []*http.Cookie{{Name: "cart", Value: url.QueryEscape(string(data)), Path: "/"}})
 
-	_, _, orderID := app.checkout(shopper, "blik")
+	_, _, orderID := app.checkout(shopper, "bank_transfer")
 	if orderID == "" {
 		t.Fatal("checkout failed")
 	}
@@ -666,7 +652,7 @@ func TestCancellingAnOrderReleasesItsStock(t *testing.T) {
 	app := newShopHarness(t)
 	shopper := app.visitor()
 	app.addToCart(shopper, "dzwonek", "", "3")
-	_, _, orderID := app.checkout(shopper, "blik")
+	_, _, orderID := app.checkout(shopper, "bank_transfer")
 	if l := app.level("dzwonek"); l.Available() != 0 {
 		t.Fatalf("setup: %+v", l)
 	}
@@ -679,7 +665,7 @@ func TestCancellingAnOrderReleasesItsStock(t *testing.T) {
 	// ...and somebody else can now buy it.
 	other := app.visitor()
 	app.addToCart(other, "dzwonek", "", "3")
-	if _, _, id := app.checkout(other, "blik"); id == "" {
+	if _, _, id := app.checkout(other, "bank_transfer"); id == "" {
 		t.Error("released stock should be purchasable")
 	}
 }
@@ -689,9 +675,9 @@ func TestRealizingAnOrderTakesStockOffTheShelf(t *testing.T) {
 	admin := app.asAdmin()
 	shopper := app.visitor()
 	app.addToCart(shopper, "dzwonek", "", "2")
-	_, _, orderID := app.checkout(shopper, "cash_pickup")
+	_, _, orderID := app.checkout(shopper, "bank_transfer")
 
-	// Pickup orders wait for the shop's confirmation; realizing too early is refused.
+	// An unpaid order cannot be realized.
 	_, header := app.post(admin, "/admin/order/"+orderID+"/realize", nil, false)
 	if loc := header.Get("Location"); !strings.Contains(loc, "error=") {
 		t.Errorf("an unconfirmed order cannot be realized, got %q", loc)
@@ -720,7 +706,7 @@ func TestBackorderLetsYouOrderWhatIsNotOnTheShelf(t *testing.T) {
 	if status, _ := app.addToCart(shopper, "na-zamowienie", "", "2"); status != http.StatusSeeOther {
 		t.Fatalf("add: %d", status)
 	}
-	_, _, orderID := app.checkout(shopper, "cash_pickup")
+	_, _, orderID := app.checkout(shopper, "bank_transfer")
 	if orderID == "" {
 		t.Fatal("backorders must be accepted")
 	}
@@ -767,9 +753,10 @@ func TestUnpaidOrdersExpireAndFreeTheirStock(t *testing.T) {
 
 	waiting, paid := app.visitor(), app.visitor()
 	app.addToCart(waiting, "dzwonek", "", "1")
-	_, _, unpaidID := app.checkout(waiting, "blik")
+	_, _, unpaidID := app.checkout(waiting, "bank_transfer")
 	app.addToCart(paid, "dzwonek", "", "1")
-	_, _, pickupID := app.checkout(paid, "cash_pickup")
+	_, _, pickupID := app.checkout(paid, "bank_transfer")
+	app.emit(pickupID, &domain.OrderPaidEvent{OrderID: pickupID, Method: "admin_manual", Timestamp: time.Now().UTC()})
 
 	old := time.Now().UTC().Add(-72 * time.Hour).Format("2006-01-02 15:04:05")
 	if _, err := app.rm.GetDB().Exec(`UPDATE orders SET created_at = ?`, old); err != nil {
@@ -783,8 +770,8 @@ func TestUnpaidOrdersExpireAndFreeTheirStock(t *testing.T) {
 	if s, _, _ := app.orderRow(unpaidID); s != "cancelled" {
 		t.Errorf("the unpaid order should be cancelled, is %s", s)
 	}
-	if s, _, _ := app.orderRow(pickupID); s != "paid" {
-		t.Errorf("the pickup order must be left alone, is %s", s)
+	if s, _, _ := app.orderRow(pickupID); s != "confirmed" {
+		t.Errorf("the paid order must be left alone, is %s", s)
 	}
 	if l := app.level("dzwonek"); l.Reserved != 1 {
 		t.Errorf("only the unpaid reservation is released: %+v", l)
@@ -845,4 +832,84 @@ func TestShopIsAbsentWhenThereIsNothingToShow(t *testing.T) {
 	assertNotContains(t, body, `href="/shop"`)
 	_, shopPage, _ := app.get(app.visitor(), "/shop")
 	assertContains(t, shopPage, "Sklep jest w przygotowaniu")
+}
+
+func TestCheckoutEnforcesPaymentMethodsAndBankTransferConfirmation(t *testing.T) {
+	t.Setenv("PAYMENT_BANK_TRANSFER_ENABLED", "true")
+	t.Setenv("PAYMENT_PICKUP_ENABLED", "true")
+	t.Setenv("PAYMENT_BLIK_ENABLED", "false")
+	t.Setenv("PAYMENT_BANK_ACCOUNT", "12 3456 7890")
+	app := newShopHarness(t)
+	shopper := app.visitor()
+	app.addToCart(shopper, "dzwonek", "", "1")
+	_, page, _ := app.get(shopper, "/checkout")
+	assertContains(t, page, `value="bank_transfer"`)
+	assertContains(t, page, `value="cash_pickup"`, `name="shipping_method"`, `value="pickup"`)
+	assertNotContains(t, page, `value="blik"`, `value="courier"`, `value="cod"`)
+	for _, method := range []string{"blik", "cod", "invalid"} {
+		if status, _, id := app.checkout(shopper, method); status != http.StatusBadRequest || id != "" {
+			t.Fatalf("method %s: status %d, order %q", method, status, id)
+		}
+	}
+	_, _, id := app.checkout(shopper, "bank_transfer")
+	if id == "" {
+		t.Fatal("bank transfer checkout failed")
+	}
+	_, payment, _ := app.get(shopper, "/payment/"+id+"?method=blik")
+	assertContains(t, payment, "12 3456 7890", id, "Przelew tradycyjny")
+	if status, _ := app.post(shopper, "/payment/confirm?id="+id, nil, false); status != http.StatusBadRequest {
+		t.Fatalf("customer could confirm bank transfer: %d", status)
+	}
+	app.post(app.asAdmin(), "/admin/order/"+id+"/mark-paid", nil, false)
+	if err := app.server.projector.Run(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if status, _, _ := app.orderRow(id); status != "confirmed" {
+		t.Fatalf("admin confirmation left status %s", status)
+	}
+}
+
+func TestAdminChoosesWhichPaymentMethodsCheckoutAccepts(t *testing.T) {
+	t.Setenv("PAYMENT_BANK_ACCOUNT", "12 3456 7890")
+	app := newShopHarness(t)
+	shopper := app.visitor()
+	app.addToCart(shopper, "dzwonek", "", "1")
+
+	// Out of the box BLIK is off, so it is neither offered nor accepted.
+	_, page, _ := app.get(shopper, "/checkout")
+	assertContains(t, page, `value="bank_transfer"`, `value="cash_pickup"`)
+	assertNotContains(t, page, `value="blik"`)
+	if status, _, id := app.checkout(shopper, "blik"); status != http.StatusBadRequest || id != "" {
+		t.Fatalf("disabled BLIK accepted: %d %q", status, id)
+	}
+
+	// The admin turns BLIK on and bank transfer off.
+	admin := app.asAdmin()
+	form := url.Values{"blik": {"on"}, "pickup_payment": {"on"}, "bank_account": {"12 3456 7890"}, "bank_recipient": {"Michał Mleczko"}, "blik_phone": {"500 100 200"}}
+	if _, header := app.post(admin, "/admin/fulfillment", form, false); strings.Contains(header.Get("Location"), "error=") {
+		t.Fatalf("saving settings failed: %s", header.Get("Location"))
+	}
+	_, page, _ = app.get(shopper, "/checkout")
+	assertContains(t, page, `value="blik"`)
+	assertNotContains(t, page, `value="bank_transfer"`)
+	if status, _, id := app.checkout(shopper, "bank_transfer"); status != http.StatusBadRequest || id != "" {
+		t.Fatalf("disabled bank transfer accepted: %d %q", status, id)
+	}
+	if _, _, id := app.checkout(shopper, "blik"); id == "" {
+		t.Fatal("BLIK checkout failed after enabling it")
+	}
+
+	// Settings that leave no way to pay, or a method without its details, are refused.
+	for name, bad := range map[string]url.Values{
+		"nothing enabled":         {"bank_account": {"12 3456 7890"}},
+		"transfer without number": {"bank_transfer": {"on"}},
+		"BLIK without a phone":    {"blik": {"on"}},
+	} {
+		if _, header := app.post(admin, "/admin/fulfillment", bad, false); !strings.Contains(header.Get("Location"), "error=") {
+			t.Errorf("%s was accepted", name)
+		}
+	}
+	if status, _ := app.post(app.visitor(), "/admin/fulfillment", form, false); status != http.StatusFound {
+		t.Fatalf("visitor reached admin settings: %d", status)
+	}
 }

@@ -206,11 +206,12 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 		r.Use(s.adminAuthMiddleware)
 		r.Get("/admin", s.handleAdminPanel)
 		r.Post("/admin/bank-test", s.handleAdminBankTestCreate)
-		r.Get("/admin/users", s.handleAdminUsers)
+		r.Get("/admin/users", func(w http.ResponseWriter, r *http.Request) { http.Redirect(w, r, "/admin#users", http.StatusFound) })
 		r.Get("/admin/user/{id}", s.handleAdminUserDetail)
 		r.Post("/admin/user/{id}", s.handleAdminUserUpdate)
 		r.Post("/admin/user/{id}/reset-password", s.handleAdminUserResetPassword)
 		r.Post("/admin/order/{id}/mark-paid", s.handleAdminOrderMarkPaid)
+		r.Post("/admin/fulfillment", s.handleAdminFulfillmentSettings)
 		r.Post("/admin/order/{id}/confirm", s.handleAdminOrderConfirm)
 		r.Post("/admin/order/{id}/realize", s.handleAdminOrderRealize)
 		r.Get("/admin/order/{id}", s.handleAdminOrder)
@@ -654,9 +655,37 @@ func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusFound)
 }
 
+type checkoutPaymentMethod struct {
+	ID, Label, Description string
+	Selected               bool
+	Shippings              []string // shipping option codes this method can be combined with
+}
+
+func (m checkoutPaymentMethod) ShippingCodes() string { return strings.Join(m.Shippings, " ") }
+
+// Payment methods are independently switchable without changing existing orders.
+func paymentEnabled(name string, defaultValue bool) bool {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return defaultValue
+	}
+	enabled, err := strconv.ParseBool(value)
+	return err == nil && enabled
+}
+
 // handleCheckout renders the checkout page.
 func (s *Server) handleCheckout(w http.ResponseWriter, r *http.Request) {
 	cart, problems := s.normalizeCart(r, getCart(r))
+	st, err := s.fulfillmentSettings()
+	if err != nil {
+		http.Error(w, "Nie można odczytać ustawień", 500)
+		return
+	}
+	var delivery deliveryChoices
+	if cartHasShopLines(cart) {
+		delivery = s.deliveryChoices(r, cart)
+	}
+	methods := st.checkoutMethods(delivery.Options)
 
 	// Enrich cart items with addon details
 	enrichedCart := make([]map[string]interface{}, len(cart))
@@ -702,22 +731,24 @@ func (s *Server) handleCheckout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := map[string]interface{}{
-		"Title":          "Koszyk",
-		"Cart":           enrichedCart,
-		"CartTotal":      calculateFinalTotal(cart), // the header badge shows the whole cart
-		"RentalTotal":    calculateCartTotal(cart),
-		"AddonsTotal":    calculateAddonsTotal(cart),
-		"ShopTotal":      calculateShopTotal(cart),
-		"FinalTotal":     calculateFinalTotal(cart),
-		"CartCount":      len(cart),
-		"HasShopLines":   cartHasShopLines(cart),
-		"HasRentalLines": cartHasRentalLines(cart),
-		"HasProblems":    len(problems) > 0,
-		"Notice":         checkoutNotice(r.URL.Query().Get("notice")),
-		"UserDetails":    map[string]string{},
+		"Title":           "Koszyk",
+		"Cart":            enrichedCart,
+		"CartTotal":       calculateFinalTotal(cart), // the header badge shows the whole cart
+		"RentalTotal":     calculateCartTotal(cart),
+		"AddonsTotal":     calculateAddonsTotal(cart),
+		"ShopTotal":       calculateShopTotal(cart),
+		"FinalTotal":      calculateFinalTotal(cart),
+		"CartCount":       len(cart),
+		"HasShopLines":    cartHasShopLines(cart),
+		"HasRentalLines":  cartHasRentalLines(cart),
+		"HasProblems":     len(problems) > 0,
+		"PaymentMethods":  methods,
+		"FinalTotalMinor": calculateFinalTotal(cart).Minor(),
+		"Notice":          checkoutNotice(r.URL.Query().Get("notice")),
+		"UserDetails":     map[string]string{},
 	}
 	if cartHasShopLines(cart) {
-		data["Delivery"] = s.deliveryChoices(r, cart)
+		data["Delivery"] = delivery
 	}
 
 	s.renderTemplate(w, r, "checkout.html", data)
@@ -729,7 +760,11 @@ func (s *Server) handlePayment(w http.ResponseWriter, r *http.Request) {
 	if orderID == "" {
 		orderID = r.URL.Query().Get("id")
 	}
-	paymentMethod := r.URL.Query().Get("method")
+	st, err := s.fulfillmentSettings()
+	if err != nil {
+		http.Error(w, "Nie można odczytać ustawień", 500)
+		return
+	}
 
 	if orderID == "" {
 		http.Error(w, "Order ID required", http.StatusBadRequest)
@@ -740,7 +775,7 @@ func (s *Server) handlePayment(w http.ResponseWriter, r *http.Request) {
 	var totalAmount float64
 	var status, dbPaymentMethod string
 	var paymentCode *string
-	err := s.readModels.GetDB().QueryRow(`
+	err = s.readModels.GetDB().QueryRow(`
 		SELECT total_amount, status, payment_method, payment_code
 		FROM orders WHERE id = ?
 	`, orderID).Scan(&totalAmount, &status, &dbPaymentMethod, &paymentCode)
@@ -750,10 +785,7 @@ func (s *Server) handlePayment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use payment method from query param or database
-	if paymentMethod == "" {
-		paymentMethod = dbPaymentMethod
-	}
+	paymentMethod := dbPaymentMethod
 
 	if paymentMethod == domain.PaymentMethodCashPickup || paymentMethod == domain.PaymentMethodBlikPickup {
 		http.Redirect(w, r, fmt.Sprintf("/user/order/%s", orderID), http.StatusFound)
@@ -768,6 +800,9 @@ func (s *Server) handlePayment(w http.ResponseWriter, r *http.Request) {
 		"PaymentCode":       paymentCode,
 		"ShowConfirmButton": false,
 		"ShowPolling":       paymentMethod == domain.PaymentMethodBlik && status == string(domain.StatusAwaitingPayment),
+		"BankAccount":       st.BankAccount,
+		"BankRecipient":     st.BankRecipient,
+		"BlikPhone":         st.BlikPhone,
 	}
 
 	s.renderTemplate(w, r, "payment.html", data)
@@ -1131,6 +1166,10 @@ func (s *Server) handleCheckoutSubmit(w http.ResponseWriter, r *http.Request) {
 	if delivery != nil {
 		totalAmount = totalAmount.Add(delivery.Cost)
 	}
+	if !s.paymentAllowed(paymentMethod, delivery.IsShipped()) {
+		http.Error(w, "Niedostępna metoda płatności", http.StatusBadRequest)
+		return
+	}
 
 	// Generate order ID
 	orderID := fmt.Sprintf("ORD-%d", time.Now().UnixNano())
@@ -1188,14 +1227,22 @@ func (s *Server) handleCheckoutSubmit(w http.ResponseWriter, r *http.Request) {
 	// Clear cart
 	clearCart(w, r)
 
+	redirectAfterCheckout(w, r, orderID, paymentMethod)
+}
+
+// redirectAfterCheckout sends orders paid in person to their status page and others to payment.
+func redirectAfterCheckout(w http.ResponseWriter, r *http.Request, orderID, paymentMethod string) {
+	target := fmt.Sprintf("/payment/%s?method=%s", orderID, paymentMethod)
 	if isPickupPaymentMethod(paymentMethod) {
-		http.Redirect(w, r, fmt.Sprintf("/user/order/%s", orderID), http.StatusFound)
+		target = fmt.Sprintf("/user/order/%s", orderID)
+	}
+	if r.Header.Get("HX-Request") != "" {
+		// The form is posted by HTMX: a plain redirect would swap the whole next page into the form.
+		w.Header().Set("HX-Redirect", target)
+		w.WriteHeader(http.StatusOK)
 		return
 	}
-
-	// Redirect to payment
-	redirectURL := fmt.Sprintf("/payment/%s?method=%s", orderID, paymentMethod)
-	http.Redirect(w, r, redirectURL, http.StatusFound)
+	http.Redirect(w, r, target, http.StatusFound)
 }
 
 // checkoutCart reprices cookie lines and refuses empty or unavailable carts.
@@ -1236,8 +1283,8 @@ func (s *Server) handlePaymentConfirm(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Order not found", http.StatusNotFound)
 		return
 	}
-	if paymentMethod == domain.PaymentMethodCashPickup || paymentMethod == domain.PaymentMethodBlikPickup {
-		http.Error(w, "Pickup orders are confirmed by the shop", http.StatusBadRequest)
+	if paymentMethod == domain.PaymentMethodCashPickup || paymentMethod == domain.PaymentMethodBlikPickup || paymentMethod == domain.PaymentMethodBankTransfer {
+		http.Error(w, "Payments are confirmed by the shop", http.StatusBadRequest)
 		return
 	}
 
@@ -1392,6 +1439,14 @@ func (s *Server) handleUserOrderDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	view := buildOrderDetailView(order)
+	st, err := s.fulfillmentSettings()
+	if err != nil {
+		http.Error(w, "Nie można odczytać ustawień", 500)
+		return
+	}
+	view.PaymentView["BankAccount"] = st.BankAccount
+	view.PaymentView["BankRecipient"] = st.BankRecipient
+	view.PaymentView["BlikPhone"] = st.BlikPhone
 	data := map[string]interface{}{
 		"Title":                "Szczegóły zamówienia",
 		"Order":                view.Order,
@@ -1508,6 +1563,7 @@ func buildOrderDetailView(order map[string]interface{}) orderDetailView {
 	canCancel := canUserCancelOrder(status, paymentMethod)
 	paymentView := map[string]interface{}{
 		"OrderID":           orderID,
+		"PaymentMethod":     paymentMethod,
 		"FinalTotal":        totalAmount,
 		"ShowConfirmButton": false,
 		"ShowPolling":       needsPayment && paymentMethod == domain.PaymentMethodBlik,
@@ -1627,6 +1683,8 @@ func orderStatusBadgeClass(status, paymentMethod string) string {
 
 func paymentMethodLabel(method, status string) string {
 	switch method {
+	case domain.PaymentMethodBankTransfer:
+		return "Przelew tradycyjny"
 	case domain.PaymentMethodBlik:
 		if status == string(domain.StatusAwaitingPayment) {
 			return "BLIK na telefon"
@@ -1634,9 +1692,9 @@ func paymentMethodLabel(method, status string) string {
 		return "Opłacone (BLIK)"
 	case domain.PaymentMethodCashPickup:
 		if status == string(domain.StatusAwaitingPayment) {
-			return "Gotówka przy odbiorze"
+			return "Płatność na miejscu"
 		}
-		return "Gotówka przy odbiorze"
+		return "Płatność na miejscu"
 	case domain.PaymentMethodBlikPickup:
 		return "BLIK przy odbiorze"
 	default:
@@ -1936,24 +1994,6 @@ func (s *Server) handleUserChangePassword(w http.ResponseWriter, r *http.Request
 	http.Redirect(w, r, "/login", http.StatusFound)
 }
 
-// handleAdminUsers renders the admin users list.
-func (s *Server) handleAdminUsers(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-	users, err := s.authManager.GetAllUsers(ctx)
-	if err != nil {
-		log.Printf("Failed to fetch users: %v", err)
-		http.Error(w, "Failed to fetch users", http.StatusInternalServerError)
-		return
-	}
-
-	data := map[string]interface{}{
-		"Title": "Użytkownicy",
-		"Users": users,
-	}
-	data["IsAdmin"] = true
-	s.renderTemplate(w, r, "admin_users.html", data)
-}
-
 // handleAdminUserUpdate processes the admin user update form.
 func (s *Server) handleAdminUserUpdate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != methodPost {
@@ -1981,7 +2021,7 @@ func (s *Server) handleAdminUserUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.Redirect(w, r, "/admin/users", http.StatusFound)
+	http.Redirect(w, r, "/admin/user/"+userID+"?notice="+url.QueryEscape("Zapisano dane klienta."), http.StatusSeeOther)
 }
 
 // handleAdminUserResetPassword resets a user's password (admin).
@@ -2008,7 +2048,7 @@ func (s *Server) handleAdminUserResetPassword(w http.ResponseWriter, r *http.Req
 	// Log the new password (in production, this should be sent via email)
 	log.Printf("Reset password for user %s. New password: %s", userID, newPassword)
 
-	http.Redirect(w, r, "/admin/users", http.StatusFound)
+	http.Redirect(w, r, "/admin/user/"+userID+"?notice="+url.QueryEscape("Hasło zresetowane. Nowe hasło znajduje się w logach serwera."), http.StatusSeeOther)
 }
 
 // handleAdminPanel renders the admin panel.
@@ -2067,7 +2107,7 @@ func (s *Server) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		"Title":                      "Panel Administratora",
 		"Orders":                     orders,
 		"OrdersToShip":               s.ordersToShip(r.Context(), orders),
-		"OrdersAwaitingConfirmation": ordersAwaitingConfirmation,
+		"OrdersAwaitingConfirmation": enrichAdminOrders(ordersAwaitingConfirmation),
 		"Transfers":                  transfers,
 		"BankMailAddress":            s.bankMail.Address,
 		"BankMailTest":               bankTest,
@@ -2081,6 +2121,19 @@ func (s *Server) handleAdminPanel(w http.ResponseWriter, r *http.Request) {
 		"AdminError":                 r.URL.Query().Get("error"),
 	}
 
+	st, err := s.fulfillmentSettings()
+	if err != nil {
+		http.Error(w, "Nie można odczytać ustawień", 500)
+		return
+	}
+	data["Fulfillment"] = st
+	upcoming, past := s.closureViews()
+	data["UpcomingClosures"] = upcoming
+	data["PastClosures"] = past
+	data["Fleet"] = s.fleetViews(products)
+	data["Today"] = todayString()
+	data["Orders"] = enrichAdminOrders(orders)
+	data["OrdersAwaitingPayment"] = countOrders(orders, string(domain.StatusAwaitingPayment))
 	data["IsAdmin"] = true
 	s.renderTemplate(w, r, "admin_panel.html", data)
 }
@@ -2098,22 +2151,8 @@ func (s *Server) handleAdminBankTestCreate(w http.ResponseWriter, r *http.Reques
 	http.Redirect(w, r, "/admin#settings", http.StatusSeeOther)
 }
 
-// handleAdminUserDetail renders admin user detail page.
-func (s *Server) handleAdminUserDetail(w http.ResponseWriter, r *http.Request) {
-	userID := chi.URLParam(r, "id")
-
-	data := map[string]interface{}{
-		"Title":      "Szczegóły użytkownika",
-		"User":       map[string]interface{}{"ID": userID, "Name": "Jan Kowalski", "Email": "jan@example.com", "Phone": "500 111 222", "Address": "Warszawska 1, Radzymin"},
-		"UserOrders": []interface{}{},
-	}
-
-	data["IsAdmin"] = true
-	s.renderTemplate(w, r, "admin_user_detail.html", data)
-}
-
 // emitOrderPaidEvent is a helper function to emit OrderPaidEvent.
-func (s *Server) emitOrderPaidEvent(w http.ResponseWriter, r *http.Request, orderID, method string) {
+func (s *Server) emitOrderPaidEvent(w http.ResponseWriter, r *http.Request, orderID, method string) bool {
 	event := &domain.OrderPaidEvent{
 		OrderID:   orderID,
 		Method:    method,
@@ -2124,22 +2163,25 @@ func (s *Server) emitOrderPaidEvent(w http.ResponseWriter, r *http.Request, orde
 	if err != nil {
 		log.Printf("Failed to create OrderPaidEvent: %v", err)
 		http.Error(w, "Failed to update order", http.StatusInternalServerError)
-		return
+		return false
 	}
 
 	ctx := r.Context()
 	if err := s.eventStore.Save(ctx, eventData); err != nil {
 		log.Printf("Failed to emit OrderPaidEvent: %v", err)
 		http.Error(w, "Failed to update order", http.StatusInternalServerError)
-		return
+		return false
 	}
+	return true
 }
 
 // handleAdminOrderMarkPaid marks an order as paid (HTMX).
 func (s *Server) handleAdminOrderMarkPaid(w http.ResponseWriter, r *http.Request) {
 	orderID := chi.URLParam(r, "id")
-	s.emitOrderPaidEvent(w, r, orderID, "admin_manual")
-	s.handleAdminPanel(w, r)
+	if !s.emitOrderPaidEvent(w, r, orderID, "admin_manual") {
+		return
+	}
+	s.adminBack(w, r, "orders", "notice", "Przelew potwierdzony — zamówienie "+orderID+" opłacone.")
 }
 
 // handleAdminOrderConfirm confirms an order manually (HTMX).
@@ -2166,7 +2208,7 @@ func (s *Server) handleAdminOrderConfirm(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	s.handleAdminPanel(w, r)
+	s.adminBack(w, r, "orders", "notice", "Zamówienie "+orderID+" potwierdzone.")
 }
 
 // handleWebPushVAPIDKey returns the VAPID public key for web push subscriptions.
@@ -2360,8 +2402,7 @@ func (s *Server) handleAdminTransferLink(w http.ResponseWriter, r *http.Request)
 		}
 	}
 
-	// Return updated transfers section
-	s.handleAdminPanel(w, r)
+	s.adminBack(w, r, "orders", "notice", "Wpłata powiązana z zamówieniem.")
 }
 
 // handleAdminCreateReservation creates a manual reservation (HTMX).
@@ -2422,122 +2463,7 @@ func (s *Server) handleAdminCreateReservation(w http.ResponseWriter, r *http.Req
 		}
 	}
 
-	// Return updated admin panel
-	s.handleAdminPanel(w, r)
-}
-
-// handleAdminBlockProductDate blocks a date for a specific product (HTMX).
-func (s *Server) handleAdminBlockProductDate(w http.ResponseWriter, r *http.Request) {
-	s.handleAdminProductDateAction(w, r, true)
-}
-
-// handleAdminUnblockProductDate unblocks a date for a specific product (HTMX).
-func (s *Server) handleAdminUnblockProductDate(w http.ResponseWriter, r *http.Request) {
-	s.handleAdminProductDateAction(w, r, false)
-}
-
-// handleAdminProductDateAction handles blocking/unblocking dates for products.
-func (s *Server) handleAdminProductDateAction(w http.ResponseWriter, r *http.Request, block bool) {
-	if r.Method != methodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	productID := chi.URLParam(r, "id")
-	date := r.FormValue("date")
-
-	if productID == "" || date == "" {
-		http.Error(w, "Missing required fields", http.StatusBadRequest)
-		return
-	}
-
-	orderID := fmt.Sprintf("ADMIN-BLOCK-%s", productID)
-	var err error
-
-	if block {
-		// Insert into product_bookings with a special order ID for admin blocks
-		query := `
-		INSERT OR IGNORE INTO product_bookings (product_id, order_id, booked_date)
-		VALUES (?, ?, ?)
-		`
-		_, err = s.readModels.GetDB().Exec(query, productID, orderID, date)
-		if err != nil {
-			log.Printf("Failed to block product date: %v", err)
-			http.Error(w, "Failed to block date", http.StatusInternalServerError)
-			return
-		}
-	} else {
-		// Delete from product_bookings for admin blocks
-		query := `
-		DELETE FROM product_bookings
-		WHERE product_id = ? AND order_id = ? AND booked_date = ?
-		`
-		_, err = s.readModels.GetDB().Exec(query, productID, orderID, date)
-		if err != nil {
-			log.Printf("Failed to unblock product date: %v", err)
-			http.Error(w, "Failed to unblock date", http.StatusInternalServerError)
-			return
-		}
-	}
-
-	// Return updated admin panel
-	s.handleAdminPanel(w, r)
-}
-
-// handleAdminAddGlobalClosure adds a global store closure date (HTMX).
-func (s *Server) handleAdminAddGlobalClosure(w http.ResponseWriter, r *http.Request) {
-	if r.Method != methodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	date := r.FormValue("date")
-	if date == "" {
-		http.Error(w, "Missing required field: date", http.StatusBadRequest)
-		return
-	}
-
-	// Get current user ID for audit trail
-	userID := ""
-	if user := middleware.GetUser(r); user != nil {
-		if u, ok := user.(*domain.User); ok {
-			userID = u.ID
-		}
-	}
-
-	err := s.readModels.AddGlobalBlockedDate(date, userID)
-	if err != nil {
-		log.Printf("Failed to add global closure date: %v", err)
-		http.Error(w, "Failed to add closure date", http.StatusInternalServerError)
-		return
-	}
-
-	// Return updated admin panel
-	s.handleAdminPanel(w, r)
-}
-
-// handleAdminRemoveGlobalClosure removes a global store closure date (HTMX).
-func (s *Server) handleAdminRemoveGlobalClosure(w http.ResponseWriter, r *http.Request) {
-	if r.Method != methodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	date := r.FormValue("date")
-	if date == "" {
-		http.Error(w, "Missing required field: date", http.StatusBadRequest)
-		return
-	}
-
-	err := s.readModels.RemoveGlobalBlockedDate(date)
-	if err != nil {
-		log.Printf("Failed to remove global closure date: %v", err)
-		http.Error(w, "Failed to remove closure date", http.StatusInternalServerError)
-		return
-	}
-
-	// Return updated admin panel
-	s.handleAdminPanel(w, r)
+	s.adminBack(w, r, "fleet", "notice", "Dodano rezerwację ręczną.")
 }
 
 // handleHealth returns health status.

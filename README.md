@@ -329,3 +329,15 @@ Szczegółowy plan rozwoju znajduje się w pliku `plan.md`.
 ## Licencja
 
 Prywatny projekt.
+
+### Metody płatności
+
+Panel administratora → **Ustawienia → Płatności i dostawa** pozwala włączać i wyłączać metody płatności (zmiany działają od razu):
+
+- przelew tradycyjny (potwierdzany ręcznie w panelu zamówień),
+- przelew BLIK na telefon (domyślnie wyłączony; dopasowywany automatycznie z powiadomień banku),
+- płatność przy odbiorze (tylko odbiór osobisty).
+
+Przesyłka (paczkomat, kurier) jest opłacana z góry: przelewem tradycyjnym lub BLIK-iem. Metody dostawy, ich ceny i dane nadawcy są w `data/shipping.yml` (patrz `docs/shop.md`).
+
+Dane do przelewu (numer rachunku, odbiorca) oraz numer telefonu BLIK ustawia się w tym samym miejscu. Do czasu pierwszego zapisu ustawień obowiązują wartości domyślne ze zmiennych `PAYMENT_BANK_TRANSFER_ENABLED`, `PAYMENT_PICKUP_ENABLED`, `PAYMENT_BLIK_ENABLED`, `PAYMENT_BANK_ACCOUNT` i `PAYMENT_BANK_RECIPIENT`. Wcześniejsze zamówienia zachowują wybraną metodę.

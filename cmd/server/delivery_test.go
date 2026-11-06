@@ -148,7 +148,7 @@ func withDelivery(t *testing.T, app *shopHarness, polkurier bool) *fakePolkurier
 func (app *shopHarness) checkoutWith(client *http.Client, form url.Values) (int, string, string) {
 	app.t.Helper()
 	base := url.Values{
-		"payment_method": {"blik"}, "name": {"Jan Test"}, "email": {"jan@example.com"}, "phone": {"500100200"},
+		"payment_method": {"bank_transfer"}, "name": {"Jan Test"}, "email": {"jan@example.com"}, "phone": {"500100200"},
 		"address": {"Radzymin"}, "is_adult": {"on"}, "accept_tos": {"on"}, "password": {"haslo12345"},
 	}
 	for k, v := range form {
@@ -160,8 +160,10 @@ func (app *shopHarness) checkoutWith(client *http.Client, form url.Values) (int,
 		location = header.Get("HX-Redirect")
 	}
 	orderID := ""
-	if rest, ok := strings.CutPrefix(location, "/payment/"); ok {
-		orderID, _, _ = strings.Cut(rest, "?")
+	for _, prefix := range []string{"/payment/", "/user/order/"} {
+		if rest, ok := strings.CutPrefix(location, prefix); ok {
+			orderID, _, _ = strings.Cut(rest, "?")
+		}
 	}
 	return status, location, orderID
 }

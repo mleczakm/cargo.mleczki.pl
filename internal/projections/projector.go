@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"cargo.mleczki.pl/internal/domain"
@@ -13,6 +14,7 @@ import (
 
 // Projector handles event processing and updates read models.
 type Projector struct {
+	mu             sync.Mutex // Run is called by the background loop and by requests that need fresh read models
 	eventStore     eventstore.EventStore
 	readModels     *ReadModelsDB
 	projectionName string
@@ -29,6 +31,8 @@ func NewProjector(eventStore eventstore.EventStore, readModels *ReadModelsDB, pr
 
 // Run processes all events since the last checkpoint.
 func (p *Projector) Run(ctx context.Context) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	lastVersion, err := p.readModels.GetCheckpoint(p.projectionName)
 	if err != nil {
 		return fmt.Errorf("failed to get checkpoint: %w", err)
@@ -219,10 +223,10 @@ func (p *Projector) handleOrderPaid(event *eventstore.Event) error {
 		return err
 	}
 
-	// Auto-confirm for BLIK payments only
+	// Auto-confirm online payments once they are marked paid.
 	// Pickup payments (cash_pickup) stay in 'paid' state awaiting manual confirmation
 	newStatus := "paid"
-	if paymentMethod == "blik" {
+	if paymentMethod == "blik" || paymentMethod == "bank_transfer" {
 		newStatus = "confirmed"
 	}
 

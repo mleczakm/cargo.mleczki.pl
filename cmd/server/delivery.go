@@ -179,7 +179,7 @@ func deliveryNotice(code string) string {
 	case noticeDeliveryAddress:
 		return "Uzupełnij adres dostawy: ulicę z numerem, kod pocztowy (00-000) i miasto."
 	case noticeDeliveryPayment:
-		return "Przesyłkę opłacisz BLIK-iem przed wysyłką. Płatność przy odbiorze dotyczy tylko odbioru osobistego."
+		return "Przesyłkę opłacasz przed wysyłką (przelewem lub BLIK-iem). Płatność przy odbiorze dotyczy tylko odbioru osobistego."
 	default:
 		return ""
 	}
@@ -216,7 +216,7 @@ func (s *Server) resolveDelivery(ctx context.Context, r *http.Request, cart []Ca
 		details.Cost = domain.Money{}
 		return details, ""
 	}
-	if paymentMethod != domain.PaymentMethodBlik {
+	if isPickupPaymentMethod(paymentMethod) {
 		return nil, noticeDeliveryPayment
 	}
 
