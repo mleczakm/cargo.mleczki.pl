@@ -225,7 +225,7 @@ func (s *Service) SearchPoints(ctx context.Context, carrier, query string) ([]Po
 	}
 	s.mu.Unlock()
 	pts, err := client.GetCourierPoints(ctx, polkurier.PointQuery{
-		Couriers: []string{carrier}, SearchQuery: query, Functions: []polkurier.PointFunction{polkurier.PointCollect}, Limit: 15, Page: 1,
+		Couriers: []string{carrier}, SearchQuery: query, Functions: []polkurier.PointFunction{polkurier.PointCollect}, Limit: maxPoints, Page: 1,
 	})
 	if err != nil {
 		return nil, err
@@ -235,6 +235,12 @@ func (s *Service) SearchPoints(ctx context.Context, carrier, query string) ([]Po
 		if bool(p.Available) {
 			out = append(out, toPoint(p))
 		}
+	}
+	// The search is fuzzy ("Radzymin" also finds streets named Radzymińska in other towns) and ignores the
+	// limit: put exact matches first, then keep a list a customer can scan.
+	sort.SliceStable(out, func(i, j int) bool { return exactMatch(out[i], query) && !exactMatch(out[j], query) })
+	if len(out) > maxPoints {
+		out = out[:maxPoints]
 	}
 	s.mu.Lock()
 	if s.points == nil {
@@ -253,20 +259,25 @@ func toPoint(p polkurier.CourierPoint) Point {
 	return Point{ID: string(p.ID), Label: string(p.ID) + " — " + addr, Description: p.Description, Street: p.Street, Postcode: p.Zip, City: p.City}
 }
 
-// LookupPoint returns a point by ID, or ErrPointNotFound.
+// maxPoints is how many pickup points a search offers.
+const maxPoints = 15
+
+// exactMatch tells whether the query names the point's town, postcode or code exactly.
+func exactMatch(p Point, query string) bool {
+	return strings.EqualFold(p.City, query) || strings.EqualFold(p.Postcode, query) || strings.EqualFold(p.ID, query)
+}
+
+// LookupPoint returns a point by ID, or ErrPointNotFound. The API's own lookup by ID answers with an
+// object the client cannot decode, so this searches for the code and picks the exact match.
 func (s *Service) LookupPoint(ctx context.Context, carrier, id string) (*Point, error) {
-	client := s.api()
-	if client == nil {
-		return nil, ErrNotConfigured
-	}
-	pts, err := client.GetCourierPoints(ctx, polkurier.PointQuery{Couriers: []string{carrier}, ID: strings.ToUpper(strings.TrimSpace(id))})
+	id = strings.ToUpper(strings.TrimSpace(id))
+	pts, err := s.SearchPoints(ctx, carrier, id)
 	if err != nil {
 		return nil, err
 	}
 	for _, p := range pts {
-		if strings.EqualFold(string(p.ID), id) {
-			pt := toPoint(p)
-			return &pt, nil
+		if strings.EqualFold(p.ID, id) {
+			return &p, nil
 		}
 	}
 	return nil, ErrPointNotFound

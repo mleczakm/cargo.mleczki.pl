@@ -397,3 +397,55 @@ func count(list []string, what string) int {
 	}
 	return count2
 }
+
+// realisticPointsAPI behaves like the live Polkurier API: the search is fuzzy and ignores the limit,
+// and a lookup by ID answers with an object instead of a list.
+func realisticPointsAPI(t *testing.T) *httptest.Server {
+	t.Helper()
+	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
+		body := string(raw)
+		if !strings.Contains(body, `"apimethod":"get_courier_point"`) {
+			t.Errorf("unexpected API request: %s", body)
+			return
+		}
+		if strings.Contains(body, `"id":"`) {
+			_, _ = io.WriteString(w, `{"status":"success","response":{"id":"RDZ01M"}}`)
+			return
+		}
+		var points []string
+		for i := range 20 { // streets named like the town, in other towns, come first
+			points = append(points, `{"id":"BIA`+string(rune('A'+i))+`","city":"Białystok","zip":"15-863","street":"Radzymińska `+string(rune('A'+i))+`","available":true}`)
+		}
+		points = append(points,
+			`{"id":"RDZ01M","city":"Radzymin","zip":"05-250","street":"Komunalna 8a","available":true}`,
+			`{"id":"RDZ02N","city":"Radzymin","zip":"05-250","street":"Weteranów 22","available":true}`)
+		_, _ = io.WriteString(w, `{"status":"success","response":[`+strings.Join(points, ",")+`]}`)
+	}))
+}
+
+func TestPointSearchPutsTheTownFirstAndLookupSurvivesTheRealAPI(t *testing.T) {
+	api := realisticPointsAPI(t)
+	defer api.Close()
+	service := &Service{}
+	service.Configure("acct", "tok", true, api.URL, "test")
+
+	points, err := service.SearchPoints(t.Context(), "INPOST_PACZKOMAT", "Radzymin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(points) != maxPoints {
+		t.Errorf("a search offers at most %d points, got %d", maxPoints, len(points))
+	}
+	if len(points) < 2 || points[0].ID != "RDZ01M" || points[1].ID != "RDZ02N" {
+		t.Errorf("points in the searched town come first: %+v", points)
+	}
+
+	found, err := service.LookupPoint(t.Context(), "INPOST_PACZKOMAT", "rdz01m")
+	if err != nil || found.Street != "Komunalna 8a" || found.Postcode != "05-250" {
+		t.Errorf("LookupPoint must find the exact code even though an ID query cannot be decoded: %+v, %v", found, err)
+	}
+	if _, err := service.LookupPoint(t.Context(), "INPOST_PACZKOMAT", "NOPE99"); !errors.Is(err, ErrPointNotFound) {
+		t.Errorf("unknown code error = %v", err)
+	}
+}
