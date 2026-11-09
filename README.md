@@ -48,6 +48,7 @@ Aplikacja wykorzystuje architekturę Event-Sourcing do przechowywania wszystkich
 - ✅ Pełna integracja z Event-Sourcing dla zamówień
 - ✅ Globalne zamknięcia sklepu (admin panel)
 - ✅ Pobieranie rzeczywistych danych w panelu użytkownika
+- ✅ Aplikacja PWA (Android, iOS, komputer) i powiadomienia web push dla klientów i adminów – patrz [docs/pwa-push.md](docs/pwa-push.md)
 
 ## Szybki start
 
@@ -287,6 +288,11 @@ Idealny do przewozu dzieci i towarów. Szybki, zwinny i pakowny.
 - `GET /product/{id}/calendar` - Widget kalendarza
 - `POST /payment/confirm` - Potwierdź płatność
 - `GET /payment/status/{id}` - Sprawdź status płatności (polling)
+
+### Powiadomienia push (wymagają zalogowania)
+- `GET /api/webpush/vapid-key` - Klucz publiczny VAPID
+- `POST /api/webpush/subscribe` - Zapisz urządzenie
+- `POST /api/webpush/unsubscribe` - Wyłącz powiadomienia na urządzeniu
 
 ### Panele
 - `GET /user` - Panel klienta

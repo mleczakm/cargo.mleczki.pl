@@ -284,6 +284,16 @@ func (rm *ReadModelsDB) initSchema() error {
 		shop.Schema,
 		shipping.Schema,
 		`CREATE TABLE IF NOT EXISTS business_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);`,
+		// One row per browser/device that agreed to web push; user_id is whoever is signed in there.
+		`CREATE TABLE IF NOT EXISTS push_subscriptions (
+			endpoint TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL,
+			p256dh TEXT NOT NULL,
+			auth TEXT NOT NULL,
+			user_agent TEXT,
+			created_at TEXT DEFAULT CURRENT_TIMESTAMP
+		);
+		CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user ON push_subscriptions(user_id);`,
 	}
 	for i, schema := range schemas {
 		if _, err := rm.db.Exec(schema); err != nil {

@@ -30,8 +30,13 @@
     <link rel="stylesheet" href="/static/story.css">
     <link rel="icon" type="image/svg+xml" href="/static/favicon-32.svg" sizes="32x32">
     <link rel="icon" type="image/svg+xml" href="/static/favicon-16.svg" sizes="16x16">
-    <link rel="apple-touch-icon" href="/static/apple-touch-icon.svg">
+    <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon-180.png">
     <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#059669">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="cargo.mleczki">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -44,7 +49,7 @@
     </style>
     {{block "head-extra" .}}{{end}}
 </head>
-<body class="min-h-screen bg-white font-sans text-gray-900 flex flex-col">
+<body class="min-h-screen bg-white font-sans text-gray-900 flex flex-col"{{if .IsLoggedIn}} data-logged-in="1"{{end}}>
 {{template "header" .}}
 
 <main class="flex-grow">
@@ -60,6 +65,8 @@
 {{template "cart-toast" .}}
 <script>document.documentElement.classList.add('js');</script>
 <script src="/static/story.js"></script>
+{{template "install-banner"}}
+<script src="/static/pwa.js" defer></script>
 
 <!-- Modal container -->
 <div id="modal-container" class="hidden fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog"
@@ -345,6 +352,8 @@
                 <li><a href="/terms" hx-get="/terms" hx-target="#modal-content" hx-trigger="click"
                        onclick="document.getElementById('modal-container').classList.remove('hidden')"
                        class="hover:text-emerald-400 transition-colors">Polityka Prywatności (RODO)</a></li>
+                <li><button type="button" data-install-app
+                            class="hidden hover:text-emerald-400 transition-colors text-left">Zainstaluj aplikację</button></li>
             </ul>
         </div>
         <div>
@@ -373,4 +382,48 @@
         — strony z płatnościami BLIK bez operatora płatności i bez abonamentu.
     </div>
 </footer>
+{{end}}
+
+
+{{define "install-banner"}}
+<div id="install-banner" class="hidden fixed inset-x-0 bottom-0 z-40 p-3 sm:hidden" role="region" aria-label="Instalacja aplikacji">
+    <div class="flex items-center gap-3 bg-white rounded-2xl shadow-xl border border-emerald-100 p-3">
+        <img src="/static/icons/icon-192.png" alt="" class="w-12 h-12 rounded-xl flex-shrink-0">
+        <div class="flex-grow min-w-0">
+            <p class="font-bold text-sm text-gray-900">Zainstaluj aplikację</p>
+            <p class="text-xs text-gray-500">Szybki dostęp do zamówień i powiadomienia.</p>
+        </div>
+        <button type="button" data-install-app class="bg-emerald-600 text-white text-sm font-semibold px-4 py-2 rounded-full">Instaluj</button>
+        <button type="button" data-install-dismiss class="text-gray-400 hover:text-gray-600 p-1" aria-label="Zamknij">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+    </div>
+</div>
+<div id="install-ios-help" class="hidden fixed inset-0 z-50 flex items-end justify-center bg-gray-900/60 p-4" role="dialog" aria-modal="true" aria-labelledby="install-ios-title">
+    <div class="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
+        <h3 id="install-ios-title" class="font-black text-lg text-gray-900 mb-3">Dodaj do ekranu początkowego</h3>
+        <ol class="list-decimal list-inside space-y-2 text-sm text-gray-700">
+            <li>W Safari stuknij przycisk <strong>Udostępnij</strong> (kwadrat ze strzałką).</li>
+            <li>Wybierz <strong>Do ekranu początkowego</strong>.</li>
+            <li>Stuknij <strong>Dodaj</strong> i otwórz aplikację z ekranu głównego.</li>
+        </ol>
+        <p class="text-xs text-gray-500 mt-3">Powiadomienia na iPhonie włączysz dopiero z poziomu zainstalowanej aplikacji.</p>
+        <button type="button" data-install-ios-close class="mt-5 w-full bg-emerald-600 text-white font-semibold py-3 rounded-xl">Rozumiem</button>
+    </div>
+</div>
+{{end}}
+
+{{/* Switch for push notifications; shown to signed-in users (pwa.js fills in the state). */}}
+{{define "push-toggle"}}
+{{if .IsLoggedIn}}
+<div data-push-box data-hint="{{if .IsAdmin}}Dostaniesz powiadomienie o nowych zamówieniach i przyjętych płatnościach.{{else}}Dostaniesz powiadomienie, gdy zmieni się status Twojego zamówienia.{{end}}" class="hidden bg-white rounded-2xl border border-gray-100 p-5 shadow-sm">
+    <h4 class="font-bold text-gray-900 mb-1">Powiadomienia</h4>
+    <p data-push-status class="text-sm text-gray-500 mb-3"></p>
+    <div class="flex flex-wrap gap-2">
+        <button type="button" data-push-toggle
+                class="text-sm font-semibold text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 px-4 py-2 rounded-lg transition-colors">Włącz powiadomienia</button>
+        <button type="button" data-install-app class="hidden text-sm font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-4 py-2 rounded-lg transition-colors">Zainstaluj aplikację</button>
+    </div>
+</div>
+{{end}}
 {{end}}

@@ -18,6 +18,18 @@ type Projector struct {
 	eventStore     eventstore.EventStore
 	readModels     *ReadModelsDB
 	projectionName string
+	observer       EventObserver
+}
+
+// EventObserver is told about every event once it has been projected. It runs while the
+// projector holds its lock, so it must return quickly and hand slow work to a goroutine.
+type EventObserver func(ctx context.Context, event *eventstore.Event)
+
+// SetObserver registers the callback invoked after each successfully projected event.
+func (p *Projector) SetObserver(observer EventObserver) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.observer = observer
 }
 
 // NewProjector creates a new projector.
@@ -52,6 +64,9 @@ func (p *Projector) Run(ctx context.Context) error {
 			return fmt.Errorf("failed to process event %s: %w", event.ID, err)
 		}
 		lastVersion = int(event.StreamPosition)
+		if p.observer != nil {
+			p.observer(ctx, event)
+		}
 	}
 
 	return p.readModels.SaveCheckpoint(p.projectionName, lastVersion)

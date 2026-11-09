@@ -16,7 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/SherClockHolmes/webpush-go"
 	"github.com/go-chi/chi/v5"
 	"golang.org/x/crypto/bcrypt"
 
@@ -89,7 +88,7 @@ func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadMod
 	}
 
 	// Initialize web push notifier
-	webPushNotifier, err := notifications.NewWebPushNotifier()
+	webPushNotifier, err := notifications.NewWebPushNotifier(readModels.GetDB())
 	if err != nil {
 		log.Printf("Failed to initialize web push notifier: %v", err)
 		webPushNotifier = nil
@@ -129,6 +128,10 @@ func NewServer(eventStore eventstore.EventStore, readModels *projections.ReadMod
 		shipping:        newShippingService(readModels),
 	}
 
+	if projector != nil {
+		projector.SetObserver(server.observeProjectedEvent)
+	}
+
 	if server.bankMail.Configured() {
 		log.Println("Bank mail webhook enabled (POST /api/bank-mail)")
 	} else {
@@ -145,6 +148,7 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 
 	r.Handle("/static/*", http.StripPrefix("/static/", http.FileServer(http.Dir("web/static"))))
 	r.Handle("/data/images/*", http.StripPrefix("/data/images/", http.FileServer(http.Dir("data/images"))))
+	r.Get("/sw.js", s.handleServiceWorker)
 	r.Get("/favicon.ico", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/static/favicon-32.svg", http.StatusMovedPermanently)
 	})
@@ -226,7 +230,11 @@ func (s *Server) RegisterRoutes(r chi.Router) {
 		r.Post("/admin/product/{id}/unblock-date", s.handleAdminUnblockProductDate)
 		r.Post("/admin/global-closure/add", s.handleAdminAddGlobalClosure)
 		r.Post("/admin/global-closure/remove", s.handleAdminRemoveGlobalClosure)
-		// Web push subscription endpoints
+	})
+
+	// Web push subscriptions: any signed-in user (customers and admins) can register a device.
+	r.Group(func(r chi.Router) {
+		r.Use(requireSignedInAPI)
 		r.Get("/api/webpush/vapid-key", s.handleWebPushVAPIDKey)
 		r.Post("/api/webpush/subscribe", s.handleWebPushSubscribe)
 		r.Post("/api/webpush/unsubscribe", s.handleWebPushUnsubscribe)
@@ -2209,71 +2217,6 @@ func (s *Server) handleAdminOrderConfirm(w http.ResponseWriter, r *http.Request)
 	}
 
 	s.adminBack(w, r, "orders", "notice", "Zamówienie "+orderID+" potwierdzone.")
-}
-
-// handleWebPushVAPIDKey returns the VAPID public key for web push subscriptions.
-func (s *Server) handleWebPushVAPIDKey(w http.ResponseWriter, r *http.Request) {
-	if s.webPushNotifier == nil {
-		http.Error(w, "Web push not configured", http.StatusServiceUnavailable)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	writeJSON(w, map[string]string{
-		"publicKey": s.webPushNotifier.GetVAPIDPublicKey(),
-	})
-}
-
-// handleWebPushSubscribe registers a web push subscription.
-func (s *Server) handleWebPushSubscribe(w http.ResponseWriter, r *http.Request) {
-	if r.Method != methodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	if s.webPushNotifier == nil {
-		http.Error(w, "Web push not configured", http.StatusServiceUnavailable)
-		return
-	}
-
-	var sub webpush.Subscription
-	if err := json.NewDecoder(r.Body).Decode(&sub); err != nil {
-		http.Error(w, "Invalid subscription", http.StatusBadRequest)
-		return
-	}
-
-	// Get user ID from session or context
-	userID := "admin" // In production, get from authenticated user session
-
-	s.webPushNotifier.AddSubscription(userID, sub)
-
-	w.WriteHeader(http.StatusOK)
-	writeJSON(w, map[string]string{
-		"status": "subscribed",
-	})
-}
-
-// handleWebPushUnsubscribe removes a web push subscription.
-func (s *Server) handleWebPushUnsubscribe(w http.ResponseWriter, r *http.Request) {
-	if r.Method != methodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	if s.webPushNotifier == nil {
-		http.Error(w, "Web push not configured", http.StatusServiceUnavailable)
-		return
-	}
-
-	// Get user ID from session or context
-	userID := "admin" // In production, get from authenticated user session
-
-	s.webPushNotifier.RemoveSubscription(userID)
-
-	w.WriteHeader(http.StatusOK)
-	writeJSON(w, map[string]string{
-		"status": "unsubscribed",
-	})
 }
 
 // loadRecentTransfers returns the latest bank transfers for the admin inbox.
